@@ -3,7 +3,19 @@ const fs = require("fs");
 const path = require("path");
 
 const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || "0.0.0.0";
 const PUBLIC_DIR = path.join(__dirname, "public");
+const VENDO_API_URL = (process.env.VENDO_API_URL || "").trim();
+const VENDO_API_LOGIN = (process.env.VENDO_API_LOGIN || "").trim();
+const VENDO_API_PASSWORD = process.env.VENDO_API_PASSWORD || "";
+
+function requireServerConfig() {
+    const missing = [];
+    if (!VENDO_API_URL) missing.push("VENDO_API_URL");
+    if (!VENDO_API_LOGIN) missing.push("VENDO_API_LOGIN");
+    if (!VENDO_API_PASSWORD) missing.push("VENDO_API_PASSWORD");
+    return missing;
+}
 
 function sendJson(res, statusCode, payload) {
     res.writeHead(statusCode, { "Content-Type": "application/json; charset=utf-8" });
@@ -475,19 +487,27 @@ function buildHistoricalPartiesModel({ productCode, pageSize }) {
 
 async function handleApiProducts(req, res) {
     try {
+        const missing = requireServerConfig();
+        if (missing.length) {
+            return sendJson(res, 500, {
+                error: `Brakuje konfiguracji serwera: ${missing.join(", ")}.`,
+            });
+        }
+
         const body = await readJsonBody(req);
         const connection = {
-            baseUrl: body.baseUrl,
-            apiLogin: body.apiLogin,
-            apiPassword: body.apiPassword,
+            baseUrl: VENDO_API_URL,
+            apiLogin: VENDO_API_LOGIN,
+            apiPassword: VENDO_API_PASSWORD,
             vendoUserLogin: body.vendoUserLogin,
             vendoUserPassword: body.vendoUserPassword,
         };
 
-        for (const [key, value] of Object.entries(connection)) {
-            if (!value || !String(value).trim()) {
-                return sendJson(res, 400, { error: `Brakuje pola: ${key}` });
-            }
+        if (!connection.vendoUserLogin || !String(connection.vendoUserLogin).trim()) {
+            return sendJson(res, 400, { error: "Brakuje pola: vendoUserLogin" });
+        }
+        if (!connection.vendoUserPassword || !String(connection.vendoUserPassword).trim()) {
+            return sendJson(res, 400, { error: "Brakuje pola: vendoUserPassword" });
         }
 
         const pageSize = Math.min(Math.max(Number(body.pageSize) || 20, 1), 100);
@@ -508,19 +528,27 @@ async function handleApiProducts(req, res) {
 
 async function handleApiCostAnalysis(req, res) {
     try {
+        const missing = requireServerConfig();
+        if (missing.length) {
+            return sendJson(res, 500, {
+                error: `Brakuje konfiguracji serwera: ${missing.join(", ")}.`,
+            });
+        }
+
         const body = await readJsonBody(req);
         const connection = {
-            baseUrl: body.baseUrl,
-            apiLogin: body.apiLogin,
-            apiPassword: body.apiPassword,
+            baseUrl: VENDO_API_URL,
+            apiLogin: VENDO_API_LOGIN,
+            apiPassword: VENDO_API_PASSWORD,
             vendoUserLogin: body.vendoUserLogin,
             vendoUserPassword: body.vendoUserPassword,
         };
 
-        for (const [key, value] of Object.entries(connection)) {
-            if (!value || !String(value).trim()) {
-                return sendJson(res, 400, { error: `Brakuje pola: ${key}` });
-            }
+        if (!connection.vendoUserLogin || !String(connection.vendoUserLogin).trim()) {
+            return sendJson(res, 400, { error: "Brakuje pola: vendoUserLogin" });
+        }
+        if (!connection.vendoUserPassword || !String(connection.vendoUserPassword).trim()) {
+            return sendJson(res, 400, { error: "Brakuje pola: vendoUserPassword" });
         }
 
         if (!body.dateFrom || !body.dateTo) {
@@ -552,19 +580,27 @@ async function handleApiCostAnalysis(req, res) {
 
 async function handleApiBackorders(req, res) {
     try {
+        const missing = requireServerConfig();
+        if (missing.length) {
+            return sendJson(res, 500, {
+                error: `Brakuje konfiguracji serwera: ${missing.join(", ")}.`,
+            });
+        }
+
         const body = await readJsonBody(req);
         const connection = {
-            baseUrl: body.baseUrl,
-            apiLogin: body.apiLogin,
-            apiPassword: body.apiPassword,
+            baseUrl: VENDO_API_URL,
+            apiLogin: VENDO_API_LOGIN,
+            apiPassword: VENDO_API_PASSWORD,
             vendoUserLogin: body.vendoUserLogin,
             vendoUserPassword: body.vendoUserPassword,
         };
 
-        for (const [key, value] of Object.entries(connection)) {
-            if (!value || !String(value).trim()) {
-                return sendJson(res, 400, { error: `Brakuje pola: ${key}` });
-            }
+        if (!connection.vendoUserLogin || !String(connection.vendoUserLogin).trim()) {
+            return sendJson(res, 400, { error: "Brakuje pola: vendoUserLogin" });
+        }
+        if (!connection.vendoUserPassword || !String(connection.vendoUserPassword).trim()) {
+            return sendJson(res, 400, { error: "Brakuje pola: vendoUserPassword" });
         }
 
         const pageSize = Math.min(Math.max(Number(body.pageSize) || 20, 1), 100);
@@ -591,19 +627,27 @@ async function handleApiBackorders(req, res) {
 
 async function handleApiMrpWorkCosts(req, res) {
     try {
+        const missing = requireServerConfig();
+        if (missing.length) {
+            return sendJson(res, 500, {
+                error: `Brakuje konfiguracji serwera: ${missing.join(", ")}.`,
+            });
+        }
+
         const body = await readJsonBody(req);
         const connection = {
-            baseUrl: body.baseUrl,
-            apiLogin: body.apiLogin,
-            apiPassword: body.apiPassword,
+            baseUrl: VENDO_API_URL,
+            apiLogin: VENDO_API_LOGIN,
+            apiPassword: VENDO_API_PASSWORD,
             vendoUserLogin: body.vendoUserLogin,
             vendoUserPassword: body.vendoUserPassword,
         };
 
-        for (const [key, value] of Object.entries(connection)) {
-            if (!value || !String(value).trim()) {
-                return sendJson(res, 400, { error: `Brakuje pola: ${key}` });
-            }
+        if (!connection.vendoUserLogin || !String(connection.vendoUserLogin).trim()) {
+            return sendJson(res, 400, { error: "Brakuje pola: vendoUserLogin" });
+        }
+        if (!connection.vendoUserPassword || !String(connection.vendoUserPassword).trim()) {
+            return sendJson(res, 400, { error: "Brakuje pola: vendoUserPassword" });
         }
 
         const kkwNumbers = String(body.kkwNumbers || body.kkwIds || "")
@@ -648,19 +692,27 @@ async function handleApiMrpWorkCosts(req, res) {
 
 async function handleApiKkwCosts(req, res) {
     try {
+        const missing = requireServerConfig();
+        if (missing.length) {
+            return sendJson(res, 500, {
+                error: `Brakuje konfiguracji serwera: ${missing.join(", ")}.`,
+            });
+        }
+
         const body = await readJsonBody(req);
         const connection = {
-            baseUrl: body.baseUrl,
-            apiLogin: body.apiLogin,
-            apiPassword: body.apiPassword,
+            baseUrl: VENDO_API_URL,
+            apiLogin: VENDO_API_LOGIN,
+            apiPassword: VENDO_API_PASSWORD,
             vendoUserLogin: body.vendoUserLogin,
             vendoUserPassword: body.vendoUserPassword,
         };
 
-        for (const [key, value] of Object.entries(connection)) {
-            if (!value || !String(value).trim()) {
-                return sendJson(res, 400, { error: `Brakuje pola: ${key}` });
-            }
+        if (!connection.vendoUserLogin || !String(connection.vendoUserLogin).trim()) {
+            return sendJson(res, 400, { error: "Brakuje pola: vendoUserLogin" });
+        }
+        if (!connection.vendoUserPassword || !String(connection.vendoUserPassword).trim()) {
+            return sendJson(res, 400, { error: "Brakuje pola: vendoUserPassword" });
         }
 
         const kkwNumbers = String(body.kkwNumbers || "")
@@ -800,19 +852,27 @@ async function handleApiKkwCosts(req, res) {
 
 async function handleApiProductionOrderCosts(req, res) {
     try {
+        const missing = requireServerConfig();
+        if (missing.length) {
+            return sendJson(res, 500, {
+                error: `Brakuje konfiguracji serwera: ${missing.join(", ")}.`,
+            });
+        }
+
         const body = await readJsonBody(req);
         const connection = {
-            baseUrl: body.baseUrl,
-            apiLogin: body.apiLogin,
-            apiPassword: body.apiPassword,
+            baseUrl: VENDO_API_URL,
+            apiLogin: VENDO_API_LOGIN,
+            apiPassword: VENDO_API_PASSWORD,
             vendoUserLogin: body.vendoUserLogin,
             vendoUserPassword: body.vendoUserPassword,
         };
 
-        for (const [key, value] of Object.entries(connection)) {
-            if (!value || !String(value).trim()) {
-                return sendJson(res, 400, { error: `Brakuje pola: ${key}` });
-            }
+        if (!connection.vendoUserLogin || !String(connection.vendoUserLogin).trim()) {
+            return sendJson(res, 400, { error: "Brakuje pola: vendoUserLogin" });
+        }
+        if (!connection.vendoUserPassword || !String(connection.vendoUserPassword).trim()) {
+            return sendJson(res, 400, { error: "Brakuje pola: vendoUserPassword" });
         }
 
         const kkwNumbers = String(body.kkwNumbers || "")
@@ -895,19 +955,27 @@ async function handleApiProductionOrderCosts(req, res) {
 
 async function handleApiProductLocations(req, res) {
     try {
+        const missing = requireServerConfig();
+        if (missing.length) {
+            return sendJson(res, 500, {
+                error: `Brakuje konfiguracji serwera: ${missing.join(", ")}.`,
+            });
+        }
+
         const body = await readJsonBody(req);
         const connection = {
-            baseUrl: body.baseUrl,
-            apiLogin: body.apiLogin,
-            apiPassword: body.apiPassword,
+            baseUrl: VENDO_API_URL,
+            apiLogin: VENDO_API_LOGIN,
+            apiPassword: VENDO_API_PASSWORD,
             vendoUserLogin: body.vendoUserLogin,
             vendoUserPassword: body.vendoUserPassword,
         };
 
-        for (const [key, value] of Object.entries(connection)) {
-            if (!value || !String(value).trim()) {
-                return sendJson(res, 400, { error: `Brakuje pola: ${key}` });
-            }
+        if (!connection.vendoUserLogin || !String(connection.vendoUserLogin).trim()) {
+            return sendJson(res, 400, { error: "Brakuje pola: vendoUserLogin" });
+        }
+        if (!connection.vendoUserPassword || !String(connection.vendoUserPassword).trim()) {
+            return sendJson(res, 400, { error: "Brakuje pola: vendoUserPassword" });
         }
 
         const productId = Number(body.productId);
@@ -968,19 +1036,27 @@ async function handleApiProductLocations(req, res) {
 
 async function handleApiProductBatchStates(req, res) {
     try {
+        const missing = requireServerConfig();
+        if (missing.length) {
+            return sendJson(res, 500, {
+                error: `Brakuje konfiguracji serwera: ${missing.join(", ")}.`,
+            });
+        }
+
         const body = await readJsonBody(req);
         const connection = {
-            baseUrl: body.baseUrl,
-            apiLogin: body.apiLogin,
-            apiPassword: body.apiPassword,
+            baseUrl: VENDO_API_URL,
+            apiLogin: VENDO_API_LOGIN,
+            apiPassword: VENDO_API_PASSWORD,
             vendoUserLogin: body.vendoUserLogin,
             vendoUserPassword: body.vendoUserPassword,
         };
 
-        for (const [key, value] of Object.entries(connection)) {
-            if (!value || !String(value).trim()) {
-                return sendJson(res, 400, { error: `Brakuje pola: ${key}` });
-            }
+        if (!connection.vendoUserLogin || !String(connection.vendoUserLogin).trim()) {
+            return sendJson(res, 400, { error: "Brakuje pola: vendoUserLogin" });
+        }
+        if (!connection.vendoUserPassword || !String(connection.vendoUserPassword).trim()) {
+            return sendJson(res, 400, { error: "Brakuje pola: vendoUserPassword" });
         }
 
         if (!body.productCode || !String(body.productCode).trim()) {
@@ -1220,6 +1296,6 @@ const server = http.createServer(async (req, res) => {
     sendText(res, 404, "Not found");
 });
 
-server.listen(PORT, () => {
-    console.log(`Frontend Vendo startuje na http://localhost:${PORT}`);
+server.listen(PORT, HOST, () => {
+    console.log(`Frontend Vendo startuje na http://${HOST}:${PORT}`);
 });

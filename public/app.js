@@ -93,9 +93,6 @@ function saveConnection() {
 
 function collectConnectionValues() {
     return {
-        baseUrl: connectionForm.baseUrl.value.trim(),
-        apiLogin: connectionForm.apiLogin.value.trim(),
-        apiPassword: connectionForm.apiPassword.value,
         vendoUserLogin: connectionForm.vendoUserLogin.value.trim(),
         vendoUserPassword: connectionForm.vendoUserPassword.value,
     };
@@ -1250,9 +1247,6 @@ function clearKkwCostsResults() {
 }
 
 loadStoredValues();
-if (!connectionForm.baseUrl.value) {
-    connectionForm.baseUrl.value = "http://localhost:8080";
-}
 
 costAnalysisForm.dateFrom.value = getYearStart();
 costAnalysisForm.dateTo.value = getToday();

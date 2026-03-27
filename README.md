@@ -18,8 +18,8 @@ http://localhost:3000
 
 Frontend:
 
-- zbiera dane dostepowe do Vendo,
-- zapisuje je lokalnie w przegladarce,
+- zbiera login/haslo uzytkownika Vendo,
+- zapisuje je lokalnie w przegladarce (tylko Vendo),
 - wysyla zapytanie do lokalnego proxy,
 - pokazuje liste towarow w tabeli i surowy JSON.
 
@@ -37,11 +37,13 @@ Mozesz wpisac wartosci bezposrednio w pliku albo zostawic puste pola i korzystac
 - `VENDO_USER_LOGIN`
 - `VENDO_USER_PASSWORD`
 
-Aktualnie projekt jest ustawiony na lokalne API po HTTP:
+W **bezpiecznym wariancie** aplikacji webowej dane do API sa trzymane po stronie serwera w zmiennych:
 
-```text
-http://localhost:8080
-```
+- `VENDO_API_URL` (np. `http://192.168.1.10:8090`)
+- `VENDO_API_LOGIN`
+- `VENDO_API_PASSWORD`
+
+Uzytkownik w przegladarce wpisuje tylko `Login Vendo` i `Haslo Vendo`.
 
 ## Uruchomienie
 
