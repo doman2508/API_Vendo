@@ -13,7 +13,7 @@ node .\server.js
 Potem otworz:
 
 ```text
-http://localhost:3000
+http://localhost:3000/console
 ```
 
 Frontend:
@@ -22,6 +22,11 @@ Frontend:
 - zapisuje je lokalnie w przegladarce (tylko Vendo),
 - wysyla zapytanie do lokalnego proxy,
 - pokazuje liste towarow w tabeli i surowy JSON.
+
+Dostepne widoki:
+
+- `/console` - konsola API do pracy operacyjnej i testow,
+- `/production-dashboard` - osobny modul dla produkcji oparty o ten sam backend.
 
 ## Konfiguracja
 

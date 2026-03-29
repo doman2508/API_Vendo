@@ -71,6 +71,13 @@ h1 {
     color: var(--muted);
 }
 
+.hero-actions {
+    margin-top: 18px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
 .panel {
     padding: 24px;
 }
@@ -162,6 +169,15 @@ button[type="submit"]:disabled {
     color: var(--ink);
 }
 
+.nav-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    min-height: 46px;
+    padding: 12px 18px;
+}
+
 .note {
     margin: 16px 0 0;
     color: var(--muted);
@@ -171,16 +187,44 @@ button[type="submit"]:disabled {
 .view-switcher {
     display: flex;
     gap: 10px;
+    flex-wrap: wrap;
 }
 
+.module-switcher {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 18px;
+}
+
+.module-button,
 .switch-button {
     background: rgba(47, 38, 29, 0.08);
     color: var(--ink);
 }
 
+.module-button {
+    padding: 14px 22px;
+    font-weight: 700;
+}
+
+.module-button.active,
 .switch-button.active {
     background: var(--accent);
     color: white;
+}
+
+.module-panel {
+    display: none;
+}
+
+.module-panel.active {
+    display: block;
+}
+
+.dashboard-intro {
+    display: grid;
+    gap: 18px;
 }
 
 .view-panel {
@@ -438,6 +482,235 @@ tbody tr.selected {
     padding: 12px 0;
 }
 
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 18px;
+    margin-top: 18px;
+}
+
+.dashboard-hero,
+.dashboard-hero-empty,
+.dashboard-metrics-empty,
+.dashboard-debug-empty {
+    color: var(--muted);
+}
+
+.dashboard-hero {
+    display: grid;
+    gap: 18px;
+}
+
+.dashboard-hero-main {
+    display: grid;
+    gap: 8px;
+}
+
+.dashboard-hero-main strong {
+    font-size: 28px;
+    line-height: 1.05;
+}
+
+.dashboard-hero-meta {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.dashboard-mini-card {
+    border: 1px solid rgba(47, 38, 29, 0.08);
+    border-radius: 16px;
+    padding: 14px;
+    background: rgba(255, 255, 255, 0.78);
+}
+
+.dashboard-mini-card span {
+    display: block;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.dashboard-mini-card strong {
+    display: block;
+    margin-top: 6px;
+    font-size: 19px;
+}
+
+.phase-chip {
+    border-width: 2px;
+}
+
+.phase-chip.prep {
+    border-color: rgba(217, 148, 39, 0.5);
+    background: linear-gradient(180deg, rgba(255, 243, 214, 0.95), rgba(255, 251, 240, 0.9));
+}
+
+.phase-chip.production {
+    border-color: rgba(12, 122, 106, 0.45);
+    background: linear-gradient(180deg, rgba(223, 247, 243, 0.95), rgba(245, 255, 252, 0.9));
+}
+
+.dashboard-metrics {
+    display: grid;
+    gap: 12px;
+}
+
+.phase-grid {
+    display: grid;
+    gap: 20px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.phase-panel {
+    display: block;
+}
+
+.phase-card,
+.phase-summary-card {
+    border: 1px solid rgba(47, 38, 29, 0.08);
+    border-radius: 24px;
+    padding: 22px 20px 18px;
+    background: rgba(255, 255, 255, 0.92);
+    min-height: 280px;
+}
+
+.phase-card-active {
+    border-width: 2px;
+    box-shadow: 0 14px 34px rgba(47, 38, 29, 0.1);
+    transform: translateY(-1px);
+}
+
+.phase-card-active .phase-badge {
+    background: var(--accent);
+    color: white;
+}
+
+.phase-card-prep.phase-card-active {
+    border-color: rgba(217, 148, 39, 0.5);
+    background: linear-gradient(180deg, rgba(255, 247, 229, 0.96), rgba(255, 252, 245, 0.94));
+}
+
+.phase-card-production.phase-card-active {
+    border-color: rgba(12, 122, 106, 0.42);
+    background: linear-gradient(180deg, rgba(234, 249, 246, 0.96), rgba(250, 255, 253, 0.94));
+}
+
+.phase-card-prep.phase-card-active .phase-badge {
+    background: #d99427;
+}
+
+.phase-card-production.phase-card-active .phase-badge {
+    background: var(--accent);
+}
+
+.phase-card-header {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.phase-card-header h4 {
+    margin: 4px 0 0;
+    font-size: 28px;
+}
+
+.phase-card-eyebrow {
+    display: block;
+    color: var(--muted);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.phase-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 32px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: rgba(47, 38, 29, 0.08);
+    color: var(--ink);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.phase-badge.active {
+    background: var(--accent);
+    color: white;
+}
+
+.phase-badge.complete {
+    background: rgba(217, 148, 39, 0.18);
+    color: #9a6612;
+}
+
+.phase-badge.loading {
+    background: rgba(12, 122, 106, 0.12);
+    color: var(--accent-strong);
+}
+
+.phase-badge.waiting {
+    background: rgba(47, 38, 29, 0.08);
+    color: var(--ink);
+}
+
+.phase-badge.neutral {
+    background: rgba(12, 122, 106, 0.12);
+    color: var(--accent-strong);
+}
+
+.dashboard-metric-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(47, 38, 29, 0.08);
+}
+
+.dashboard-metric-row:last-child {
+    border-bottom: 0;
+}
+
+.dashboard-metric-row span {
+    color: var(--muted);
+}
+
+.dashboard-metric-row strong {
+    text-align: right;
+    font-size: 28px;
+    line-height: 1.1;
+}
+
+.dashboard-progress {
+    margin-top: 18px;
+    height: 16px;
+    border-radius: 999px;
+    background: rgba(47, 38, 29, 0.08);
+    overflow: hidden;
+}
+
+.dashboard-progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), #d89f3d);
+    border-radius: inherit;
+}
+
+.dashboard-debug-grid {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+@media (max-width: 900px) {
+    .phase-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 .warehouse-details {
     display: grid;
     gap: 14px;
@@ -489,6 +762,154 @@ pre {
     display: none;
 }
 
+body.tv-mode .app-shell {
+    width: min(100vw - 32px, 1820px);
+    margin: 12px auto 18px;
+    gap: 14px;
+}
+
+body.tv-mode .hero {
+    padding: 18px 24px;
+}
+
+body.tv-mode h1 {
+    font-size: clamp(36px, 4.2vw, 64px);
+}
+
+body.tv-mode .hero-copy,
+body.tv-mode .note,
+body.tv-mode #production-dashboard-debug,
+body.tv-mode .raw-panel,
+body.tv-mode .dashboard-config-panel {
+    display: none;
+}
+
+body.tv-mode .panel {
+    padding: 16px 18px;
+}
+
+body.tv-mode .warehouse-panel {
+    margin-top: 0;
+    padding: 18px;
+    min-height: 0;
+}
+
+body.tv-mode .warehouse-panel-header h3 {
+    font-size: 24px;
+}
+
+body.tv-mode .warehouse-panel-header p {
+    font-size: 14px;
+}
+
+body.tv-mode .summary {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+}
+
+body.tv-mode .summary-card {
+    min-height: 102px;
+    padding: 14px 16px;
+}
+
+body.tv-mode .summary-card strong {
+    font-size: 28px;
+}
+
+body.tv-mode .dashboard-hero-main strong {
+    font-size: clamp(30px, 2.8vw, 44px);
+}
+
+body.tv-mode .dashboard-mini-card {
+    padding: 14px;
+}
+
+body.tv-mode .dashboard-mini-card span {
+    font-size: 13px;
+}
+
+body.tv-mode .dashboard-mini-card strong {
+    font-size: 22px;
+}
+
+body.tv-mode .dashboard-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    align-items: start;
+}
+
+body.tv-mode .phase-card,
+body.tv-mode .phase-summary-card {
+    min-height: 0;
+    padding: 20px 20px 16px;
+}
+
+body.tv-mode .phase-card-header h4 {
+    font-size: 34px;
+}
+
+body.tv-mode .phase-card-eyebrow,
+body.tv-mode .phase-badge {
+    font-size: 13px;
+}
+
+body.tv-mode .phase-badge {
+    min-height: 34px;
+    padding: 6px 12px;
+}
+
+body.tv-mode .dashboard-metric-row {
+    padding: 12px 0;
+}
+
+body.tv-mode .dashboard-metric-row span {
+    font-size: 16px;
+}
+
+body.tv-mode .dashboard-metric-row strong {
+    font-size: clamp(24px, 2vw, 38px);
+}
+
+body.tv-mode .dashboard-progress {
+    margin-top: 16px;
+    height: 16px;
+}
+
+body.tv-mode .dashboard-hero {
+    gap: 14px;
+}
+
+body.tv-mode .dashboard-hero-meta {
+    gap: 10px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+body.tv-mode .dashboard-debug-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+body.tv-mode .phase-panel .phase-card {
+    height: 100%;
+}
+
+@media (min-width: 1500px) and (min-height: 1000px) {
+    body.tv-mode .dashboard-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (max-width: 1100px) {
+    body.tv-mode .dashboard-grid,
+    body.tv-mode .summary {
+        grid-template-columns: 1fr;
+    }
+
+    body.tv-mode .dashboard-hero-meta,
+    body.tv-mode .dashboard-debug-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
 @media (max-width: 720px) {
     .app-shell {
         width: min(100% - 20px, 1180px);
@@ -504,5 +925,10 @@ pre {
     .actions {
         flex-direction: column;
         align-items: stretch;
+    }
+
+    .module-switcher,
+    .view-switcher {
+        flex-direction: column;
     }
 }

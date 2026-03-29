@@ -46,8 +46,11 @@ const productionOrderCostsRawOutput = document.getElementById("production-order-
 const mrpSummary = document.getElementById("mrp-summary");
 const mrpErrorBox = document.getElementById("mrp-error-box");
 const mrpRawOutput = document.getElementById("mrp-raw-output");
+const moduleButtons = document.querySelectorAll(".module-button");
+const modulePanels = document.querySelectorAll("[data-module-panel]");
 const switchButtons = document.querySelectorAll(".switch-button");
 const viewPanels = document.querySelectorAll(".view-panel");
+const appModule = document.body.dataset.appModule || "console";
 
 const STORAGE_KEY = "vendo-api-console";
 const numberFormatter = new Intl.NumberFormat("pl-PL", {
@@ -57,8 +60,17 @@ const numberFormatter = new Intl.NumberFormat("pl-PL", {
 
 let lastRecords = [];
 let selectedRecordIndex = -1;
+let activeModule = appModule;
+const activeViews = {
+    console: "products",
+    "production-dashboard": "kkw-costs",
+};
 
 function setStatus(target, type, text) {
+    if (!target) {
+        return;
+    }
+
     target.className = `status ${type}`;
     target.textContent = text;
 }
@@ -150,6 +162,10 @@ function collectProductionOrderCostsValues() {
 }
 
 function clearProductResults() {
+    if (!summary || !errorBox || !resultsBody || !rawOutput || !batchDetails) {
+        return;
+    }
+
     summary.classList.add("hidden");
     summary.innerHTML = "";
     errorBox.classList.add("hidden");
@@ -167,6 +183,10 @@ function clearProductResults() {
 }
 
 function clearCostResults() {
+    if (!costSummary || !costErrorBox || !costResultsBody || !costRawOutput) {
+        return;
+    }
+
     costSummary.classList.add("hidden");
     costSummary.innerHTML = "";
     costErrorBox.classList.add("hidden");
@@ -180,6 +200,10 @@ function clearCostResults() {
 }
 
 function clearBackorderResults() {
+    if (!backorderSummary || !backorderErrorBox || !backorderResultsBody || !backorderRawOutput) {
+        return;
+    }
+
     backorderSummary.classList.add("hidden");
     backorderSummary.innerHTML = "";
     backorderErrorBox.classList.add("hidden");
@@ -193,6 +217,10 @@ function clearBackorderResults() {
 }
 
 function clearMrpResults() {
+    if (!mrpSummary || !mrpErrorBox || !mrpRawOutput) {
+        return;
+    }
+
     mrpSummary.classList.add("hidden");
     mrpSummary.innerHTML = "";
     mrpErrorBox.classList.add("hidden");
@@ -201,6 +229,10 @@ function clearMrpResults() {
 }
 
 function clearKkwCostsResults() {
+    if (!kkwCostsSummary || !kkwCostsErrorBox || !kkwCostsSummaryBody || !kkwCostsOperationsBody || !kkwCostsMaterialsBody || !kkwCostsRawOutput) {
+        return;
+    }
+
     kkwCostsSummary.classList.add("hidden");
     kkwCostsSummary.innerHTML = "";
     kkwCostsErrorBox.classList.add("hidden");
@@ -219,6 +251,10 @@ function clearKkwCostsResults() {
 }
 
 function clearProductionOrderCostsResults() {
+    if (!productionOrderCostsSummary || !productionOrderCostsErrorBox || !productionOrderCostsSummaryBody || !productionOrderCostsBody || !productionOrderCostsRawOutput) {
+        return;
+    }
+
     productionOrderCostsSummary.classList.add("hidden");
     productionOrderCostsSummary.innerHTML = "";
     productionOrderCostsErrorBox.classList.add("hidden");
@@ -417,6 +453,10 @@ function renderKkwCostsTables(data) {
 }
 
 function clearKkwCostsResults() {
+    if (!kkwCostsSummary || !kkwCostsErrorBox || !kkwCostsSummaryBody || !kkwCostsOperationsBody || !kkwCostsMaterialsBody || !kkwCostsRawOutput) {
+        return;
+    }
+
     kkwCostsSummary.classList.add("hidden");
     kkwCostsSummary.innerHTML = "";
     kkwCostsErrorBox.classList.add("hidden");
@@ -848,13 +888,39 @@ function renderBackorderTable(data) {
     `).join("");
 }
 
-function switchView(viewName) {
+function switchModule(moduleName) {
+    activeModule = moduleName;
+
+    for (const button of moduleButtons) {
+        button.classList.toggle("active", button.dataset.module === moduleName);
+    }
+
+    for (const panel of modulePanels) {
+        panel.classList.toggle("active", panel.dataset.modulePanel === moduleName);
+    }
+
+    const activeView = activeViews[moduleName];
+    for (const panel of viewPanels) {
+        panel.classList.toggle(
+            "active",
+            panel.dataset.module === moduleName && panel.id === `${activeView}-view`
+        );
+    }
+}
+
+function switchView(viewName, moduleName = activeModule) {
+    activeViews[moduleName] = viewName;
+
     for (const button of switchButtons) {
-        button.classList.toggle("active", button.dataset.view === viewName);
+        if (button.dataset.module === moduleName) {
+            button.classList.toggle("active", button.dataset.view === viewName);
+        }
     }
 
     for (const panel of viewPanels) {
-        panel.classList.toggle("active", panel.id === `${viewName}-view`);
+        if (panel.dataset.module === moduleName) {
+            panel.classList.toggle("active", panel.id === `${viewName}-view` && moduleName === activeModule);
+        }
     }
 }
 
@@ -875,10 +941,13 @@ async function postJson(url, payload) {
     return data;
 }
 
-saveConnectionButton.addEventListener("click", () => {
-    saveConnection();
-});
+if (saveConnectionButton) {
+    saveConnectionButton.addEventListener("click", () => {
+        saveConnection();
+    });
+}
 
+if (productsForm) {
 productsForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     saveConnection();
@@ -904,7 +973,9 @@ productsForm.addEventListener("submit", async (event) => {
         submitButton.disabled = false;
     }
 });
+}
 
+if (costAnalysisForm) {
 costAnalysisForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     saveConnection();
@@ -930,7 +1001,9 @@ costAnalysisForm.addEventListener("submit", async (event) => {
         costSubmitButton.disabled = false;
     }
 });
+}
 
+if (backordersForm) {
 backordersForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     saveConnection();
@@ -956,7 +1029,9 @@ backordersForm.addEventListener("submit", async (event) => {
         backorderSubmitButton.disabled = false;
     }
 });
+}
 
+if (mrpCostsForm) {
 mrpCostsForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     saveConnection();
@@ -981,7 +1056,9 @@ mrpCostsForm.addEventListener("submit", async (event) => {
         mrpSubmitButton.disabled = false;
     }
 });
+}
 
+if (kkwCostsForm) {
 kkwCostsForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     saveConnection();
@@ -1007,7 +1084,9 @@ kkwCostsForm.addEventListener("submit", async (event) => {
         kkwCostsSubmitButton.disabled = false;
     }
 });
+}
 
+if (productionOrderCostsForm) {
 productionOrderCostsForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     saveConnection();
@@ -1033,7 +1112,9 @@ productionOrderCostsForm.addEventListener("submit", async (event) => {
         productionOrderCostsSubmitButton.disabled = false;
     }
 });
+}
 
+if (clearButton) {
 clearButton.addEventListener("click", () => {
     connectionForm.reset();
     localStorage.removeItem(STORAGE_KEY);
@@ -1050,7 +1131,9 @@ clearButton.addEventListener("click", () => {
     setStatus(productionOrderCostsStatusBadge, "idle", "Gotowe");
     setStatus(mrpStatusBadge, "idle", "Gotowe");
 });
+}
 
+if (resultsBody) {
 resultsBody.addEventListener("click", (event) => {
     const row = event.target.closest("tr[data-record-index]");
     if (!row) {
@@ -1081,9 +1164,14 @@ resultsBody.addEventListener("click", (event) => {
         batchDetails.textContent = error.message || "Nie udalo sie pobrac partii i miejsc magazynowych.";
     });
 });
+}
+
+for (const button of moduleButtons) {
+    button.addEventListener("click", () => switchModule(button.dataset.module));
+}
 
 for (const button of switchButtons) {
-    button.addEventListener("click", () => switchView(button.dataset.view));
+    button.addEventListener("click", () => switchView(button.dataset.view, button.dataset.module));
 }
 
 function renderKkwCostsSummaryCards(data) {
@@ -1183,19 +1271,18 @@ function renderKkwCostsTables(data) {
     if (!operationLeaves.length) {
         kkwCostsOperationsBody.innerHTML = `
             <tr>
-                <td colspan="7" class="empty-state">Brak operacji dla tego KKW.</td>
+                <td colspan="6" class="empty-state">Brak operacji dla tego KKW.</td>
             </tr>
         `;
     } else {
         kkwCostsOperationsBody.innerHTML = operationLeaves.map((item) => `
             <tr>
                 <td>${item.Nazwa ?? "-"}</td>
-                <td>${item.SkladnikID ?? "-"}</td>
-                <td>${formatStock(item?.In?.Ilosc)}</td>
+                <td>${formatStock(item?.Tech?.Ilosc)}</td>
                 <td>${formatStock(item?.Post?.Ilosc)}</td>
-                <td>${formatStock(item?.In?.Wartosc)}</td>
+                <td>${formatStock(item?.Tech?.Wartosc)}</td>
                 <td>${formatStock(item?.Post?.Wartosc)}</td>
-                <td>${formatStock(item?.In?.Cena)}</td>
+                <td>${Math.round(Number(item?.In?.Cena ?? item?.Tech?.Cena) || 0)}</td>
             </tr>
         `).join("");
     }
@@ -1235,7 +1322,7 @@ function clearKkwCostsResults() {
     `;
     kkwCostsOperationsBody.innerHTML = `
         <tr>
-            <td colspan="7" class="empty-state">Jeszcze nie pobrano operacji.</td>
+            <td colspan="6" class="empty-state">Jeszcze nie pobrano operacji.</td>
         </tr>
     `;
     kkwCostsMaterialsBody.innerHTML = `
@@ -1246,12 +1333,60 @@ function clearKkwCostsResults() {
     kkwCostsRawOutput.textContent = "Brak danych.";
 }
 
-loadStoredValues();
+function normalizeKkwOperationSection() {
+    const operationsTable = kkwCostsOperationsBody?.closest("table");
+    if (!operationsTable) {
+        return;
+    }
 
-costAnalysisForm.dateFrom.value = getYearStart();
-costAnalysisForm.dateTo.value = getToday();
-backordersForm.dateFrom.value = getYearStart();
-backordersForm.dateTo.value = getToday();
+    const operationsSection = kkwCostsOperationsBody.closest(".warehouse-panel");
+    const heading = operationsSection?.querySelector(".warehouse-panel-header h3");
+    const description = operationsSection?.querySelector(".warehouse-panel-header p");
+    const headRow = operationsTable.querySelector("thead tr");
+
+    if (heading) {
+        heading.textContent = "Operacje";
+    }
+
+    if (description) {
+        description.textContent = "Rozbicie kosztow operacyjnych na RBH, koszt i stawke RBH z cennika operacji.";
+    }
+
+    if (headRow) {
+        headRow.innerHTML = `
+            <th>Nazwa operacji</th>
+            <th>Rbh Norma</th>
+            <th>Rbh Wyk</th>
+            <th>Koszt Norma</th>
+            <th>Koszt Wyk</th>
+            <th>Stawka Rbh</th>
+        `;
+    }
+}
+
+if (connectionForm) {
+    loadStoredValues();
+}
+
+normalizeKkwOperationSection();
+
+if (viewPanels.length) {
+    switchView(activeViews[activeModule], activeModule);
+}
+
+if (moduleButtons.length && modulePanels.length) {
+    switchModule(activeModule);
+}
+
+if (costAnalysisForm) {
+    costAnalysisForm.dateFrom.value = getYearStart();
+    costAnalysisForm.dateTo.value = getToday();
+}
+
+if (backordersForm) {
+    backordersForm.dateFrom.value = getYearStart();
+    backordersForm.dateTo.value = getToday();
+}
 clearKkwCostsResults();
 clearProductionOrderCostsResults();
 clearMrpResults();

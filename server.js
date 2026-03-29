@@ -5,15 +5,61 @@ const path = require("path");
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
 const PUBLIC_DIR = path.join(__dirname, "public");
-const VENDO_API_URL = (process.env.VENDO_API_URL || "").trim();
-const VENDO_API_LOGIN = (process.env.VENDO_API_LOGIN || "").trim();
-const VENDO_API_PASSWORD = process.env.VENDO_API_PASSWORD || "";
+const START_LOCAL_PATH = path.join(__dirname, "start-local.ps1");
+
+let cachedLocalServerConfig = null;
+
+function parseStartLocalConfig() {
+    if (cachedLocalServerConfig) {
+        return cachedLocalServerConfig;
+    }
+
+    const defaults = {
+        VENDO_API_URL: "",
+        VENDO_API_LOGIN: "",
+        VENDO_API_PASSWORD: "",
+    };
+
+    try {
+        if (!fs.existsSync(START_LOCAL_PATH)) {
+            cachedLocalServerConfig = defaults;
+            return cachedLocalServerConfig;
+        }
+
+        const content = fs.readFileSync(START_LOCAL_PATH, "utf8");
+        const config = { ...defaults };
+        for (const key of Object.keys(config)) {
+            const pattern = new RegExp(`\\$env:${key}\\s*=\\s*["']([^"']+)["']`, "i");
+            const match = content.match(pattern);
+            if (match) {
+                config[key] = match[1].trim();
+            }
+        }
+
+        cachedLocalServerConfig = config;
+        return cachedLocalServerConfig;
+    } catch {
+        cachedLocalServerConfig = defaults;
+        return cachedLocalServerConfig;
+    }
+}
+
+function getServerConfig() {
+    const localConfig = parseStartLocalConfig();
+
+    return {
+        apiUrl: (process.env.VENDO_API_URL || localConfig.VENDO_API_URL || "").trim(),
+        apiLogin: (process.env.VENDO_API_LOGIN || localConfig.VENDO_API_LOGIN || "").trim(),
+        apiPassword: process.env.VENDO_API_PASSWORD || localConfig.VENDO_API_PASSWORD || "",
+    };
+}
 
 function requireServerConfig() {
+    const config = getServerConfig();
     const missing = [];
-    if (!VENDO_API_URL) missing.push("VENDO_API_URL");
-    if (!VENDO_API_LOGIN) missing.push("VENDO_API_LOGIN");
-    if (!VENDO_API_PASSWORD) missing.push("VENDO_API_PASSWORD");
+    if (!config.apiUrl) missing.push("VENDO_API_URL");
+    if (!config.apiLogin) missing.push("VENDO_API_LOGIN");
+    if (!config.apiPassword) missing.push("VENDO_API_PASSWORD");
     return missing;
 }
 
@@ -380,6 +426,584 @@ function buildKkwPreTechInPostModel({ kkwId }) {
     };
 }
 
+function buildCzasozliczarkaListModel({ operatorName, pageSize }) {
+    const model = {
+        Cursor: true,
+        CursorCzyZamknac: false,
+        Strona: {
+            Indeks: 0,
+            LiczbaRekordow: Number.isFinite(pageSize) ? pageSize : 50,
+        },
+        TylkoAktualne: true,
+        ZwracanePola: [
+            "ID",
+            "PracownikID",
+            "PracownikImieNazwisko",
+            "DataCzasRozpoczecia",
+            "DataCzasZakonczenia",
+            "AktualnieWykonywana",
+            "ObiektPowiazanyID",
+            "ObiektPowiazanyNumer",
+            "ObiektPowiazanyOpis",
+            "Temat",
+            "Opis",
+        ],
+    };
+
+    if (operatorName && operatorName.trim()) {
+        model.FiltrUniwersalny = operatorName.trim();
+        model.FiltrUniwersalnyPola = ["PracownikImieNazwisko"];
+    }
+
+    return model;
+}
+
+function buildKkwOperationsModel({ kkwId, pageSize }) {
+    return {
+        Cursor: true,
+        CursorCzyZamknac: false,
+        Strona: {
+            Indeks: 0,
+            LiczbaRekordow: Number.isFinite(pageSize) ? pageSize : 100,
+        },
+        KKWID: [Number(kkwId)],
+        ZwracanePola: [
+            "ID",
+            "KKWID",
+            "KKWNumer",
+            "Nazwa",
+            "Lp",
+            "Wydajnosc",
+            "Tpz",
+            "CzasProdukcji",
+            "IloscPlanowanaDobrych",
+            "IloscZarejestrowanaDobrych",
+            "IloscZarejestrowanaBrakowNienaprawialnych",
+            "IloscZarejestrowanaBrakowNaprawialnych",
+            "IloscZarejestrowanaDoWeryfikacji",
+            "DomyslneStanowiskoID",
+            "DomyslneStanowiskoKod",
+            "DomyslneStanowiskoNazwa",
+            "AktualnieWykonywane",
+            "RejestracjaPracownikow",
+            "RejestracjaStanowisk",
+            "RejestracjaRBH",
+            "RejestracjaStartStop",
+            "RejestracjaTPZ",
+            "Stan",
+        ],
+    };
+}
+
+function buildKkwStationsModel({ kkwId, operationId, pageSize }) {
+    const model = {
+        Cursor: true,
+        CursorCzyZamknac: false,
+        Strona: {
+            Indeks: 0,
+            LiczbaRekordow: Number.isFinite(pageSize) ? pageSize : 100,
+        },
+        KKWID: [Number(kkwId)],
+        ZwracanePola: [
+            "ID",
+            "KKWID",
+            "KKWNumer",
+            "OperacjaID",
+            "OperacjaNazwa",
+            "OperacjaLp",
+            "StanowiskoID",
+            "StanowiskoKod",
+            "StanowiskoNazwa",
+            "Tpz",
+            "Czas",
+            "Wydajnosc",
+            "LiczbaPracownikow",
+            "ZaangazowaniePracownika",
+        ],
+    };
+
+    if (Number.isInteger(Number(operationId))) {
+        model.OperacjaKKWID = [Number(operationId)];
+    }
+
+    return model;
+}
+
+function buildKkwExecutionsModel({ kkwId, operationId, pageSize }) {
+    const model = {
+        Cursor: true,
+        CursorCzyZamknac: false,
+        Strona: {
+            Indeks: 0,
+            LiczbaRekordow: Number.isFinite(pageSize) ? pageSize : 200,
+        },
+        KKWID: [Number(kkwId)],
+        ZwracanePola: [
+            "ID",
+            "KKWID",
+            "KKWNumer",
+            "OperacjaID",
+            "OperacjaNazwa",
+            "OperacjaLp",
+            "StanowiskoID",
+            "StanowiskoKod",
+            "StanowiskoNazwa",
+            "DataRozpoczecia",
+            "DataZakonczenia",
+            "Stan",
+            "Rodzaj",
+            "Znacznik",
+            "SlownikWykonaniaID",
+            "SlownikWykonaniaNazwa",
+            "IloscZarejestrowanaDobrych",
+        ],
+    };
+
+    return model;
+}
+
+function buildKkwWorkersModel({ kkwId, operationId, pageSize }) {
+    const model = {
+        Cursor: true,
+        CursorCzyZamknac: false,
+        Strona: {
+            Indeks: 0,
+            LiczbaRekordow: Number.isFinite(pageSize) ? pageSize : 200,
+        },
+        KKWID: [Number(kkwId)],
+        ZwracanePola: [
+            "ID",
+            "WykonanieKKWID",
+            "KKWID",
+            "KKWNumer",
+            "OperacjaID",
+            "OperacjaNazwa",
+            "OperacjaLp",
+            "PracownikID",
+            "PracownikImie",
+            "PracownikNazwisko",
+            "PracownikLogin",
+            "DataRozpoczecia",
+            "DataZakonczenia",
+            "Rbh",
+            "Stan",
+        ],
+    };
+
+    if (Number.isInteger(Number(operationId))) {
+        model.OperacjaKKWID = [Number(operationId)];
+    }
+
+    return model;
+}
+
+function normalizeText(value) {
+    return String(value || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .trim()
+        .toLowerCase();
+}
+
+function parseVendoDate(value) {
+    if (!value) {
+        return null;
+    }
+
+    if (value instanceof Date) {
+        return Number.isFinite(value.getTime()) ? value : null;
+    }
+
+    const raw = String(value).trim();
+    if (!raw) {
+        return null;
+    }
+
+    const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/.test(raw)
+        ? raw.replace(" ", "T") + (raw.length === 16 ? ":00" : "")
+        : raw;
+    const parsed = new Date(normalized);
+
+    return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+
+function pickBestOperation(operations, operationName, stationCode) {
+    const normalizedOperationName = normalizeText(operationName);
+    const normalizedStationCode = normalizeText(stationCode);
+
+    return operations.find((item) => normalizeText(item?.Nazwa) === normalizedOperationName)
+        || operations.find((item) => normalizeText(item?.DomyslneStanowiskoKod) === normalizedStationCode && (!normalizedOperationName || normalizeText(item?.Nazwa).includes(normalizedOperationName)))
+        || operations.find((item) => normalizedOperationName && normalizeText(item?.Nazwa).includes(normalizedOperationName))
+        || operations.find((item) => normalizedStationCode && normalizeText(item?.DomyslneStanowiskoKod) === normalizedStationCode)
+        || operations[0]
+        || null;
+}
+
+function pickBestStation(stations, stationCode, operationName) {
+    const normalizedStationCode = normalizeText(stationCode);
+    const normalizedOperationName = normalizeText(operationName);
+
+    return stations.find((item) => normalizeText(item?.StanowiskoKod) === normalizedStationCode && (!normalizedOperationName || normalizeText(item?.OperacjaNazwa) === normalizedOperationName))
+        || stations.find((item) => normalizeText(item?.StanowiskoKod) === normalizedStationCode)
+        || stations.find((item) => normalizedOperationName && normalizeText(item?.OperacjaNazwa) === normalizedOperationName)
+        || stations[0]
+        || null;
+}
+
+function pickBestWorker(workers, operatorName, operationName) {
+    const normalizedOperatorName = normalizeText(operatorName);
+    const normalizedOperationName = normalizeText(operationName);
+
+    const filtered = workers
+        .filter((item) => !item?.DataZakonczenia)
+        .sort((left, right) => String(right?.DataRozpoczecia || "").localeCompare(String(left?.DataRozpoczecia || "")));
+
+    return filtered.find((item) => normalizeText(`${item?.PracownikImie || ""} ${item?.PracownikNazwisko || ""}`) === normalizedOperatorName && (!normalizedOperationName || normalizeText(item?.OperacjaNazwa) === normalizedOperationName))
+        || filtered.find((item) => normalizedOperatorName && normalizeText(`${item?.PracownikImie || ""} ${item?.PracownikNazwisko || ""}`).includes(normalizedOperatorName))
+        || filtered.find((item) => normalizedOperationName && normalizeText(item?.OperacjaNazwa) === normalizedOperationName)
+        || filtered[0]
+        || null;
+}
+
+function pickExecutionRecords(executions, operationName, stationCode) {
+    const normalizedOperationName = normalizeText(operationName);
+    const normalizedStationCode = normalizeText(stationCode);
+    const sorted = (executions || [])
+        .slice()
+        .sort((left, right) => String(right?.DataRozpoczecia || "").localeCompare(String(left?.DataRozpoczecia || "")));
+
+    const exactMatches = sorted
+        .filter((item) => {
+            const operationMatches = !normalizedOperationName || normalizeText(item?.OperacjaNazwa) === normalizedOperationName;
+            const stationMatches = !normalizedStationCode || normalizeText(item?.StanowiskoKod) === normalizedStationCode;
+            return operationMatches && stationMatches;
+        });
+
+    if (exactMatches.length) {
+        return exactMatches;
+    }
+
+    const operationOnlyMatches = sorted.filter((item) => !normalizedOperationName || normalizeText(item?.OperacjaNazwa) === normalizedOperationName);
+    if (operationOnlyMatches.length) {
+        return operationOnlyMatches;
+    }
+
+    const stationOnlyMatches = sorted.filter((item) => !normalizedStationCode || normalizeText(item?.StanowiskoKod) === normalizedStationCode);
+    if (stationOnlyMatches.length) {
+        return stationOnlyMatches;
+    }
+
+    return sorted;
+}
+
+function pickBestWorklog(entries, operatorName) {
+    const normalizedOperatorName = normalizeText(operatorName);
+
+    return entries
+        .filter((item) => item?.AktualnieWykonywana)
+        .sort((left, right) => String(right?.DataCzasRozpoczecia || "").localeCompare(String(left?.DataCzasRozpoczecia || "")))
+        .find((item) => normalizedOperatorName && normalizeText(item?.PracownikImieNazwisko) === normalizedOperatorName)
+        || entries
+            .filter((item) => item?.AktualnieWykonywana)
+            .sort((left, right) => String(right?.DataCzasRozpoczecia || "").localeCompare(String(left?.DataCzasRozpoczecia || "")))[0]
+        || null;
+}
+
+function resolveWorklogPhase(entry, operationName) {
+    const phaseHint = normalizeText([
+        entry?.ObiektPowiazanyOpis,
+        entry?.Temat,
+        entry?.Opis,
+        operationName,
+    ].filter(Boolean).join(" "));
+
+    if (phaseHint.includes("tpz") || phaseHint.includes("przyrz")) {
+        return "prep";
+    }
+
+    if (phaseHint.includes("produkc") || phaseHint.includes("montaz") || phaseHint.includes("wykon")) {
+        return "production";
+    }
+
+    return "unknown";
+}
+
+function calculateWorklogDurationHours(entry, now = new Date()) {
+    const startedAt = parseVendoDate(entry?.DataCzasRozpoczecia);
+    const endedAt = parseVendoDate(entry?.DataCzasZakonczenia) || now;
+
+    if (!startedAt || !Number.isFinite(startedAt.getTime()) || !endedAt || !Number.isFinite(endedAt.getTime())) {
+        return null;
+    }
+
+    return Math.max((endedAt.getTime() - startedAt.getTime()) / 36e5, 0);
+}
+
+function pickRelatedWorklogs(entries, { operatorName, kkwNumber, operationName }) {
+    const normalizedOperatorName = normalizeText(operatorName);
+    const normalizedKkwNumber = normalizeText(kkwNumber);
+    const normalizedOperationName = normalizeText(operationName);
+
+    return entries
+        .filter((item) => {
+            const operatorMatches = !normalizedOperatorName || normalizeText(item?.PracownikImieNazwisko) === normalizedOperatorName;
+            const kkwMatches = !normalizedKkwNumber
+                || normalizeText(item?.ObiektPowiazanyNumer) === normalizedKkwNumber
+                || normalizeText(item?.Temat).includes(normalizedKkwNumber)
+                || normalizeText(item?.Opis).includes(normalizedKkwNumber);
+            const operationMatches = !normalizedOperationName
+                || normalizeText(item?.ObiektPowiazanyOpis).includes(normalizedOperationName)
+                || normalizeText(item?.Temat).includes(normalizedOperationName)
+                || normalizeText(item?.Opis).includes(normalizedOperationName);
+
+            return operatorMatches && (kkwMatches || operationMatches);
+        })
+        .sort((left, right) => String(right?.DataCzasRozpoczecia || "").localeCompare(String(left?.DataCzasRozpoczecia || "")));
+}
+
+function resolveActivePhase({ operation, worker, worklog, executionRecords, elapsedHours, plannedPrepHours, plannedWorkHours }) {
+    const activeExecution = (executionRecords || []).find((item) => !item?.DataZakonczenia)
+        || (executionRecords || [])[0]
+        || null;
+    const executionKind = normalizeText(activeExecution?.Rodzaj);
+
+    if (executionKind === "przezbrojenie") {
+        return {
+            key: "prep",
+            label: "Przyrzad",
+            source: "Rodzaj wykonania KKW",
+        };
+    }
+
+    if (executionKind === "wykonanie") {
+        return {
+            key: "production",
+            label: "Produkcja",
+            source: "Rodzaj wykonania KKW",
+        };
+    }
+
+    const phaseHint = normalizeText([
+        worklog?.ObiektPowiazanyOpis,
+        worklog?.Temat,
+        worklog?.Opis,
+        worker?.Stan,
+        operation?.Stan,
+    ].filter(Boolean).join(" "));
+
+    if (phaseHint.includes("tpz") || phaseHint.includes("przyrz")) {
+        return {
+            key: "prep",
+            label: "Przyrzad",
+            source: "Opis aktywnej pracy",
+        };
+    }
+
+    if (phaseHint.includes("produkc") || phaseHint.includes("montaz") || phaseHint.includes("wykon")) {
+        return {
+            key: "production",
+            label: "Produkcja",
+            source: "Opis aktywnej pracy",
+        };
+    }
+
+    if (plannedPrepHours > 0 && elapsedHours !== null && elapsedHours < plannedPrepHours) {
+        return {
+            key: "prep",
+            label: "Przyrzad",
+            source: "Heurystyka czasu vs TPZ",
+        };
+    }
+
+    if (plannedWorkHours > 0 || elapsedHours !== null) {
+        return {
+            key: "production",
+            label: "Produkcja",
+            source: plannedPrepHours > 0 ? "Heurystyka po TPZ" : "Domyslny etap operacji",
+        };
+    }
+
+    return {
+        key: "unknown",
+        label: "Nieustalone",
+        source: "Brak danych",
+    };
+}
+
+function buildProductionDashboardMetrics({ kkwRecord, operation, station, worker, worklog, worklogEntries, executionRecords }) {
+    const startedAtRaw = worker?.DataRozpoczecia || worklog?.DataCzasRozpoczecia || null;
+    const startedAt = parseVendoDate(startedAtRaw);
+    const now = new Date();
+    const elapsedHours = startedAt && Number.isFinite(startedAt.getTime())
+        ? Math.max((now.getTime() - startedAt.getTime()) / 36e5, 0)
+        : null;
+
+    const plannedQuantity = Number(
+        operation?.IloscPlanowanaDobrych
+        ?? kkwRecord?.IloscOczekiwana
+        ?? 0
+    ) || 0;
+    const completedQuantity = Number(
+        operation?.IloscZarejestrowanaDobrych
+        ?? kkwRecord?.IloscWykonana
+        ?? 0
+    ) || 0;
+    const expectedRate = Number(
+        station?.Wydajnosc
+        ?? operation?.Wydajnosc
+        ?? 0
+    ) || 0;
+    const rawPlannedPrepMinutes = Number(operation?.Tpz ?? station?.Tpz ?? 0) || 0;
+    const rawPlannedWorkValue = Number(station?.Czas ?? operation?.CzasProdukcji ?? 0) || 0;
+    const plannedPrepHours = rawPlannedPrepMinutes > 0 ? rawPlannedPrepMinutes / 60 : 0;
+    const actualRate = elapsedHours && elapsedHours > 0
+        ? completedQuantity / elapsedHours
+        : 0;
+    const remainingQuantity = Math.max(plannedQuantity - completedQuantity, 0);
+    const expectedDurationHours = expectedRate > 0 && plannedQuantity > 0
+        ? plannedQuantity / expectedRate
+        : null;
+    const plannedTotalHours = expectedDurationHours !== null
+        ? expectedDurationHours + plannedPrepHours
+        : (plannedPrepHours > 0 ? plannedPrepHours : null);
+    const prepElapsedHours = elapsedHours !== null
+        ? Math.min(elapsedHours, plannedPrepHours)
+        : null;
+    const productionElapsedHours = elapsedHours !== null
+        ? Math.max(elapsedHours - plannedPrepHours, 0)
+        : null;
+    const prepProgressPercent = plannedPrepHours > 0 && prepElapsedHours !== null
+        ? (prepElapsedHours / plannedPrepHours) * 100
+        : 0;
+    const productionProgressPercent = expectedDurationHours && expectedDurationHours > 0 && productionElapsedHours !== null
+        ? (productionElapsedHours / expectedDurationHours) * 100
+        : 0;
+    const expectedFinishAt = startedAt && expectedDurationHours !== null
+        ? new Date(startedAt.getTime() + plannedTotalHours * 36e5)
+        : null;
+    const predictedFinishAt = actualRate > 0
+        ? new Date(now.getTime() + (remainingQuantity / actualRate) * 36e5)
+        : null;
+    const progressPercent = plannedQuantity > 0
+        ? (completedQuantity / plannedQuantity) * 100
+        : 0;
+    const efficiencyPercent = expectedRate > 0
+        ? (actualRate / expectedRate) * 100
+        : 0;
+    const timeProgressPercent = plannedTotalHours && plannedTotalHours > 0 && elapsedHours !== null
+        ? (elapsedHours / plannedTotalHours) * 100
+        : 0;
+    const timeRemainingHours = plannedTotalHours !== null && elapsedHours !== null
+        ? plannedTotalHours - elapsedHours
+        : null;
+    const timeDeltaHours = plannedTotalHours !== null && elapsedHours !== null
+        ? elapsedHours - plannedTotalHours
+        : null;
+    const activePhase = resolveActivePhase({
+        operation,
+        worker,
+        worklog,
+        executionRecords,
+        elapsedHours,
+        plannedPrepHours,
+        plannedWorkHours: expectedDurationHours,
+    });
+    const prepExecution = (executionRecords || []).find((entry) => normalizeText(entry?.Rodzaj) === "przezbrojenie") || null;
+    const productionExecution = (executionRecords || []).find((entry) => normalizeText(entry?.Rodzaj) === "wykonanie" && !entry?.DataZakonczenia)
+        || (executionRecords || []).find((entry) => normalizeText(entry?.Rodzaj) === "wykonanie")
+        || null;
+    const relatedWorklogs = pickRelatedWorklogs(worklogEntries || [], {
+        operatorName: worker ? `${worker?.PracownikImie || ""} ${worker?.PracownikNazwisko || ""}` : null,
+        kkwNumber: kkwRecord?.Numer,
+        operationName: operation?.Nazwa,
+    });
+    const prepWorklog = relatedWorklogs.find((entry) => resolveWorklogPhase(entry, operation?.Nazwa) === "prep") || null;
+    const productionWorklog = relatedWorklogs.find((entry) => resolveWorklogPhase(entry, operation?.Nazwa) === "production") || null;
+    const prepDurationFromExecutions = prepExecution ? calculateWorklogDurationHours({
+        DataCzasRozpoczecia: prepExecution?.DataRozpoczecia,
+        DataCzasZakonczenia: prepExecution?.DataZakonczenia,
+    }, now) : null;
+    const productionDurationFromExecutions = productionExecution ? calculateWorklogDurationHours({
+        DataCzasRozpoczecia: productionExecution?.DataRozpoczecia,
+        DataCzasZakonczenia: productionExecution?.DataZakonczenia,
+    }, now) : null;
+    const prepDurationFromLogs = prepWorklog ? calculateWorklogDurationHours(prepWorklog, now) : null;
+    const productionDurationFromLogs = productionWorklog ? calculateWorklogDurationHours(productionWorklog, now) : null;
+    const resolvedPrepElapsedHours = prepDurationFromExecutions !== null
+        ? prepDurationFromExecutions
+        : prepDurationFromLogs !== null
+            ? prepDurationFromLogs
+        : prepElapsedHours;
+    const resolvedProductionElapsedHours = productionDurationFromExecutions !== null
+        ? productionDurationFromExecutions
+        : productionDurationFromLogs !== null
+            ? productionDurationFromLogs
+        : productionElapsedHours;
+    const resolvedPrepProgressPercent = plannedPrepHours > 0 && resolvedPrepElapsedHours !== null
+        ? (resolvedPrepElapsedHours / plannedPrepHours) * 100
+        : prepProgressPercent;
+    const resolvedProductionProgressPercent = expectedDurationHours && expectedDurationHours > 0 && resolvedProductionElapsedHours !== null
+        ? (resolvedProductionElapsedHours / expectedDurationHours) * 100
+        : productionProgressPercent;
+
+    let status = "Brak danych";
+    let statusTone = "idle";
+    if (plannedTotalHours && plannedTotalHours > 0 && elapsedHours !== null) {
+        if (timeProgressPercent <= 95) {
+            status = "W normie czasowej";
+            statusTone = "success";
+        } else if (timeProgressPercent <= 105) {
+            status = "Blisko limitu czasu";
+            statusTone = "loading";
+        } else {
+            status = "Po czasie";
+            statusTone = "error";
+        }
+    }
+    if (expectedRate > 0 && actualRate > 0) {
+        if (efficiencyPercent >= 105) {
+            status = "Powyzej normy";
+            statusTone = "success";
+        } else if (efficiencyPercent >= 85) {
+            status = "W normie";
+            statusTone = "loading";
+        } else {
+            status = "Ryzyko opoznienia";
+            statusTone = "error";
+        }
+    }
+
+    return {
+        startedAt: startedAt ? startedAt.toISOString() : null,
+        elapsedHours,
+        plannedQuantity,
+        completedQuantity,
+        remainingQuantity,
+        expectedRate,
+        actualRate,
+        expectedDurationHours,
+        expectedFinishAt: expectedFinishAt ? expectedFinishAt.toISOString() : null,
+        predictedFinishAt: predictedFinishAt ? predictedFinishAt.toISOString() : null,
+        progressPercent,
+        efficiencyPercent,
+        status,
+        statusTone,
+        plannedPrepMinutes: rawPlannedPrepMinutes,
+        plannedWorkHours: expectedDurationHours,
+        plannedTotalHours,
+        prepElapsedHours: resolvedPrepElapsedHours,
+        productionElapsedHours: resolvedProductionElapsedHours,
+        prepProgressPercent: resolvedPrepProgressPercent,
+        productionProgressPercent: resolvedProductionProgressPercent,
+        timeProgressPercent,
+        timeRemainingHours,
+        timeDeltaHours,
+        rawPlannedWorkValue,
+        activePhase,
+        executionKinds: (executionRecords || []).map((entry) => entry?.Rodzaj).filter(Boolean),
+    };
+}
+
 function buildProductionOrderCostModel({ orderId }) {
     return {
         ZlecenieId: [Number(orderId)],
@@ -495,10 +1119,11 @@ async function handleApiProducts(req, res) {
         }
 
         const body = await readJsonBody(req);
+        const serverConfig = getServerConfig();
         const connection = {
-            baseUrl: VENDO_API_URL,
-            apiLogin: VENDO_API_LOGIN,
-            apiPassword: VENDO_API_PASSWORD,
+            baseUrl: serverConfig.apiUrl,
+            apiLogin: serverConfig.apiLogin,
+            apiPassword: serverConfig.apiPassword,
             vendoUserLogin: body.vendoUserLogin,
             vendoUserPassword: body.vendoUserPassword,
         };
@@ -536,10 +1161,11 @@ async function handleApiCostAnalysis(req, res) {
         }
 
         const body = await readJsonBody(req);
+        const serverConfig = getServerConfig();
         const connection = {
-            baseUrl: VENDO_API_URL,
-            apiLogin: VENDO_API_LOGIN,
-            apiPassword: VENDO_API_PASSWORD,
+            baseUrl: serverConfig.apiUrl,
+            apiLogin: serverConfig.apiLogin,
+            apiPassword: serverConfig.apiPassword,
             vendoUserLogin: body.vendoUserLogin,
             vendoUserPassword: body.vendoUserPassword,
         };
@@ -588,10 +1214,11 @@ async function handleApiBackorders(req, res) {
         }
 
         const body = await readJsonBody(req);
+        const serverConfig = getServerConfig();
         const connection = {
-            baseUrl: VENDO_API_URL,
-            apiLogin: VENDO_API_LOGIN,
-            apiPassword: VENDO_API_PASSWORD,
+            baseUrl: serverConfig.apiUrl,
+            apiLogin: serverConfig.apiLogin,
+            apiPassword: serverConfig.apiPassword,
             vendoUserLogin: body.vendoUserLogin,
             vendoUserPassword: body.vendoUserPassword,
         };
@@ -635,10 +1262,11 @@ async function handleApiMrpWorkCosts(req, res) {
         }
 
         const body = await readJsonBody(req);
+        const serverConfig = getServerConfig();
         const connection = {
-            baseUrl: VENDO_API_URL,
-            apiLogin: VENDO_API_LOGIN,
-            apiPassword: VENDO_API_PASSWORD,
+            baseUrl: serverConfig.apiUrl,
+            apiLogin: serverConfig.apiLogin,
+            apiPassword: serverConfig.apiPassword,
             vendoUserLogin: body.vendoUserLogin,
             vendoUserPassword: body.vendoUserPassword,
         };
@@ -700,10 +1328,11 @@ async function handleApiKkwCosts(req, res) {
         }
 
         const body = await readJsonBody(req);
+        const serverConfig = getServerConfig();
         const connection = {
-            baseUrl: VENDO_API_URL,
-            apiLogin: VENDO_API_LOGIN,
-            apiPassword: VENDO_API_PASSWORD,
+            baseUrl: serverConfig.apiUrl,
+            apiLogin: serverConfig.apiLogin,
+            apiPassword: serverConfig.apiPassword,
             vendoUserLogin: body.vendoUserLogin,
             vendoUserPassword: body.vendoUserPassword,
         };
@@ -860,10 +1489,11 @@ async function handleApiProductionOrderCosts(req, res) {
         }
 
         const body = await readJsonBody(req);
+        const serverConfig = getServerConfig();
         const connection = {
-            baseUrl: VENDO_API_URL,
-            apiLogin: VENDO_API_LOGIN,
-            apiPassword: VENDO_API_PASSWORD,
+            baseUrl: serverConfig.apiUrl,
+            apiLogin: serverConfig.apiLogin,
+            apiPassword: serverConfig.apiPassword,
             vendoUserLogin: body.vendoUserLogin,
             vendoUserPassword: body.vendoUserPassword,
         };
@@ -953,6 +1583,174 @@ async function handleApiProductionOrderCosts(req, res) {
     }
 }
 
+async function handleApiProductionDashboard(req, res) {
+    try {
+        const missing = requireServerConfig();
+        if (missing.length) {
+            sendJson(res, 500, {
+                error: `Brakuje konfiguracji serwera: ${missing.join(", ")}`,
+            });
+            return;
+        }
+
+        const body = await readJsonBody(req);
+        const kkwNumber = String(body.kkwNumber || "").trim();
+        const operatorName = String(body.operatorName || "").trim();
+        const stationCode = String(body.stationCode || "").trim();
+        const operationName = String(body.operationName || "").trim();
+
+        if (!kkwNumber) {
+            sendJson(res, 400, { error: "Podaj numer KKW." });
+            return;
+        }
+
+        const serverConfig = getServerConfig();
+        const connection = {
+            baseUrl: serverConfig.apiUrl,
+            apiLogin: serverConfig.apiLogin,
+            apiPassword: serverConfig.apiPassword,
+            vendoUserLogin: String(body.vendoUserLogin || "").trim(),
+            vendoUserPassword: body.vendoUserPassword || "",
+        };
+
+        if (!connection.vendoUserLogin || !connection.vendoUserPassword) {
+            sendJson(res, 400, { error: "Podaj login i haslo Vendo." });
+            return;
+        }
+
+        const accessToken = await getAccessToken(connection);
+        const [kkwRecord] = await resolveKkwRecordsByNumbers(connection, accessToken, [kkwNumber]);
+        const kkwId = Number(kkwRecord?.ID);
+
+        if (!Number.isInteger(kkwId)) {
+            throw new Error(`Nie znaleziono KKW o numerze: ${kkwNumber}`);
+        }
+
+        const [worklogResponse, operationsResponse] = await Promise.all([
+            vendoPost(connection.baseUrl, "/Pracownicy/Czasozliczarka/Lista", {
+                Token: accessToken,
+                Model: buildCzasozliczarkaListModel({ operatorName, pageSize: 50 }),
+            }),
+            vendoPost(connection.baseUrl, "/Produkcja/KKW/OperacjeLista", {
+                Token: accessToken,
+                Model: buildKkwOperationsModel({ kkwId, pageSize: 100 }),
+            }),
+        ]);
+
+        const operations = Array.isArray(operationsResponse?.Wynik?.Rekordy) ? operationsResponse.Wynik.Rekordy : [];
+        const operation = pickBestOperation(operations, operationName, stationCode);
+
+        if (!operation) {
+            throw new Error(`Nie znaleziono operacji dla KKW ${kkwNumber}.`);
+        }
+
+        const [stationsResponse, executionsResponse, workersResponse] = await Promise.all([
+            vendoPost(connection.baseUrl, "/Produkcja/KKW/StanowiskaLista", {
+                Token: accessToken,
+                Model: buildKkwStationsModel({ kkwId, operationId: operation.ID, pageSize: 100 }),
+            }),
+            vendoPost(connection.baseUrl, "/Produkcja/KKW/WykonaniaLista", {
+                Token: accessToken,
+                Model: buildKkwExecutionsModel({ kkwId, operationId: operation.ID, pageSize: 200 }),
+            }),
+            vendoPost(connection.baseUrl, "/Produkcja/KKW/PracownicyWykonanLista", {
+                Token: accessToken,
+                Model: buildKkwWorkersModel({ kkwId, operationId: operation.ID, pageSize: 200 }),
+            }),
+        ]);
+
+        const stationRecords = Array.isArray(stationsResponse?.Wynik?.Rekordy) ? stationsResponse.Wynik.Rekordy : [];
+        const executionRecords = pickExecutionRecords(
+            Array.isArray(executionsResponse?.Wynik?.Rekordy) ? executionsResponse.Wynik.Rekordy : [],
+            operation?.Nazwa,
+            stationCode
+        );
+        const workerRecords = Array.isArray(workersResponse?.Wynik?.Rekordy) ? workersResponse.Wynik.Rekordy : [];
+        const worklogEntries = Array.isArray(worklogResponse?.Wynik?.Rekordy) ? worklogResponse.Wynik.Rekordy : [];
+
+        const station = pickBestStation(stationRecords, stationCode, operation?.Nazwa);
+        const worker = pickBestWorker(workerRecords, operatorName, operation?.Nazwa);
+        const worklog = pickBestWorklog(worklogEntries, operatorName);
+        const metrics = buildProductionDashboardMetrics({
+            kkwRecord,
+            operation,
+            station,
+            worker,
+            worklog,
+            worklogEntries,
+            executionRecords,
+        });
+
+        sendJson(res, 200, {
+            kkw: {
+                id: kkwId,
+                number: kkwRecord?.Numer || kkwNumber,
+                orderNumber: kkwRecord?.ZlecenieNumer || null,
+                productCode: kkwRecord?.TowarKod || null,
+                productName: kkwRecord?.TowarNazwa || kkwRecord?.PozycjaZleceniaNazwa || null,
+                plannedQuantity: Number(kkwRecord?.IloscOczekiwana || 0),
+                performedQuantity: Number(kkwRecord?.IloscWykonana || 0),
+            },
+            operator: {
+                name: worker ? [worker.PracownikImie, worker.PracownikNazwisko].filter(Boolean).join(" ") : operatorName || worklog?.PracownikImieNazwisko || null,
+                login: worker?.PracownikLogin || null,
+                worklogName: worklog?.PracownikImieNazwisko || null,
+            },
+            operation: {
+                id: operation?.ID || null,
+                name: operation?.Nazwa || null,
+                lp: operation?.Lp || null,
+                expectedRate: Number(operation?.Wydajnosc || 0),
+                tpz: Number(operation?.Tpz || 0),
+                productionTime: Number(operation?.CzasProdukcji || 0),
+                plannedGood: Number(operation?.IloscPlanowanaDobrych || 0),
+                registeredGood: Number(operation?.IloscZarejestrowanaDobrych || 0),
+                registeredDefects: Number(operation?.IloscZarejestrowanaBrakowNaprawialnych || 0) + Number(operation?.IloscZarejestrowanaBrakowNienaprawialnych || 0),
+                active: Boolean(operation?.AktualnieWykonywane),
+            },
+            station: station ? {
+                id: station?.StanowiskoID || null,
+                code: station?.StanowiskoKod || null,
+                name: station?.StanowiskoNazwa || null,
+                expectedRate: Number(station?.Wydajnosc || 0),
+                tpz: Number(station?.Tpz || 0),
+                productionTime: Number(station?.Czas || 0),
+                workerCount: Number(station?.LiczbaPracownikow || 0),
+            } : {
+                code: stationCode || operation?.DomyslneStanowiskoKod || null,
+                name: operation?.DomyslneStanowiskoNazwa || null,
+                expectedRate: 0,
+                tpz: 0,
+                productionTime: 0,
+                workerCount: 0,
+            },
+            worker,
+            worklog,
+            metrics,
+            debug: {
+                matchedOperations: operations.length,
+                matchedStations: stationRecords.length,
+                matchedExecutions: executionRecords.length,
+                matchedWorkers: workerRecords.length,
+                matchedWorklogs: worklogEntries.length,
+                executionKinds: executionRecords.map((item) => item?.Rodzaj).filter(Boolean),
+                executionRecords: executionRecords.map((item) => ({
+                    id: item?.ID || null,
+                    kind: item?.Rodzaj || null,
+                    stationCode: item?.StanowiskoKod || null,
+                    operationName: item?.OperacjaNazwa || null,
+                    startedAt: item?.DataRozpoczecia || null,
+                    endedAt: item?.DataZakonczenia || null,
+                    status: item?.Stan || null,
+                    marker: item?.Znacznik || null,
+                })),
+            },
+        });
+    } catch (error) {
+        sendJson(res, 500, { error: error.message || "Nie udalo sie pobrac danych dashboardu produkcyjnego." });
+    }
+}
+
 async function handleApiProductLocations(req, res) {
     try {
         const missing = requireServerConfig();
@@ -963,10 +1761,11 @@ async function handleApiProductLocations(req, res) {
         }
 
         const body = await readJsonBody(req);
+        const serverConfig = getServerConfig();
         const connection = {
-            baseUrl: VENDO_API_URL,
-            apiLogin: VENDO_API_LOGIN,
-            apiPassword: VENDO_API_PASSWORD,
+            baseUrl: serverConfig.apiUrl,
+            apiLogin: serverConfig.apiLogin,
+            apiPassword: serverConfig.apiPassword,
             vendoUserLogin: body.vendoUserLogin,
             vendoUserPassword: body.vendoUserPassword,
         };
@@ -1044,10 +1843,11 @@ async function handleApiProductBatchStates(req, res) {
         }
 
         const body = await readJsonBody(req);
+        const serverConfig = getServerConfig();
         const connection = {
-            baseUrl: VENDO_API_URL,
-            apiLogin: VENDO_API_LOGIN,
-            apiPassword: VENDO_API_PASSWORD,
+            baseUrl: serverConfig.apiUrl,
+            apiLogin: serverConfig.apiLogin,
+            apiPassword: serverConfig.apiPassword,
             vendoUserLogin: body.vendoUserLogin,
             vendoUserPassword: body.vendoUserPassword,
         };
@@ -1226,12 +2026,43 @@ function getContentType(filePath) {
     }
 }
 
-function handleStatic(req, res) {
-    const requestPath = req.url === "/" ? "/index.html" : req.url;
-    const safePath = path.normalize(requestPath).replace(/^(\.\.[/\\])+/, "");
-    const filePath = path.join(PUBLIC_DIR, safePath);
+function sendRedirect(res, location) {
+    res.writeHead(302, { Location: location });
+    res.end();
+}
 
-    if (!filePath.startsWith(PUBLIC_DIR)) {
+function resolveStaticPath(urlPath) {
+    if (urlPath === "/") {
+        return { redirect: "/console" };
+    }
+
+    if (urlPath === "/console") {
+        return { pathname: "/console/index.html" };
+    }
+
+    if (urlPath === "/production-dashboard") {
+        return { pathname: "/production-dashboard/index.html" };
+    }
+
+    if (urlPath.endsWith("/")) {
+        return { pathname: `${urlPath}index.html` };
+    }
+
+    return { pathname: urlPath };
+}
+
+function handleStatic(req, res) {
+    const requestUrl = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    const resolved = resolveStaticPath(requestUrl.pathname);
+    if (resolved.redirect) {
+        sendRedirect(res, resolved.redirect);
+        return;
+    }
+
+    const relativePath = resolved.pathname.replace(/^[/\\]+/, "");
+    const filePath = path.resolve(PUBLIC_DIR, relativePath);
+
+    if (filePath !== PUBLIC_DIR && !filePath.startsWith(`${PUBLIC_DIR}${path.sep}`)) {
         sendText(res, 403, "Forbidden");
         return;
     }
@@ -1275,6 +2106,11 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && req.url === "/api/production-order-costs") {
         await handleApiProductionOrderCosts(req, res);
+        return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/production-dashboard") {
+        await handleApiProductionDashboard(req, res);
         return;
     }
 

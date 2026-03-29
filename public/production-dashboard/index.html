@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="pl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Production Dashboard</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body data-app-module="production-dashboard">
+    <main class="app-shell">
+        <section class="hero">
+            <p class="eyebrow">Wspolny backend Vendo</p>
+            <h1>Production Dashboard</h1>
+            <p class="hero-copy">
+                Tu zbudujemy nowy, uproszczony widok dla produkcji. Obecne narzedzia zostaly przeniesione z powrotem do konsoli.
+            </p>
+            <div class="hero-actions">
+                <button type="button" id="toggle-tv-mode">TV mode</button>
+                <a class="ghost nav-link" href="/console">Wroc do API Console</a>
+            </div>
+        </section>
+
+        <section class="panel dashboard-config-panel">
+            <h2>Polaczenie</h2>
+            <form id="connection-form" class="form-grid">
+                <label>
+                    <span>Login Vendo</span>
+                    <input name="vendoUserLogin" type="text" required>
+                </label>
+                <label>
+                    <span>Haslo Vendo</span>
+                    <input name="vendoUserPassword" type="password" required>
+                </label>
+
+                <div class="actions">
+                    <button type="button" id="save-connection">Zapamietaj</button>
+                    <button type="button" id="clear-button" class="ghost">Wyczysc formularz</button>
+                </div>
+            </form>
+
+            <p class="note">
+                Ten modul zostaje jako osobne wejscie frontendowe i bedzie rozwijany niezaleznie od konsoli.
+            </p>
+        </section>
+
+        <section class="panel dashboard-config-panel">
+            <div class="section-header">
+                <h2>Filtr Dashboardu</h2>
+                <span id="dashboard-status-badge" class="status idle">Gotowe</span>
+            </div>
+
+            <form id="production-dashboard-form" class="subform-grid">
+                <label>
+                    <span>Operator</span>
+                    <input name="operatorName" type="text" value="Tomasz Domagala" required>
+                </label>
+                <label>
+                    <span>Numer KKW</span>
+                    <input name="kkwNumber" type="text" value="281/26" required>
+                </label>
+                <label>
+                    <span>Stanowisko</span>
+                    <input name="stationCode" type="text" value="SMD-01">
+                </label>
+                <label>
+                    <span>Operacja</span>
+                    <input name="operationName" type="text" value="Montaz automatyczny">
+                </label>
+                <div class="actions">
+                    <button type="submit" id="production-dashboard-submit-button">Pokaz dashboard</button>
+                </div>
+            </form>
+
+            <p class="note">
+                MVP sklada dane z aktywnej pracy pracownika, operacji KKW i stanowiska, zeby pokazac tempo pracy oraz przewidywany koniec.
+            </p>
+        </section>
+
+        <section class="panel">
+            <div id="production-dashboard-error" class="error hidden"></div>
+            <div id="production-dashboard-summary" class="summary hidden"></div>
+
+            <section class="warehouse-panel">
+                <div class="warehouse-panel-header">
+                    <h3>Aktualna praca</h3>
+                    <p>Kto pracuje, na czym, od kiedy i z jakim kontekstem KKW.</p>
+                </div>
+                <div id="production-dashboard-hero" class="dashboard-hero-empty">
+                    Uruchom dashboard, aby pobrac aktywne dane operatorskie z Vendo.
+                </div>
+            </section>
+
+            <section class="dashboard-grid">
+                <section class="warehouse-panel">
+                    <div class="warehouse-panel-header">
+                        <h3>Przyrzad</h3>
+                        <p>Czas przygotowania stanowiska wzgledem normy i aktywnego etapu pracy.</p>
+                    </div>
+                    <div id="production-dashboard-metrics" class="dashboard-metrics-empty">
+                        Brak danych.
+                    </div>
+                </section>
+
+                <section class="warehouse-panel">
+                    <div class="warehouse-panel-header">
+                        <h3>Produkcja</h3>
+                        <p>Czas produkcji, wykorzystanie normy i przewidywany koniec operacji.</p>
+                    </div>
+                    <div id="production-dashboard-timeline" class="dashboard-metrics-empty">
+                        Brak danych.
+                    </div>
+                </section>
+            </section>
+
+            <section class="warehouse-panel">
+                <div class="warehouse-panel-header">
+                    <h3>Surowe dane pomocnicze</h3>
+                    <p>Do weryfikacji dopasowan operatora, stanowiska i operacji podczas budowy MVP.</p>
+                </div>
+                <div id="production-dashboard-debug" class="dashboard-debug-empty">
+                    Brak danych debug.
+                </div>
+            </section>
+
+            <details class="raw-panel">
+                <summary>Surowa odpowiedz JSON</summary>
+                <pre id="production-dashboard-raw-output">Brak danych.</pre>
+            </details>
+        </section>
+    </main>
+
+    <script src="/app.js"></script>
+    <script src="/production-dashboard.js"></script>
+</body>
+</html>

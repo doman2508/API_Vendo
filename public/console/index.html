@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="pl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Vendo API Console</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body data-app-module="console">
+    <main class="app-shell">
+        <section class="hero">
+            <p class="eyebrow">Lokalny podglad integracji</p>
+            <h1>Vendo API Console</h1>
+            <p class="hero-copy">
+                Widok do pracy operacyjnej i testowania integracji na wspolnym backendzie Vendo.
+            </p>
+            <div class="hero-actions">
+                <a class="ghost nav-link" href="/production-dashboard">Przejdz do Production Dashboard</a>
+            </div>
+        </section>
+
+        <section class="panel">
+            <h2>Polaczenie</h2>
+            <form id="connection-form" class="form-grid">
+                <label>
+                    <span>Login Vendo</span>
+                    <input name="vendoUserLogin" type="text" required>
+                </label>
+                <label>
+                    <span>Haslo Vendo</span>
+                    <input name="vendoUserPassword" type="password" required>
+                </label>
+
+                <div class="actions">
+                    <button type="button" id="save-connection">Zapamietaj</button>
+                    <button type="button" id="clear-button" class="ghost">Wyczysc formularz</button>
+                </div>
+            </form>
+
+            <p class="note">
+                Dane logowania Vendo sa zapisywane lokalnie w przegladarce, zeby nie wpisywac ich za kazdym razem.
+            </p>
+        </section>
+
+        <section class="panel">
+            <div class="view-switcher">
+                <button type="button" class="switch-button active" data-module="console" data-view="products">Towary</button>
+                <button type="button" class="switch-button" data-module="console" data-view="costs">Analiza kosztow</button>
+                <button type="button" class="switch-button" data-module="console" data-view="backorders">Backordery</button>
+                <button type="button" class="switch-button" data-module="console" data-view="kkw-costs">Koszty KKW</button>
+                <button type="button" class="switch-button" data-module="console" data-view="production-order-costs">Koszt zlecenia</button>
+                <button type="button" class="switch-button" data-module="console" data-view="mrp-costs">KKW MRP</button>
+            </div>
+        </section>
+
+        <section class="panel view-panel active" id="products-view" data-module="console">
+            <div class="section-header">
+                <h2>Towary</h2>
+                <span id="status-badge" class="status idle">Gotowe</span>
+            </div>
+
+            <form id="products-form" class="subform-grid">
+                <label>
+                    <span>Kod towaru</span>
+                    <input name="productCode" type="text" placeholder="np. TESTTOWAR">
+                </label>
+                <label>
+                    <span>Liczba rekordow</span>
+                    <input name="pageSize" type="number" min="1" max="100" value="20" required>
+                </label>
+                <div class="actions">
+                    <button type="submit" id="submit-button">Pobierz towary</button>
+                </div>
+            </form>
+
+            <div class="section-header">
+                <h2>Wynik</h2>
+            </div>
+
+            <div id="summary" class="summary hidden"></div>
+            <div id="error-box" class="error hidden"></div>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Kod</th>
+                            <th>Nazwa</th>
+                            <th>Stan magazynu</th>
+                            <th>Rodzaj</th>
+                            <th>Aktywnosc</th>
+                            <th>Jednostka</th>
+                        </tr>
+                    </thead>
+                    <tbody id="results-body">
+                        <tr>
+                            <td colspan="7" class="empty-state">Jeszcze nie wykonano zapytania.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <section class="warehouse-panel">
+                <div class="warehouse-panel-header">
+                    <h3>Partie / miejsca magazynowe</h3>
+                    <p>Widok oparty o partie historyczne, stany partii i przychody partii, zeby pokazac realne miejsca z historii przyjec.</p>
+                </div>
+                <div id="batch-details" class="warehouse-placeholder">
+                    Kliknij wybrany indeks, aby pobrac partie, dokumenty i miejsca magazynowe.
+                </div>
+            </section>
+
+            <details class="raw-panel">
+                <summary>Surowa odpowiedz JSON</summary>
+                <pre id="raw-output">Brak danych.</pre>
+            </details>
+        </section>
+
+        <section class="panel view-panel" id="costs-view" data-module="console">
+            <div class="section-header">
+                <h2>Analiza kosztow</h2>
+                <span id="cost-status-badge" class="status idle">Gotowe</span>
+            </div>
+
+            <form id="cost-analysis-form" class="subform-grid">
+                <label>
+                    <span>Data od</span>
+                    <input name="dateFrom" type="date" required>
+                </label>
+                <label>
+                    <span>Data do</span>
+                    <input name="dateTo" type="date" required>
+                </label>
+                <label>
+                    <span>Analiza wg</span>
+                    <select name="analysisBy">
+                        <option value="10000">Towar</option>
+                        <option value="9000">Magazyn</option>
+                        <option value="1005">Dostawca</option>
+                        <option value="8000">Dokument</option>
+                        <option value="0">Zagregowany</option>
+                    </select>
+                </label>
+                <label class="checkbox">
+                    <input name="excludeServices" type="checkbox">
+                    <span>Bez uslug</span>
+                </label>
+                <label class="checkbox">
+                    <input name="excludeCorrections" type="checkbox">
+                    <span>Bez korekt</span>
+                </label>
+                <label class="checkbox">
+                    <input name="excludeDocuments" type="checkbox">
+                    <span>Bez dokumentow</span>
+                </label>
+                <label class="checkbox">
+                    <input name="onlyClosedDocuments" type="checkbox">
+                    <span>Tylko zamkniete dokumenty</span>
+                </label>
+                <label class="checkbox">
+                    <input name="extendedMode" type="checkbox">
+                    <span>Tryb rozszerzony</span>
+                </label>
+                <div class="actions">
+                    <button type="submit" id="cost-submit-button">Uruchom analize</button>
+                </div>
+            </form>
+
+            <div id="cost-summary" class="summary hidden"></div>
+            <div id="cost-error-box" class="error hidden"></div>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Kod</th>
+                            <th>Nazwa</th>
+                            <th>Ilosc</th>
+                            <th>Netto</th>
+                            <th>VAT</th>
+                            <th>Dokumenty</th>
+                            <th>Klienci</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cost-results-body">
+                        <tr>
+                            <td colspan="8" class="empty-state">Jeszcze nie wykonano analizy kosztow.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <details class="raw-panel">
+                <summary>Surowa odpowiedz JSON</summary>
+                <pre id="cost-raw-output">Brak danych.</pre>
+            </details>
+        </section>
+
+        <section class="panel view-panel" id="backorders-view" data-module="console">
+            <div class="section-header">
+                <h2>Backordery</h2>
+                <span id="backorder-status-badge" class="status idle">Gotowe</span>
+            </div>
+
+            <form id="backorders-form" class="subform-grid">
+                <label>
+                    <span>Data od</span>
+                    <input name="dateFrom" type="date">
+                </label>
+                <label>
+                    <span>Data do</span>
+                    <input name="dateTo" type="date">
+                </label>
+                <label>
+                    <span>Kod towaru</span>
+                    <input name="productCode" type="text" placeholder="np. TESTTOWAR">
+                </label>
+                <label>
+                    <span>Kod magazynu</span>
+                    <input name="warehouseCode" type="text" placeholder="np. MAG1">
+                </label>
+                <label>
+                    <span>Kierunek</span>
+                    <select name="direction">
+                        <option value="">Wszystkie</option>
+                        <option value="-1">Zapotrzebowanie</option>
+                        <option value="1">Oczekiwane</option>
+                    </select>
+                </label>
+                <label>
+                    <span>Liczba rekordow</span>
+                    <input name="pageSize" type="number" min="1" max="100" value="20" required>
+                </label>
+                <div class="actions">
+                    <button type="submit" id="backorder-submit-button">Pobierz backordery</button>
+                </div>
+            </form>
+
+            <div id="backorder-summary" class="summary hidden"></div>
+            <div id="backorder-error-box" class="error hidden"></div>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Data backorderu</th>
+                            <th>Ilosc</th>
+                            <th>Kierunek</th>
+                            <th>Zrodlo</th>
+                            <th>Dokument</th>
+                            <th>Towar ID</th>
+                            <th>Magazyn ID</th>
+                        </tr>
+                    </thead>
+                    <tbody id="backorder-results-body">
+                        <tr>
+                            <td colspan="8" class="empty-state">Jeszcze nie pobrano backorderow.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <details class="raw-panel">
+                <summary>Surowa odpowiedz JSON</summary>
+                <pre id="backorder-raw-output">Brak danych.</pre>
+            </details>
+        </section>
+
+        <section class="panel view-panel" id="kkw-costs-view" data-module="console">
+            <div class="section-header">
+                <h2>Koszty KKW</h2>
+                <span id="kkw-costs-status-badge" class="status idle">Gotowe</span>
+            </div>
+
+            <form id="kkw-costs-form" class="subform-grid">
+                <label>
+                    <span>Numer KKW</span>
+                    <input name="kkwNumbers" type="text" placeholder="np. 119/25" required>
+                </label>
+                <div class="actions">
+                    <button type="submit" id="kkw-costs-submit-button">Pobierz koszty KKW</button>
+                </div>
+            </form>
+
+            <div id="kkw-costs-summary" class="summary hidden"></div>
+            <div id="kkw-costs-error-box" class="error hidden"></div>
+
+            <section class="warehouse-panel">
+                <div class="warehouse-panel-header">
+                    <h3>Galezie raportu</h3>
+                    <p>Podsumowanie z `/Produkcja/KKW/RaportPreTechInPost` dla korzenia, materialow i operacji.</p>
+                </div>
+                <div class="table-wrap compact">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Sekcja</th>
+                                <th>Przed</th>
+                                <th>Technologia</th>
+                                <th>Norma / wejscie</th>
+                                <th>Po realizacji</th>
+                            </tr>
+                        </thead>
+                        <tbody id="kkw-costs-summary-body">
+                            <tr>
+                                <td colspan="5" class="empty-state">Jeszcze nie pobrano raportu kosztow KKW.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="warehouse-panel">
+                <div class="warehouse-panel-header">
+                    <h3>Szczegoly lisci</h3>
+                    <p>Pozycje szczegolowe z raportu, ktore buduja koncowe koszty materialow i operacji.</p>
+                </div>
+                <div class="table-wrap compact">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Rodzaj</th>
+                                <th>Nazwa</th>
+                                <th>Skladnik ID</th>
+                                <th>Przed</th>
+                                <th>Technologia</th>
+                                <th>Norma / wejscie</th>
+                                <th>Po realizacji</th>
+                            </tr>
+                        </thead>
+                        <tbody id="kkw-costs-operations-body">
+                            <tr>
+                                <td colspan="7" class="empty-state">Jeszcze nie pobrano szczegolow raportu.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="warehouse-panel">
+                <div class="warehouse-panel-header">
+                    <h3>Materialy</h3>
+                    <p>Rozbicie materialowki na skladniki z ilosciami i kosztem po realizacji.</p>
+                </div>
+                <div class="table-wrap compact">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Kod</th>
+                                <th>Nazwa</th>
+                                <th>ID</th>
+                                <th>Ilosc planowana</th>
+                                <th>Ilosc wg wykonania</th>
+                                <th>Ilosc przeniesiona</th>
+                                <th>Koszt po realizacji</th>
+                                <th>Cena po realizacji</th>
+                            </tr>
+                        </thead>
+                        <tbody id="kkw-costs-materials-body-kkw">
+                            <tr>
+                                <td colspan="8" class="empty-state">Jeszcze nie pobrano materialow.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <details class="raw-panel">
+                <summary>Surowa odpowiedz JSON</summary>
+                <pre id="kkw-costs-raw-output">Brak danych.</pre>
+            </details>
+        </section>
+
+        <section class="panel view-panel" id="production-order-costs-view" data-module="console">
+            <div class="section-header">
+                <h2>Koszt zlecenia</h2>
+                <span id="production-order-costs-status-badge" class="status idle">Gotowe</span>
+            </div>
+
+            <form id="production-order-costs-form" class="subform-grid">
+                <label>
+                    <span>Numer KKW</span>
+                    <input name="kkwNumbers" type="text" placeholder="np. 192/26" required>
+                </label>
+                <div class="actions">
+                    <button type="submit" id="production-order-costs-submit-button">Pobierz koszt zlecenia</button>
+                </div>
+            </form>
+
+            <div id="production-order-costs-summary" class="summary hidden"></div>
+            <div id="production-order-costs-error-box" class="error hidden"></div>
+
+            <section class="warehouse-panel">
+                <div class="warehouse-panel-header">
+                    <h3>Podsumowanie plan vs realizacja</h3>
+                    <p>Widok oparty o `/Produkcja/Zlecenie/KosztZlecenia` po przejsciu z numeru KKW na `ZlecenieID`.</p>
+                </div>
+                <div class="table-wrap compact">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Sekcja</th>
+                                <th>Plan</th>
+                                <th>Realizacja</th>
+                            </tr>
+                        </thead>
+                        <tbody id="production-order-costs-summary-body">
+                            <tr>
+                                <td colspan="3" class="empty-state">Jeszcze nie pobrano kosztu zlecenia.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="warehouse-panel">
+                <div class="warehouse-panel-header">
+                    <h3>Pozycje zlecenia</h3>
+                    <p>Rozbicie na material, prace, RBH, kooperacje i sume dla kazdej pozycji zlecenia.</p>
+                </div>
+                <div class="table-wrap compact">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Pozycja</th>
+                                <th>Kod</th>
+                                <th>Nazwa</th>
+                                <th>Ilosc</th>
+                                <th>Material plan</th>
+                                <th>Material realizacja</th>
+                                <th>Praca plan</th>
+                                <th>Praca realizacja</th>
+                                <th>RBH plan</th>
+                                <th>RBH realizacja</th>
+                                <th>Kooperacja plan</th>
+                                <th>Kooperacja realizacja</th>
+                                <th>Suma plan</th>
+                                <th>Suma realizacja</th>
+                            </tr>
+                        </thead>
+                        <tbody id="production-order-costs-body">
+                            <tr>
+                                <td colspan="14" class="empty-state">Jeszcze nie pobrano danych kosztowych zlecenia.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <details class="raw-panel">
+                <summary>Surowa odpowiedz JSON</summary>
+                <pre id="production-order-costs-raw-output">Brak danych.</pre>
+            </details>
+        </section>
+
+        <section class="panel view-panel" id="mrp-costs-view" data-module="console">
+            <div class="section-header">
+                <h2>Przelicz koszty prac MRP</h2>
+                <span id="mrp-status-badge" class="status idle">Gotowe</span>
+            </div>
+
+            <form id="mrp-costs-form" class="subform-grid">
+                <label>
+                    <span>Numer KKW</span>
+                    <input name="kkwNumbers" type="text" placeholder="np. 119/25 lub 119/25,120/25">
+                </label>
+                <label>
+                    <span>Element KKW ID</span>
+                    <input name="kkwElementIds" type="text" placeholder="np. 456 lub 456,457">
+                </label>
+                <label>
+                    <span>Wykonanie KKW ID</span>
+                    <input name="kkwExecutionIds" type="text" placeholder="np. 789 lub 789,790">
+                </label>
+                <div class="actions">
+                    <button type="submit" id="mrp-submit-button">Przelicz koszty</button>
+                </div>
+            </form>
+
+            <p class="note">
+                Wystarczy podac jeden typ identyfikatora. Jesli podasz numer KKW, aplikacja sama wyszuka jego ID w Vendo.
+            </p>
+
+            <div id="mrp-summary" class="summary hidden"></div>
+            <div id="mrp-error-box" class="error hidden"></div>
+
+            <details class="raw-panel">
+                <summary>Surowa odpowiedz JSON</summary>
+                <pre id="mrp-raw-output">Brak danych.</pre>
+            </details>
+        </section>
+    </main>
+
+    <script src="/app.js"></script>
+</body>
+</html>
