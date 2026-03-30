@@ -705,6 +705,113 @@ tbody tr.selected {
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 }
 
+.dashboard-overview-empty {
+    color: var(--muted);
+}
+
+.dashboard-overview-grid {
+    display: grid;
+    gap: 18px;
+    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+}
+
+.dashboard-overview-groups {
+    display: grid;
+    gap: 18px;
+}
+
+.overview-department {
+    display: grid;
+    gap: 12px;
+    padding: 14px;
+    border-radius: 24px;
+    background: rgba(255, 255, 255, 0.52);
+    border: 1px solid rgba(47, 38, 29, 0.08);
+}
+
+.overview-department-header {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 2px 4px 0;
+}
+
+.overview-department-header h4 {
+    margin: 4px 0 0;
+    font-size: 28px;
+}
+
+.overview-card {
+    border: 1px solid rgba(47, 38, 29, 0.08);
+    border-radius: 22px;
+    padding: 18px;
+    background: rgba(255, 255, 255, 0.88);
+    display: grid;
+    gap: 14px;
+}
+
+.overview-card-header {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.overview-card-kkw {
+    display: grid;
+    justify-items: end;
+    gap: 6px;
+    text-align: right;
+    min-width: 0;
+}
+
+.overview-card-product {
+    max-width: 320px;
+    color: var(--muted);
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1.35;
+}
+
+.overview-card-header h4 {
+    margin: 4px 0 0;
+    font-size: 24px;
+}
+
+.overview-card-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--muted);
+    font-size: 14px;
+}
+
+.overview-card-meta strong {
+    color: var(--ink);
+    font-size: 16px;
+}
+
+.overview-card-phase-grid {
+    display: grid;
+    gap: 14px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.overview-card .phase-card {
+    min-height: 0;
+    padding: 16px;
+}
+
+.overview-card .phase-card-header h4 {
+    font-size: 24px;
+}
+
+.overview-card .dashboard-metric-row strong {
+    font-size: 24px;
+}
+
 @media (max-width: 900px) {
     .phase-grid {
         grid-template-columns: 1fr;
@@ -892,6 +999,184 @@ body.tv-mode .phase-panel .phase-card {
     height: 100%;
 }
 
+body.tv-mode .dashboard-overview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+}
+
+body.tv-mode .dashboard-overview-groups {
+    gap: 16px;
+}
+
+body.tv-mode .overview-department {
+    padding: 16px;
+}
+
+body.tv-mode .overview-department-header h4 {
+    font-size: 30px;
+}
+
+body.tv-mode .overview-card {
+    padding: 20px;
+}
+
+body.tv-mode .overview-card-header h4 {
+    font-size: 30px;
+}
+
+body.tv-mode .overview-card-meta {
+    font-size: 16px;
+}
+
+body.tv-mode .overview-card-meta strong {
+    font-size: 18px;
+}
+
+body.ultrawide-mode {
+    min-height: 100vh;
+}
+
+body.ultrawide-mode .app-shell {
+    width: calc(100vw - 32px);
+    max-width: none;
+    margin: 8px auto 12px;
+    gap: 12px;
+}
+
+body.ultrawide-mode .hero,
+body.ultrawide-mode .panel {
+    border-radius: 18px;
+}
+
+body.ultrawide-mode .hero {
+    padding: 18px 24px;
+}
+
+body.ultrawide-mode h1 {
+    font-size: clamp(40px, 2.6vw, 60px);
+}
+
+body.ultrawide-mode .panel {
+    padding: 14px 16px;
+}
+
+body.ultrawide-mode .summary {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+}
+
+body.ultrawide-mode .summary-card {
+    min-height: 94px;
+}
+
+body.ultrawide-mode .warehouse-panel {
+    padding: 16px;
+}
+
+body.ultrawide-mode .dashboard-hero {
+    gap: 12px;
+}
+
+body.ultrawide-mode .dashboard-hero-main strong {
+    font-size: clamp(32px, 2.1vw, 46px);
+}
+
+body.ultrawide-mode .dashboard-hero-meta {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 10px;
+}
+
+body.ultrawide-mode .dashboard-mini-card {
+    padding: 12px;
+}
+
+body.ultrawide-mode .dashboard-mini-card strong {
+    font-size: 20px;
+}
+
+body.ultrawide-mode .dashboard-grid {
+    grid-template-columns: 0.9fr 1.1fr;
+    gap: 14px;
+}
+
+body.ultrawide-mode .phase-card,
+body.ultrawide-mode .phase-summary-card {
+    min-height: 0;
+    padding: 18px;
+}
+
+body.ultrawide-mode .phase-card-header h4 {
+    font-size: 38px;
+}
+
+body.ultrawide-mode .dashboard-metric-row strong {
+    font-size: clamp(26px, 1.5vw, 38px);
+}
+
+body.ultrawide-mode .dashboard-overview-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+}
+
+body.ultrawide-mode .dashboard-overview-groups {
+    gap: 14px;
+}
+
+body.ultrawide-mode .overview-department {
+    padding: 16px;
+}
+
+body.ultrawide-mode .overview-department-header h4 {
+    font-size: 32px;
+}
+
+body.ultrawide-mode .overview-card {
+    padding: 18px;
+    gap: 12px;
+}
+
+body.ultrawide-mode .overview-card-header h4 {
+    font-size: 26px;
+}
+
+body.ultrawide-mode .overview-card-meta {
+    font-size: 13px;
+}
+
+body.ultrawide-mode .overview-card-meta strong {
+    font-size: 15px;
+}
+
+body.ultrawide-mode .overview-card-product {
+    max-width: 420px;
+    font-size: 18px;
+}
+
+body.ultrawide-mode .overview-card-phase-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+body.ultrawide-mode .overview-card .phase-card {
+    padding: 14px;
+}
+
+body.ultrawide-mode .overview-card .phase-card-header h4 {
+    font-size: 22px;
+}
+
+body.ultrawide-mode .overview-card .dashboard-metric-row {
+    padding: 8px 0;
+}
+
+body.ultrawide-mode .overview-card .dashboard-metric-row strong {
+    font-size: 20px;
+}
+
+body.ultrawide-mode .dashboard-progress {
+    height: 14px;
+}
+
 @media (min-width: 1500px) and (min-height: 1000px) {
     body.tv-mode .dashboard-grid {
         grid-template-columns: 1fr 1fr;
@@ -905,8 +1190,17 @@ body.tv-mode .phase-panel .phase-card {
     }
 
     body.tv-mode .dashboard-hero-meta,
-    body.tv-mode .dashboard-debug-grid {
+    body.tv-mode .dashboard-debug-grid,
+    body.tv-mode .dashboard-overview-grid,
+    .overview-card-phase-grid {
         grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (max-width: 820px) {
+    .dashboard-overview-grid,
+    .overview-card-phase-grid {
+        grid-template-columns: 1fr;
     }
 }
 

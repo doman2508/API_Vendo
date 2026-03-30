@@ -142,6 +142,74 @@ async function getAccessToken(connection) {
     return accessToken;
 }
 
+async function fetchCursorTailRecords(connection, accessToken, apiPath, model, { pageSize = 200, tailPages = 2 } = {}) {
+    const baseModel = {
+        ...model,
+        Cursor: true,
+        CursorCzyZamknac: false,
+        Strona: {
+            Indeks: 0,
+            LiczbaRekordow: pageSize,
+        },
+    };
+    const firstResponse = await vendoPost(connection.baseUrl, apiPath, {
+        Token: accessToken,
+        Model: baseModel,
+    });
+    const firstRecords = Array.isArray(firstResponse?.Wynik?.Rekordy) ? firstResponse.Wynik.Rekordy : [];
+    const totalCount = Number(firstResponse?.Wynik?.Cursor?.LiczbaWszystkichRekordow) || firstRecords.length;
+    const cursorName = String(firstResponse?.Wynik?.Cursor?.Nazwa || "").trim();
+
+    if (!cursorName || totalCount <= pageSize) {
+        return firstRecords;
+    }
+
+    const firstOffset = Math.max(totalCount - (pageSize * Math.max(tailPages, 1)), 0);
+    const offsets = [];
+    for (let offset = firstOffset; offset < totalCount; offset += pageSize) {
+        offsets.push(offset);
+    }
+
+    const tailOffsets = offsets.filter((offset) => offset !== 0);
+    const recordMap = new Map();
+    const appendRecords = (records) => {
+        for (const record of records || []) {
+            const key = record?.ID != null
+                ? `${record.ID}`
+                : JSON.stringify([
+                    record?.KKWID,
+                    record?.OperacjaID,
+                    record?.StanowiskoID,
+                    record?.DataRozpoczecia,
+                ]);
+            if (!recordMap.has(key)) {
+                recordMap.set(key, record);
+            }
+        }
+    };
+
+    if (offsets.includes(0)) {
+        appendRecords(firstRecords);
+    }
+    for (let index = 0; index < tailOffsets.length; index += 1) {
+        const response = await vendoPost(connection.baseUrl, apiPath, {
+            Token: accessToken,
+            Model: {
+                ...baseModel,
+                CursorNazwa: cursorName,
+                CursorCzyZamknac: index === tailOffsets.length - 1,
+                Strona: {
+                    Indeks: tailOffsets[index],
+                    LiczbaRekordow: pageSize,
+                },
+            },
+        });
+        appendRecords(Array.isArray(response?.Wynik?.Rekordy) ? response.Wynik.Rekordy : []);
+    }
+
+    return [...recordMap.values()];
+}
+
 function buildProductsModel({ productCode, pageSize }) {
     const model = {
         Cursor: true,
@@ -270,6 +338,31 @@ function buildKkwLookupModel({ numbers }) {
     };
 }
 
+function buildKkwLookupByIdsModel({ ids, pageSize }) {
+    return {
+        Cursor: true,
+        CursorCzyZamknac: false,
+        Strona: {
+            Indeks: 0,
+            LiczbaRekordow: Number.isFinite(pageSize) ? pageSize : Math.max(ids.length * 2, 20),
+        },
+        ID: ids,
+        ZwracanePola: [
+            "ID",
+            "Numer",
+            "IloscOczekiwana",
+            "IloscPrzyjeta",
+            "IloscWykonana",
+            "ZlecenieID",
+            "ZlecenieNumer",
+            "TowarKod",
+            "TowarNazwa",
+            "PozycjaZleceniaID",
+            "PozycjaZleceniaNazwa",
+        ],
+    };
+}
+
 async function resolveKkwIdsByNumbers(connection, accessToken, numbers) {
     if (!numbers.length) {
         return [];
@@ -295,7 +388,7 @@ async function resolveKkwIdsByNumbers(connection, accessToken, numbers) {
     return numbers.map((number) => byNumber.get(number));
 }
 
-async function resolveKkwRecordsByNumbers(connection, accessToken, numbers) {
+async function resolveKkwRecordsByNumbers(connection, accessToken, numbers, { allowMissing = false } = {}) {
     if (!numbers.length) {
         return [];
     }
@@ -328,11 +421,44 @@ async function resolveKkwRecordsByNumbers(connection, accessToken, numbers) {
     );
 
     const missing = numbers.filter((number) => !byNumber.has(number));
-    if (missing.length) {
+    if (!allowMissing && missing.length) {
         throw new Error(`Nie znaleziono KKW o numerze: ${missing.join(", ")}`);
     }
 
+    if (allowMissing) {
+        return numbers.map((number) => byNumber.get(number)).filter(Boolean);
+    }
+
     return numbers.map((number) => byNumber.get(number));
+}
+
+async function resolveKkwRecordsByIds(connection, accessToken, ids, { allowMissing = false } = {}) {
+    if (!ids.length) {
+        return [];
+    }
+
+    const response = await vendoPost(connection.baseUrl, "/Produkcja/KKW/Lista", {
+        Token: accessToken,
+        Model: buildKkwLookupByIdsModel({ ids, pageSize: Math.max(ids.length * 2, 20) }),
+    });
+
+    const records = Array.isArray(response?.Wynik?.Rekordy) ? response.Wynik.Rekordy : [];
+    const byId = new Map(
+        records
+            .filter((item) => Number.isInteger(Number(item?.ID)))
+            .map((item) => [Number(item.ID), item])
+    );
+
+    const missing = ids.filter((id) => !byId.has(id));
+    if (!allowMissing && missing.length) {
+        throw new Error(`Nie znaleziono KKW o ID: ${missing.join(", ")}`);
+    }
+
+    if (allowMissing) {
+        return ids.map((id) => byId.get(id)).filter(Boolean);
+    }
+
+    return ids.map((id) => byId.get(id));
 }
 
 function buildKkwCostEstimateModel({ kkwId, operationsBy }) {
@@ -441,10 +567,18 @@ function buildCzasozliczarkaListModel({ operatorName, pageSize }) {
             "PracownikImieNazwisko",
             "DataCzasRozpoczecia",
             "DataCzasZakonczenia",
+            "IloscRBH",
+            "StartStop",
             "AktualnieWykonywana",
+            "ZlecenieID",
+            "ZlecenieNumer",
+            "ZlecenieOpis",
             "ObiektPowiazanyID",
+            "ObiektPowiazanyDataType",
             "ObiektPowiazanyNumer",
             "ObiektPowiazanyOpis",
+            "ObiektPowiazanyKlientKod",
+            "ObiektPowiazanyKlientNazwa",
             "Temat",
             "Opis",
         ],
@@ -529,15 +663,18 @@ function buildKkwStationsModel({ kkwId, operationId, pageSize }) {
     return model;
 }
 
-function buildKkwExecutionsModel({ kkwId, operationId, pageSize }) {
+function buildKkwExecutionsModel({ ids, kkwId, operationId, pageSize }) {
     const model = {
         Cursor: true,
         CursorCzyZamknac: false,
+        Trwajace: true,
+        Zakonczone: true,
+        Przezbrojenia: true,
+        Wykonania: true,
         Strona: {
             Indeks: 0,
             LiczbaRekordow: Number.isFinite(pageSize) ? pageSize : 200,
         },
-        KKWID: [Number(kkwId)],
         ZwracanePola: [
             "ID",
             "KKWID",
@@ -559,10 +696,21 @@ function buildKkwExecutionsModel({ kkwId, operationId, pageSize }) {
         ],
     };
 
+    const normalizedKkwId = Number(kkwId);
+    if (kkwId !== null && kkwId !== undefined && Number.isInteger(normalizedKkwId) && normalizedKkwId > 0) {
+        model.KKWID = [normalizedKkwId];
+    }
+
+    if (Array.isArray(ids) && ids.length) {
+        model.ID = ids
+            .map((value) => Number(value))
+            .filter((value) => Number.isInteger(value) && value > 0);
+    }
+
     return model;
 }
 
-function buildKkwWorkersModel({ kkwId, operationId, pageSize }) {
+function buildKkwWorkersModel({ ids, executionIds, kkwId, operationId, pageSize }) {
     const model = {
         Cursor: true,
         CursorCzyZamknac: false,
@@ -570,7 +718,6 @@ function buildKkwWorkersModel({ kkwId, operationId, pageSize }) {
             Indeks: 0,
             LiczbaRekordow: Number.isFinite(pageSize) ? pageSize : 200,
         },
-        KKWID: [Number(kkwId)],
         ZwracanePola: [
             "ID",
             "WykonanieKKWID",
@@ -590,11 +737,33 @@ function buildKkwWorkersModel({ kkwId, operationId, pageSize }) {
         ],
     };
 
-    if (Number.isInteger(Number(operationId))) {
-        model.OperacjaKKWID = [Number(operationId)];
+    const normalizedKkwId = Number(kkwId);
+    if (kkwId !== null && kkwId !== undefined && Number.isInteger(normalizedKkwId) && normalizedKkwId > 0) {
+        model.KKWID = [normalizedKkwId];
+    }
+
+    const normalizedOperationId = Number(operationId);
+    if (operationId !== null && operationId !== undefined && Number.isInteger(normalizedOperationId) && normalizedOperationId > 0) {
+        model.OperacjaKKWID = [normalizedOperationId];
+    }
+
+    if (Array.isArray(ids) && ids.length) {
+        model.ID = ids
+            .map((value) => Number(value))
+            .filter((value) => Number.isInteger(value) && value > 0);
+    }
+
+    if (Array.isArray(executionIds) && executionIds.length) {
+        model.WykonanieKKWID = executionIds
+            .map((value) => Number(value))
+            .filter((value) => Number.isInteger(value) && value > 0);
     }
 
     return model;
+}
+
+function isExecutionActive(entry) {
+    return Boolean(entry) && (!entry?.DataZakonczenia || normalizeText(entry?.Stan) === "trwajace");
 }
 
 function normalizeText(value) {
@@ -831,7 +1000,10 @@ function resolveActivePhase({ operation, worker, worklog, executionRecords, elap
 }
 
 function buildProductionDashboardMetrics({ kkwRecord, operation, station, worker, worklog, worklogEntries, executionRecords }) {
-    const startedAtRaw = worker?.DataRozpoczecia || worklog?.DataCzasRozpoczecia || null;
+    const activeExecution = (executionRecords || []).find((item) => isExecutionActive(item))
+        || (executionRecords || [])[0]
+        || null;
+    const startedAtRaw = worker?.DataRozpoczecia || activeExecution?.DataRozpoczecia || worklog?.DataCzasRozpoczecia || null;
     const startedAt = parseVendoDate(startedAtRaw);
     const now = new Date();
     const elapsedHours = startedAt && Number.isFinite(startedAt.getTime())
@@ -1751,6 +1923,224 @@ async function handleApiProductionDashboard(req, res) {
     }
 }
 
+async function handleApiProductionOverview(req, res) {
+    try {
+        const missing = requireServerConfig();
+        if (missing.length) {
+            sendJson(res, 500, {
+                error: `Brakuje konfiguracji serwera: ${missing.join(", ")}`,
+            });
+            return;
+        }
+
+        const body = await readJsonBody(req);
+        const serverConfig = getServerConfig();
+        const connection = {
+            baseUrl: serverConfig.apiUrl,
+            apiLogin: serverConfig.apiLogin,
+            apiPassword: serverConfig.apiPassword,
+            vendoUserLogin: String(body.vendoUserLogin || "").trim(),
+            vendoUserPassword: body.vendoUserPassword || "",
+        };
+
+        if (!connection.vendoUserLogin || !connection.vendoUserPassword) {
+            sendJson(res, 400, { error: "Podaj login i haslo Vendo." });
+            return;
+        }
+
+        const accessToken = await getAccessToken(connection);
+        const worklogResponse = await vendoPost(connection.baseUrl, "/Pracownicy/Czasozliczarka/Lista", {
+            Token: accessToken,
+            Model: buildCzasozliczarkaListModel({ operatorName: "", pageSize: 200 }),
+        });
+        const worklogEntries = Array.isArray(worklogResponse?.Wynik?.Rekordy) ? worklogResponse.Wynik.Rekordy : [];
+        const activeWorklogs = worklogEntries
+            .filter((item) => item?.AktualnieWykonywana)
+            .sort((left, right) => String(right?.DataCzasRozpoczecia || "").localeCompare(String(left?.DataCzasRozpoczecia || "")));
+        const productionWorklogs = activeWorklogs.filter((item) => Number(item?.ObiektPowiazanyDataType) === 156 && Number(item?.ObiektPowiazanyID) > 0);
+        const worklogWorkerIds = [...new Set(productionWorklogs
+            .map((item) => Number(item?.ObiektPowiazanyID))
+            .filter((id) => Number.isInteger(id) && id > 0))];
+
+        if (!productionWorklogs.length || !worklogWorkerIds.length) {
+            return sendJson(res, 200, {
+                summary: {
+                    activeStations: 0,
+                    activeOperators: 0,
+                    activeKkws: 0,
+                },
+                records: [],
+                debug: {
+                    activeWorklogs: activeWorklogs.length,
+                    productionWorklogs: productionWorklogs.length,
+                    matchedWorkers: worklogWorkerIds.length,
+                },
+            });
+        }
+
+        const workersResponse = await vendoPost(connection.baseUrl, "/Produkcja/KKW/PracownicyWykonanLista", {
+            Token: accessToken,
+            Model: buildKkwWorkersModel({ ids: worklogWorkerIds, kkwId: null, operationId: null, pageSize: Math.max(worklogWorkerIds.length + 20, 50) }),
+        });
+        const activeWorkers = (Array.isArray(workersResponse?.Wynik?.Rekordy) ? workersResponse.Wynik.Rekordy : [])
+            .sort((left, right) => String(right?.DataRozpoczecia || "").localeCompare(String(left?.DataRozpoczecia || "")));
+        const workerById = new Map(activeWorkers.map((item) => [Number(item?.ID), item]));
+        const executionIds = [...new Set(activeWorkers
+            .map((item) => Number(item?.WykonanieKKWID))
+            .filter((id) => Number.isInteger(id) && id > 0))];
+        const executionsResponse = executionIds.length
+            ? await vendoPost(connection.baseUrl, "/Produkcja/KKW/WykonaniaLista", {
+                Token: accessToken,
+                Model: buildKkwExecutionsModel({ ids: executionIds, kkwId: null, operationId: null, pageSize: Math.max(executionIds.length + 20, 50) }),
+            })
+            : { Wynik: { Rekordy: [] } };
+        const activeExecutions = (Array.isArray(executionsResponse?.Wynik?.Rekordy) ? executionsResponse.Wynik.Rekordy : [])
+            .sort((left, right) => String(right?.DataRozpoczecia || "").localeCompare(String(left?.DataRozpoczecia || "")));
+        const executionById = new Map(activeExecutions.map((item) => [Number(item?.ID), item]));
+        const activeKkwIds = [...new Set(activeExecutions
+            .map((item) => Number(item?.KKWID))
+            .concat(activeWorkers.map((item) => Number(item?.KKWID)))
+            .filter((id) => Number.isInteger(id) && id > 0))];
+
+        const kkwRecords = await resolveKkwRecordsByIds(connection, accessToken, activeKkwIds, { allowMissing: true });
+        const kkwRecordMap = new Map(kkwRecords.map((item) => [Number(item?.ID), item]));
+        const kkwContextEntries = await Promise.all(activeKkwIds.map(async (kkwId) => {
+            const kkwRecord = kkwRecordMap.get(kkwId) || null;
+
+            if (!Number.isInteger(kkwId)) {
+                return [kkwId, { operations: [], stations: [] }];
+            }
+
+            const [operationsResponse, stationsResponse, kkwExecutionsResponse, kkwWorkersResponse] = await Promise.all([
+                vendoPost(connection.baseUrl, "/Produkcja/KKW/OperacjeLista", {
+                    Token: accessToken,
+                    Model: buildKkwOperationsModel({ kkwId, pageSize: 200 }),
+                }),
+                vendoPost(connection.baseUrl, "/Produkcja/KKW/StanowiskaLista", {
+                    Token: accessToken,
+                    Model: buildKkwStationsModel({ kkwId, operationId: null, pageSize: 300 }),
+                }),
+                vendoPost(connection.baseUrl, "/Produkcja/KKW/WykonaniaLista", {
+                    Token: accessToken,
+                    Model: buildKkwExecutionsModel({ kkwId, operationId: null, pageSize: 300 }),
+                }),
+                vendoPost(connection.baseUrl, "/Produkcja/KKW/PracownicyWykonanLista", {
+                    Token: accessToken,
+                    Model: buildKkwWorkersModel({ kkwId, operationId: null, pageSize: 300 }),
+                }),
+            ]);
+
+            return [kkwId, {
+                operations: Array.isArray(operationsResponse?.Wynik?.Rekordy) ? operationsResponse.Wynik.Rekordy : [],
+                stations: Array.isArray(stationsResponse?.Wynik?.Rekordy) ? stationsResponse.Wynik.Rekordy : [],
+                executions: Array.isArray(kkwExecutionsResponse?.Wynik?.Rekordy) ? kkwExecutionsResponse.Wynik.Rekordy : [],
+                workers: Array.isArray(kkwWorkersResponse?.Wynik?.Rekordy) ? kkwWorkersResponse.Wynik.Rekordy : [],
+            }];
+        }));
+        const kkwContextMap = new Map(kkwContextEntries);
+
+        const records = productionWorklogs.map((worklog) => {
+            const worker = workerById.get(Number(worklog?.ObiektPowiazanyID)) || null;
+            const execution = executionById.get(Number(worker?.WykonanieKKWID)) || null;
+            const kkwId = Number(worker?.KKWID || execution?.KKWID) || null;
+            const kkwNumber = String(execution?.KKWNumer || worker?.KKWNumer || "").trim();
+            const kkwRecord = (kkwId && kkwRecordMap.get(kkwId)) || null;
+            const context = (kkwId && kkwContextMap.get(kkwId)) || { operations: [], stations: [], executions: [], workers: [] };
+            const operationName = execution?.OperacjaNazwa || worker?.OperacjaNazwa || String(worklog?.Temat || "");
+            const stationCode = execution?.StanowiskoKod || "";
+            const operation = pickBestOperation(context.operations, operationName, stationCode);
+            const station = pickBestStation(context.stations, stationCode, operationName);
+            const relatedExecutions = (context.executions || []).filter((item) => Number(item?.KKWID) === kkwId);
+            const executionRecords = pickExecutionRecords(relatedExecutions, operationName, stationCode);
+            const matchingWorkers = (context.workers || [])
+                .filter((item) => {
+                    const workerKkwMatches = Number(item?.KKWID) === kkwId;
+                    const operationMatches = !operationName || normalizeText(item?.OperacjaNazwa) === normalizeText(operationName);
+                    const operationIdMatches = execution?.OperacjaID && item?.OperacjaID
+                        ? Number(item?.OperacjaID) === Number(execution?.OperacjaID)
+                        : true;
+                    return workerKkwMatches && operationMatches && operationIdMatches;
+                });
+            const operatorNames = [...new Set(matchingWorkers
+                .map((item) => [item?.PracownikImie, item?.PracownikNazwisko].filter(Boolean).join(" ").trim())
+                .filter(Boolean))];
+            const metrics = buildProductionDashboardMetrics({
+                kkwRecord,
+                operation,
+                station,
+                worker: worker || matchingWorkers[0] || null,
+                worklog,
+                worklogEntries: productionWorklogs,
+                executionRecords,
+            });
+
+            return {
+                id: `${worklog?.ID || execution?.ID || `${kkwNumber}-${stationCode}`}`,
+                kkw: {
+                    id: Number(kkwRecord?.ID) || kkwId || null,
+                    number: kkwRecord?.Numer || kkwNumber || null,
+                    orderNumber: kkwRecord?.ZlecenieNumer || worklog?.ZlecenieNumer || null,
+                    productCode: kkwRecord?.TowarKod || null,
+                    productName: kkwRecord?.TowarNazwa || kkwRecord?.PozycjaZleceniaNazwa || null,
+                },
+                operator: {
+                    name: worklog?.PracownikImieNazwisko || operatorNames.join(", ") || [worker?.PracownikImie, worker?.PracownikNazwisko].filter(Boolean).join(" ") || null,
+                    login: worker?.PracownikLogin || null,
+                    count: operatorNames.length || (worker ? 1 : 0),
+                },
+                operation: {
+                    id: operation?.ID || execution?.OperacjaID || null,
+                    name: operation?.Nazwa || operationName || null,
+                    lp: operation?.Lp || execution?.OperacjaLp || null,
+                },
+                station: {
+                    id: station?.StanowiskoID || execution?.StanowiskoID || null,
+                    code: station?.StanowiskoKod || execution?.StanowiskoKod || null,
+                    name: station?.StanowiskoNazwa || execution?.StanowiskoNazwa || null,
+                },
+                metrics,
+                execution: {
+                    id: execution?.ID || null,
+                    kind: execution?.Rodzaj || null,
+                    startedAt: execution?.DataRozpoczecia || null,
+                    endedAt: execution?.DataZakonczenia || null,
+                    status: execution?.Stan || null,
+                },
+                worklog: {
+                    id: worklog?.ID || null,
+                    startedAt: worklog?.DataCzasRozpoczecia || null,
+                    topic: worklog?.Temat || null,
+                    orderNumber: worklog?.ZlecenieNumer || null,
+                },
+            };
+        });
+        const sortedRecords = records.sort((left, right) => {
+            const leftStation = String(left?.station?.code || "");
+            const rightStation = String(right?.station?.code || "");
+            return leftStation.localeCompare(rightStation, "pl");
+        });
+        const operatorSet = new Set(sortedRecords.flatMap((item) => String(item?.operator?.name || "").split(",").map((part) => part.trim()).filter(Boolean)));
+
+        sendJson(res, 200, {
+            summary: {
+                activeStations: sortedRecords.length,
+                activeOperators: operatorSet.size,
+                activeKkws: new Set(sortedRecords.map((item) => item?.kkw?.number).filter(Boolean)).size,
+            },
+            records: sortedRecords,
+                debug: {
+                    activeWorklogs: activeWorklogs.length,
+                    productionWorklogs: productionWorklogs.length,
+                    activeExecutions: activeExecutions.length,
+                    activeWorkers: activeWorkers.length,
+                    matchedKkws: activeKkwIds.length,
+                },
+            });
+    } catch (error) {
+        sendJson(res, 500, { error: error.message || "Nie udalo sie pobrac przegladu aktywnej produkcji." });
+    }
+}
+
 async function handleApiProductLocations(req, res) {
     try {
         const missing = requireServerConfig();
@@ -2111,6 +2501,11 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && req.url === "/api/production-dashboard") {
         await handleApiProductionDashboard(req, res);
+        return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/production-overview") {
+        await handleApiProductionOverview(req, res);
         return;
     }
 

@@ -16,6 +16,7 @@
             </p>
             <div class="hero-actions">
                 <button type="button" id="toggle-tv-mode">TV mode</button>
+                <button type="button" id="toggle-ultrawide-mode" class="ghost">3440 x 1440</button>
                 <a class="ghost nav-link" href="/console">Wroc do API Console</a>
             </div>
         </section>
@@ -49,7 +50,12 @@
                 <span id="dashboard-status-badge" class="status idle">Gotowe</span>
             </div>
 
-            <form id="production-dashboard-form" class="subform-grid">
+            <div class="view-switcher" id="production-dashboard-mode-switcher">
+                <button type="button" class="switch-button active" data-dashboard-mode="single">Stanowisko</button>
+                <button type="button" class="switch-button" data-dashboard-mode="overview">Przeglad produkcji</button>
+            </div>
+
+            <form id="production-dashboard-form" class="subform-grid production-dashboard-detail">
                 <label>
                     <span>Operator</span>
                     <input name="operatorName" type="text" value="Tomasz Domagala" required>
@@ -71,8 +77,11 @@
                 </div>
             </form>
 
-            <p class="note">
+            <p class="note production-dashboard-detail">
                 MVP sklada dane z aktywnej pracy pracownika, operacji KKW i stanowiska, zeby pokazac tempo pracy oraz przewidywany koniec.
+            </p>
+            <p id="production-overview-note" class="note hidden">
+                Przeglad produkcji pobiera automatycznie wszystkie aktywne stanowiska i nie korzysta z filtrow operatora ani KKW.
             </p>
         </section>
 
@@ -80,7 +89,7 @@
             <div id="production-dashboard-error" class="error hidden"></div>
             <div id="production-dashboard-summary" class="summary hidden"></div>
 
-            <section class="warehouse-panel">
+            <section class="warehouse-panel production-dashboard-detail">
                 <div class="warehouse-panel-header">
                     <h3>Aktualna praca</h3>
                     <p>Kto pracuje, na czym, od kiedy i z jakim kontekstem KKW.</p>
@@ -90,7 +99,7 @@
                 </div>
             </section>
 
-            <section class="dashboard-grid">
+            <section class="dashboard-grid production-dashboard-detail">
                 <section class="warehouse-panel">
                     <div class="warehouse-panel-header">
                         <h3>Przyrzad</h3>
@@ -110,6 +119,16 @@
                         Brak danych.
                     </div>
                 </section>
+            </section>
+
+            <section id="production-overview-section" class="warehouse-panel hidden">
+                <div class="warehouse-panel-header">
+                    <h3>Przeglad aktywnych stanowisk</h3>
+                    <p>Panel kierownika dla wszystkich aktywnych maszyn i operatorow.</p>
+                </div>
+                <div id="production-overview-grid" class="dashboard-overview-empty">
+                    Uruchom przeglad produkcji, aby pobrac aktywne stanowiska z Vendo.
+                </div>
             </section>
 
             <section class="warehouse-panel">
