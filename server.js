@@ -1830,13 +1830,6 @@ async function handleApiProductionDashboard(req, res) {
             return;
         }
 
-        const overviewCacheKey = `${connection.baseUrl}::${connection.vendoUserLogin}`.toLowerCase();
-        const cachedOverview = getCacheEntry(productionOverviewCache, overviewCacheKey, 30 * 1000);
-        if (cachedOverview) {
-            sendJson(res, 200, cachedOverview);
-            return;
-        }
-
         const accessToken = await getAccessToken(connection);
         const [kkwRecord] = await resolveKkwRecordsByNumbers(connection, accessToken, [kkwNumber]);
         const kkwId = Number(kkwRecord?.ID);
@@ -1992,6 +1985,13 @@ async function handleApiProductionOverview(req, res) {
 
         if (!connection.vendoUserLogin || !connection.vendoUserPassword) {
             sendJson(res, 400, { error: "Podaj login i haslo Vendo." });
+            return;
+        }
+
+        const overviewCacheKey = `${connection.baseUrl}::${connection.vendoUserLogin}`.toLowerCase();
+        const cachedOverview = getCacheEntry(productionOverviewCache, overviewCacheKey, 30 * 1000);
+        if (cachedOverview) {
+            sendJson(res, 200, cachedOverview);
             return;
         }
 
