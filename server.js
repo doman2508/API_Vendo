@@ -8,6 +8,46 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 const START_LOCAL_PATH = path.join(__dirname, "start-local.ps1");
 
 let cachedLocalServerConfig = null;
+const productionOverviewCache = new Map();
+const kkwOverviewContextCache = new Map();
+
+function getCacheEntry(cache, key, ttlMs) {
+    const entry = cache.get(key);
+    if (!entry) {
+        return null;
+    }
+
+    if ((Date.now() - entry.createdAt) > ttlMs) {
+        cache.delete(key);
+        return null;
+    }
+
+    return entry.value;
+}
+
+function setCacheEntry(cache, key, value) {
+    cache.set(key, {
+        createdAt: Date.now(),
+        value,
+    });
+    return value;
+}
+
+async function mapWithConcurrency(items, concurrency, mapper) {
+    const results = new Array(items.length);
+    let nextIndex = 0;
+
+    const workers = Array.from({ length: Math.max(1, Math.min(concurrency, items.length || 1)) }, async () => {
+        while (nextIndex < items.length) {
+            const currentIndex = nextIndex;
+            nextIndex += 1;
+            results[currentIndex] = await mapper(items[currentIndex], currentIndex);
+        }
+    });
+
+    await Promise.all(workers);
+    return results;
+}
 
 function parseStartLocalConfig() {
     if (cachedLocalServerConfig) {
@@ -1790,6 +1830,13 @@ async function handleApiProductionDashboard(req, res) {
             return;
         }
 
+        const overviewCacheKey = `${connection.baseUrl}::${connection.vendoUserLogin}`.toLowerCase();
+        const cachedOverview = getCacheEntry(productionOverviewCache, overviewCacheKey, 30 * 1000);
+        if (cachedOverview) {
+            sendJson(res, 200, cachedOverview);
+            return;
+        }
+
         const accessToken = await getAccessToken(connection);
         const [kkwRecord] = await resolveKkwRecordsByNumbers(connection, accessToken, [kkwNumber]);
         const kkwId = Number(kkwRecord?.ID);
@@ -1963,7 +2010,7 @@ async function handleApiProductionOverview(req, res) {
             .filter((id) => Number.isInteger(id) && id > 0))];
 
         if (!productionWorklogs.length || !worklogWorkerIds.length) {
-            return sendJson(res, 200, {
+            const emptyPayload = {
                 summary: {
                     activeStations: 0,
                     activeOperators: 0,
@@ -1975,7 +2022,9 @@ async function handleApiProductionOverview(req, res) {
                     productionWorklogs: productionWorklogs.length,
                     matchedWorkers: worklogWorkerIds.length,
                 },
-            });
+            };
+            setCacheEntry(productionOverviewCache, overviewCacheKey, emptyPayload);
+            return sendJson(res, 200, emptyPayload);
         }
 
         const workersResponse = await vendoPost(connection.baseUrl, "/Produkcja/KKW/PracownicyWykonanLista", {
@@ -2004,39 +2053,40 @@ async function handleApiProductionOverview(req, res) {
 
         const kkwRecords = await resolveKkwRecordsByIds(connection, accessToken, activeKkwIds, { allowMissing: true });
         const kkwRecordMap = new Map(kkwRecords.map((item) => [Number(item?.ID), item]));
-        const kkwContextEntries = await Promise.all(activeKkwIds.map(async (kkwId) => {
-            const kkwRecord = kkwRecordMap.get(kkwId) || null;
-
+        const kkwContextEntries = await mapWithConcurrency(activeKkwIds, 4, async (kkwId) => {
             if (!Number.isInteger(kkwId)) {
-                return [kkwId, { operations: [], stations: [] }];
+                return [kkwId, { operations: [], stations: [], executions: [] }];
             }
 
-            const [operationsResponse, stationsResponse, kkwExecutionsResponse, kkwWorkersResponse] = await Promise.all([
+            const contextCacheKey = `${connection.baseUrl}::${kkwId}`;
+            const cachedContext = getCacheEntry(kkwOverviewContextCache, contextCacheKey, 60 * 1000);
+            if (cachedContext) {
+                return [kkwId, cachedContext];
+            }
+
+            const [operationsResponse, stationsResponse, kkwExecutionsResponse] = await Promise.all([
                 vendoPost(connection.baseUrl, "/Produkcja/KKW/OperacjeLista", {
                     Token: accessToken,
-                    Model: buildKkwOperationsModel({ kkwId, pageSize: 200 }),
+                    Model: buildKkwOperationsModel({ kkwId, pageSize: 120 }),
                 }),
                 vendoPost(connection.baseUrl, "/Produkcja/KKW/StanowiskaLista", {
                     Token: accessToken,
-                    Model: buildKkwStationsModel({ kkwId, operationId: null, pageSize: 300 }),
+                    Model: buildKkwStationsModel({ kkwId, operationId: null, pageSize: 160 }),
                 }),
                 vendoPost(connection.baseUrl, "/Produkcja/KKW/WykonaniaLista", {
                     Token: accessToken,
-                    Model: buildKkwExecutionsModel({ kkwId, operationId: null, pageSize: 300 }),
-                }),
-                vendoPost(connection.baseUrl, "/Produkcja/KKW/PracownicyWykonanLista", {
-                    Token: accessToken,
-                    Model: buildKkwWorkersModel({ kkwId, operationId: null, pageSize: 300 }),
+                    Model: buildKkwExecutionsModel({ kkwId, operationId: null, pageSize: 200 }),
                 }),
             ]);
 
-            return [kkwId, {
+            const context = {
                 operations: Array.isArray(operationsResponse?.Wynik?.Rekordy) ? operationsResponse.Wynik.Rekordy : [],
                 stations: Array.isArray(stationsResponse?.Wynik?.Rekordy) ? stationsResponse.Wynik.Rekordy : [],
                 executions: Array.isArray(kkwExecutionsResponse?.Wynik?.Rekordy) ? kkwExecutionsResponse.Wynik.Rekordy : [],
-                workers: Array.isArray(kkwWorkersResponse?.Wynik?.Rekordy) ? kkwWorkersResponse.Wynik.Rekordy : [],
-            }];
-        }));
+            };
+
+            return [kkwId, setCacheEntry(kkwOverviewContextCache, contextCacheKey, context)];
+        });
         const kkwContextMap = new Map(kkwContextEntries);
 
         const records = productionWorklogs.map((worklog) => {
@@ -2045,14 +2095,14 @@ async function handleApiProductionOverview(req, res) {
             const kkwId = Number(worker?.KKWID || execution?.KKWID) || null;
             const kkwNumber = String(execution?.KKWNumer || worker?.KKWNumer || "").trim();
             const kkwRecord = (kkwId && kkwRecordMap.get(kkwId)) || null;
-            const context = (kkwId && kkwContextMap.get(kkwId)) || { operations: [], stations: [], executions: [], workers: [] };
+            const context = (kkwId && kkwContextMap.get(kkwId)) || { operations: [], stations: [], executions: [] };
             const operationName = execution?.OperacjaNazwa || worker?.OperacjaNazwa || String(worklog?.Temat || "");
             const stationCode = execution?.StanowiskoKod || "";
             const operation = pickBestOperation(context.operations, operationName, stationCode);
             const station = pickBestStation(context.stations, stationCode, operationName);
             const relatedExecutions = (context.executions || []).filter((item) => Number(item?.KKWID) === kkwId);
             const executionRecords = pickExecutionRecords(relatedExecutions, operationName, stationCode);
-            const matchingWorkers = (context.workers || [])
+            const matchingWorkers = activeWorkers
                 .filter((item) => {
                     const workerKkwMatches = Number(item?.KKWID) === kkwId;
                     const operationMatches = !operationName || normalizeText(item?.OperacjaNazwa) === normalizeText(operationName);
@@ -2121,21 +2171,25 @@ async function handleApiProductionOverview(req, res) {
         });
         const operatorSet = new Set(sortedRecords.flatMap((item) => String(item?.operator?.name || "").split(",").map((part) => part.trim()).filter(Boolean)));
 
-        sendJson(res, 200, {
+        const payload = {
             summary: {
                 activeStations: sortedRecords.length,
                 activeOperators: operatorSet.size,
                 activeKkws: new Set(sortedRecords.map((item) => item?.kkw?.number).filter(Boolean)).size,
             },
             records: sortedRecords,
-                debug: {
-                    activeWorklogs: activeWorklogs.length,
-                    productionWorklogs: productionWorklogs.length,
-                    activeExecutions: activeExecutions.length,
-                    activeWorkers: activeWorkers.length,
-                    matchedKkws: activeKkwIds.length,
-                },
-            });
+            debug: {
+                activeWorklogs: activeWorklogs.length,
+                productionWorklogs: productionWorklogs.length,
+                activeExecutions: activeExecutions.length,
+                activeWorkers: activeWorkers.length,
+                matchedKkws: activeKkwIds.length,
+                cachedKkws: activeKkwIds.filter((kkwId) => getCacheEntry(kkwOverviewContextCache, `${connection.baseUrl}::${kkwId}`, 60 * 1000)).length,
+            },
+        };
+
+        setCacheEntry(productionOverviewCache, overviewCacheKey, payload);
+        sendJson(res, 200, payload);
     } catch (error) {
         sendJson(res, 500, { error: error.message || "Nie udalo sie pobrac przegladu aktywnej produkcji." });
     }
