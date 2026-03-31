@@ -14,6 +14,7 @@ const dashboardOverviewPrepStationsInput = document.getElementById("overview-pre
 const dashboardScreenSettingsPinInput = document.getElementById("screen-settings-pin");
 const dashboardOverviewRefreshState = document.getElementById("production-overview-refresh-state");
 const dashboardOverviewAutoRefreshInput = document.getElementById("production-overview-auto-refresh");
+const dashboardOverviewDensityInput = document.getElementById("production-overview-density");
 const dashboardOverviewFilterButtons = Array.from(document.querySelectorAll("[data-overview-filter]"));
 const dashboardCollectionTitle = document.getElementById("production-collection-title");
 const dashboardCollectionCopy = document.getElementById("production-collection-copy");
@@ -45,6 +46,7 @@ let dashboardScreenStations = [];
 let dashboardOverviewPrepStations = [];
 let dashboardOverviewFilter = "all";
 let dashboardOverviewAutoRefresh = true;
+let dashboardOverviewDensity = "standard";
 let dashboardOverviewLastFetchedAt = null;
 let dashboardOverviewNextRefreshAt = null;
 let dashboardRunInFlight = false;
@@ -290,20 +292,28 @@ function dashboardInitOverviewSettings() {
 
     let autoRefreshValue = "1";
     let filterValue = "all";
+    let densityValue = "standard";
 
     try {
         autoRefreshValue = window.localStorage.getItem("productionDashboardOverviewAutoRefresh") || "1";
         filterValue = window.localStorage.getItem("productionDashboardOverviewFilter") || "all";
+        densityValue = window.localStorage.getItem("productionDashboardOverviewDensity") || "standard";
     } catch (_error) {
         autoRefreshValue = "1";
         filterValue = "all";
+        densityValue = "standard";
     }
 
     dashboardOverviewAutoRefresh = autoRefreshValue !== "0";
     dashboardOverviewFilter = filterValue;
+    dashboardOverviewDensity = ["standard", "dense", "compact"].includes(densityValue) ? densityValue : "standard";
 
     if (dashboardOverviewAutoRefreshInput) {
         dashboardOverviewAutoRefreshInput.checked = dashboardOverviewAutoRefresh;
+    }
+
+    if (dashboardOverviewDensityInput) {
+        dashboardOverviewDensityInput.value = dashboardOverviewDensity;
     }
 }
 
@@ -1278,7 +1288,7 @@ function renderProductionOverview(data) {
             `;
         });
 
-    dashboardOverviewGrid.className = "dashboard-overview-groups";
+    dashboardOverviewGrid.className = `dashboard-overview-groups overview-density-${dashboardOverviewDensity}`;
     dashboardOverviewGrid.innerHTML = sections.join("");
 }
 
@@ -1492,9 +1502,13 @@ if (dashboardScreenStationsInput) {
 }
 
 if (dashboardScreenSettingsPinInput) {
-    dashboardScreenSettingsPinInput.addEventListener("change", () => {
+    const saveScreenSettingsPin = () => {
         dashboardSaveScreenSettingsPin(dashboardScreenSettingsPinInput.value);
-    });
+    };
+
+    dashboardScreenSettingsPinInput.addEventListener("input", saveScreenSettingsPin);
+    dashboardScreenSettingsPinInput.addEventListener("change", saveScreenSettingsPin);
+    dashboardScreenSettingsPinInput.addEventListener("blur", saveScreenSettingsPin);
 }
 
 if (dashboardOverviewAutoRefreshInput) {
@@ -1514,6 +1528,24 @@ if (dashboardOverviewAutoRefreshInput) {
             dashboardOverviewRefreshState.textContent = dashboardFormatOverviewRefreshState();
         }
         dashboardApplyScreenLayout();
+    });
+}
+
+if (dashboardOverviewDensityInput) {
+    dashboardOverviewDensityInput.addEventListener("change", () => {
+        dashboardOverviewDensity = ["standard", "dense", "compact"].includes(dashboardOverviewDensityInput.value)
+            ? dashboardOverviewDensityInput.value
+            : "standard";
+
+        try {
+            window.localStorage.setItem("productionDashboardOverviewDensity", dashboardOverviewDensity);
+        } catch (_error) {
+            // Ignore storage errors in kiosk-like environments.
+        }
+
+        if (dashboardMode === "overview" && dashboardCurrentData) {
+            renderProductionOverview(dashboardCurrentData);
+        }
     });
 }
 

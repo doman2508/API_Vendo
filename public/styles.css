@@ -770,7 +770,7 @@ body.screen-mode #production-overview-section > .warehouse-panel-header {
 .dashboard-overview-grid {
     display: grid;
     gap: 18px;
-    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
 }
 
 .dashboard-overview-groups {
@@ -827,6 +827,18 @@ body.screen-mode #production-overview-section > .warehouse-panel-header {
     font-size: 14px;
 }
 
+.overview-density-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--muted);
+    font-size: 14px;
+}
+
+.overview-density-control select {
+    min-width: 128px;
+}
+
 .overview-refresh-meta {
     color: var(--muted);
     font-size: 13px;
@@ -877,6 +889,89 @@ body.screen-mode #production-overview-section > .warehouse-panel-header {
     background: rgba(255, 255, 255, 0.88);
     display: grid;
     gap: 16px;
+}
+
+.dashboard-overview-groups.overview-density-dense .dashboard-overview-grid {
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    gap: 14px;
+}
+
+.dashboard-overview-groups.overview-density-dense .overview-card {
+    padding: 14px;
+    gap: 12px;
+}
+
+.dashboard-overview-groups.overview-density-dense .overview-card-header h4 {
+    font-size: 20px;
+}
+
+.dashboard-overview-groups.overview-density-dense .overview-card-product {
+    font-size: 14px;
+    max-width: 260px;
+}
+
+.dashboard-overview-groups.overview-density-dense .overview-card-meta,
+.dashboard-overview-groups.overview-density-dense .overview-card-meta strong {
+    font-size: 13px;
+}
+
+.dashboard-overview-groups.overview-density-dense .overview-card-production .dashboard-metric-row strong {
+    font-size: 18px;
+}
+
+.dashboard-overview-groups.overview-density-dense .overview-card-prep-header strong,
+.dashboard-overview-groups.overview-density-dense .overview-card-prep-item strong {
+    font-size: 16px;
+}
+
+.dashboard-overview-groups.overview-density-compact .dashboard-overview-grid {
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 12px;
+}
+
+.dashboard-overview-groups.overview-density-compact .overview-card {
+    padding: 12px;
+    gap: 10px;
+    border-radius: 18px;
+}
+
+.dashboard-overview-groups.overview-density-compact .overview-card-header h4 {
+    font-size: 18px;
+}
+
+.dashboard-overview-groups.overview-density-compact .overview-card-product {
+    font-size: 13px;
+    max-width: 220px;
+}
+
+.dashboard-overview-groups.overview-density-compact .overview-card-meta,
+.dashboard-overview-groups.overview-density-compact .overview-card-meta strong {
+    font-size: 12px;
+}
+
+.dashboard-overview-groups.overview-density-compact .overview-card-prep {
+    padding: 10px 12px;
+}
+
+.dashboard-overview-groups.overview-density-compact .overview-card-prep-header strong,
+.dashboard-overview-groups.overview-density-compact .overview-card-prep-item strong {
+    font-size: 14px;
+}
+
+.dashboard-overview-groups.overview-density-compact .overview-card-production {
+    padding: 14px;
+}
+
+.dashboard-overview-groups.overview-density-compact .overview-card-production .phase-card-header h4 {
+    font-size: 22px;
+}
+
+.dashboard-overview-groups.overview-density-compact .overview-card-production .dashboard-metric-row {
+    padding: 7px 0;
+}
+
+.dashboard-overview-groups.overview-density-compact .overview-card-production .dashboard-metric-row strong {
+    font-size: 16px;
 }
 
 .overview-card-tone-late {
