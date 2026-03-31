@@ -1075,6 +1075,12 @@ function buildProductionDashboardMetrics({ kkwRecord, operation, station, worker
     const expectedDurationHours = expectedRate > 0 && plannedQuantity > 0
         ? plannedQuantity / expectedRate
         : null;
+    const remainingExpectedDurationHours = expectedRate > 0 && remainingQuantity > 0
+        ? remainingQuantity / expectedRate
+        : 0;
+    const currentExpectedWorkHours = remainingExpectedDurationHours > 0
+        ? remainingExpectedDurationHours
+        : expectedDurationHours;
     const plannedTotalHours = expectedDurationHours !== null
         ? expectedDurationHours + plannedPrepHours
         : (plannedPrepHours > 0 ? plannedPrepHours : null);
@@ -1087,12 +1093,9 @@ function buildProductionDashboardMetrics({ kkwRecord, operation, station, worker
     const prepProgressPercent = plannedPrepHours > 0 && prepElapsedHours !== null
         ? (prepElapsedHours / plannedPrepHours) * 100
         : 0;
-    const productionProgressPercent = expectedDurationHours && expectedDurationHours > 0 && productionElapsedHours !== null
-        ? (productionElapsedHours / expectedDurationHours) * 100
+    const productionProgressPercent = currentExpectedWorkHours && currentExpectedWorkHours > 0 && productionElapsedHours !== null
+        ? (productionElapsedHours / currentExpectedWorkHours) * 100
         : 0;
-    const expectedFinishAt = startedAt && expectedDurationHours !== null
-        ? new Date(startedAt.getTime() + plannedTotalHours * 36e5)
-        : null;
     const predictedFinishAt = actualRate > 0
         ? new Date(now.getTime() + (remainingQuantity / actualRate) * 36e5)
         : null;
@@ -1118,8 +1121,14 @@ function buildProductionDashboardMetrics({ kkwRecord, operation, station, worker
         executionRecords,
         elapsedHours,
         plannedPrepHours,
-        plannedWorkHours: expectedDurationHours,
+        plannedWorkHours: currentExpectedWorkHours,
     });
+    const expectedFinishOffsetHours = activePhase?.key === "prep"
+        ? plannedPrepHours + remainingExpectedDurationHours
+        : remainingExpectedDurationHours;
+    const expectedFinishAt = startedAt && expectedRate > 0
+        ? new Date(startedAt.getTime() + expectedFinishOffsetHours * 36e5)
+        : null;
     const prepExecution = (executionRecords || []).find((entry) => normalizeText(entry?.Rodzaj) === "przezbrojenie") || null;
     const productionExecution = (executionRecords || []).find((entry) => normalizeText(entry?.Rodzaj) === "wykonanie" && !entry?.DataZakonczenia)
         || (executionRecords || []).find((entry) => normalizeText(entry?.Rodzaj) === "wykonanie")
@@ -1146,17 +1155,21 @@ function buildProductionDashboardMetrics({ kkwRecord, operation, station, worker
         : prepDurationFromLogs !== null
             ? prepDurationFromLogs
         : prepElapsedHours;
-    const resolvedProductionElapsedHours = productionDurationFromExecutions !== null
-        ? productionDurationFromExecutions
-        : productionDurationFromLogs !== null
-            ? productionDurationFromLogs
-        : productionElapsedHours;
+    const resolvedProductionElapsedHours = activePhase?.key === "prep"
+        ? 0
+        : productionDurationFromExecutions !== null
+            ? productionDurationFromExecutions
+            : productionDurationFromLogs !== null
+                ? productionDurationFromLogs
+                : productionElapsedHours;
     const resolvedPrepProgressPercent = plannedPrepHours > 0 && resolvedPrepElapsedHours !== null
         ? (resolvedPrepElapsedHours / plannedPrepHours) * 100
         : prepProgressPercent;
-    const resolvedProductionProgressPercent = expectedDurationHours && expectedDurationHours > 0 && resolvedProductionElapsedHours !== null
-        ? (resolvedProductionElapsedHours / expectedDurationHours) * 100
-        : productionProgressPercent;
+    const resolvedProductionProgressPercent = activePhase?.key === "prep"
+        ? 0
+        : currentExpectedWorkHours && currentExpectedWorkHours > 0 && resolvedProductionElapsedHours !== null
+            ? (resolvedProductionElapsedHours / currentExpectedWorkHours) * 100
+            : productionProgressPercent;
 
     let status = "Brak danych";
     let statusTone = "idle";
@@ -1194,6 +1207,8 @@ function buildProductionDashboardMetrics({ kkwRecord, operation, station, worker
         expectedRate,
         actualRate,
         expectedDurationHours,
+        remainingExpectedDurationHours,
+        currentExpectedWorkHours,
         expectedFinishAt: expectedFinishAt ? expectedFinishAt.toISOString() : null,
         predictedFinishAt: predictedFinishAt ? predictedFinishAt.toISOString() : null,
         progressPercent,
@@ -1201,7 +1216,7 @@ function buildProductionDashboardMetrics({ kkwRecord, operation, station, worker
         status,
         statusTone,
         plannedPrepMinutes: rawPlannedPrepMinutes,
-        plannedWorkHours: expectedDurationHours,
+        plannedWorkHours: currentExpectedWorkHours,
         plannedTotalHours,
         prepElapsedHours: resolvedPrepElapsedHours,
         productionElapsedHours: resolvedProductionElapsedHours,

@@ -8,20 +8,48 @@ const dashboardMetrics = document.getElementById("production-dashboard-metrics")
 const dashboardTimeline = document.getElementById("production-dashboard-timeline");
 const dashboardOverviewSection = document.getElementById("production-overview-section");
 const dashboardOverviewGrid = document.getElementById("production-overview-grid");
+const dashboardOverviewSettings = document.getElementById("production-overview-settings");
+const dashboardScreenStationsInput = document.getElementById("screen-stations");
+const dashboardOverviewPrepStationsInput = document.getElementById("overview-prep-stations");
+const dashboardScreenSettingsPinInput = document.getElementById("screen-settings-pin");
+const dashboardOverviewRefreshState = document.getElementById("production-overview-refresh-state");
+const dashboardOverviewAutoRefreshInput = document.getElementById("production-overview-auto-refresh");
+const dashboardOverviewFilterButtons = Array.from(document.querySelectorAll("[data-overview-filter]"));
+const dashboardCollectionTitle = document.getElementById("production-collection-title");
+const dashboardCollectionCopy = document.getElementById("production-collection-copy");
 const dashboardDebug = document.getElementById("production-dashboard-debug");
 const dashboardRawOutput = document.getElementById("production-dashboard-raw-output");
 const dashboardConnectionForm = document.getElementById("connection-form");
 const dashboardClearButton = document.getElementById("clear-button");
 const dashboardToggleTvModeButton = document.getElementById("toggle-tv-mode");
 const dashboardToggleUltrawideModeButton = document.getElementById("toggle-ultrawide-mode");
+const dashboardScreenTopbar = document.getElementById("production-screen-topbar");
+const dashboardScreenTitle = document.getElementById("production-screen-title");
+const dashboardScreenMeta = document.getElementById("production-screen-meta");
+const dashboardScreenSettingsToggleButton = document.getElementById("screen-settings-toggle");
+const dashboardScreenTvToggleButton = document.getElementById("screen-tv-toggle");
+const dashboardScreenUltrawideToggleButton = document.getElementById("screen-ultrawide-toggle");
 const dashboardModeButtons = Array.from(document.querySelectorAll("[data-dashboard-mode]"));
 const dashboardDetailSections = Array.from(document.querySelectorAll(".production-dashboard-detail"));
+const dashboardHeroSection = document.querySelector(".hero");
+const dashboardConfigPanels = Array.from(document.querySelectorAll(".dashboard-config-panel"));
 const dashboardOverviewNote = document.getElementById("production-overview-note");
 let dashboardCurrentData = null;
 let dashboardClockTimer = null;
 let dashboardTvMode = false;
 let dashboardUltrawideMode = false;
 let dashboardMode = "single";
+let dashboardScreenSettingsOpen = false;
+let dashboardScreenSettingsPin = "";
+let dashboardScreenStations = [];
+let dashboardOverviewPrepStations = [];
+let dashboardOverviewFilter = "all";
+let dashboardOverviewAutoRefresh = true;
+let dashboardOverviewLastFetchedAt = null;
+let dashboardOverviewNextRefreshAt = null;
+let dashboardRunInFlight = false;
+
+const DASHBOARD_OVERVIEW_REFRESH_MS = 30 * 1000;
 
 const dashboardNumberFormatter = new Intl.NumberFormat("pl-PL", {
     minimumFractionDigits: 0,
@@ -44,6 +72,11 @@ function dashboardApplyTvMode(enabled) {
     if (dashboardToggleTvModeButton) {
         dashboardToggleTvModeButton.textContent = dashboardTvMode ? "Wyjdz z TV mode" : "TV mode";
         dashboardToggleTvModeButton.classList.toggle("ghost", !dashboardTvMode);
+    }
+
+    if (dashboardScreenTvToggleButton) {
+        dashboardScreenTvToggleButton.textContent = dashboardTvMode ? "Wyjdz z TV mode" : "TV mode";
+        dashboardScreenTvToggleButton.classList.toggle("ghost", !dashboardTvMode);
     }
 
     try {
@@ -82,6 +115,11 @@ async function dashboardApplyUltrawideMode(enabled) {
         dashboardToggleUltrawideModeButton.classList.toggle("ghost", !dashboardUltrawideMode);
     }
 
+    if (dashboardScreenUltrawideToggleButton) {
+        dashboardScreenUltrawideToggleButton.textContent = dashboardUltrawideMode ? "Wyjdz z 3440 x 1440" : "3440 x 1440";
+        dashboardScreenUltrawideToggleButton.classList.toggle("ghost", !dashboardUltrawideMode);
+    }
+
     try {
         window.localStorage.setItem("productionDashboardUltrawideMode", dashboardUltrawideMode ? "1" : "0");
     } catch (_error) {
@@ -91,15 +129,62 @@ async function dashboardApplyUltrawideMode(enabled) {
     await dashboardToggleFullscreen(dashboardUltrawideMode);
 }
 
+function dashboardFormatScreenStationsLabel() {
+    if (!dashboardScreenStations.length) {
+        return "Stanowiska: nie wybrano";
+    }
+
+    return `Stanowiska: ${dashboardScreenStations.join(", ")}`;
+}
+
+function dashboardApplyScreenLayout() {
+    const isScreenMode = dashboardMode === "screen";
+    document.body.classList.toggle("screen-mode", isScreenMode);
+
+    if (dashboardHeroSection) {
+        dashboardHeroSection.classList.toggle("hidden", isScreenMode);
+    }
+
+    if (dashboardScreenTopbar) {
+        dashboardScreenTopbar.classList.toggle("hidden", !isScreenMode);
+    }
+
+    for (const panel of dashboardConfigPanels) {
+        panel.classList.toggle("hidden", isScreenMode && !dashboardScreenSettingsOpen);
+    }
+
+    if (dashboardScreenSettingsToggleButton) {
+        dashboardScreenSettingsToggleButton.textContent = dashboardScreenSettingsOpen ? "Ukryj ustawienia" : "Ustawienia";
+    }
+
+    if (dashboardScreenTitle) {
+        dashboardScreenTitle.textContent = "Ekran produkcyjny";
+    }
+
+    if (dashboardScreenMeta) {
+        const refreshText = dashboardOverviewRefreshState?.textContent?.trim() || "Ostatnia aktualizacja: -";
+        dashboardScreenMeta.textContent = `${dashboardFormatScreenStationsLabel()} • ${refreshText}`;
+    }
+}
+
+function dashboardSaveScreenSettingsPin(value) {
+    dashboardScreenSettingsPin = String(value || "").trim();
+    try {
+        window.localStorage.setItem("productionDashboardScreenSettingsPin", dashboardScreenSettingsPin);
+    } catch (_error) {
+        // Ignore storage errors in kiosk-like environments.
+    }
+}
+
 function dashboardApplyMode(mode) {
-    dashboardMode = mode === "overview" ? "overview" : "single";
+    dashboardMode = ["overview", "screen"].includes(mode) ? mode : "single";
 
     for (const button of dashboardModeButtons) {
         const isActive = button.dataset.dashboardMode === dashboardMode;
         button.classList.toggle("active", isActive);
     }
 
-    const showOverview = dashboardMode === "overview";
+    const showOverview = dashboardMode === "overview" || dashboardMode === "screen";
     for (const section of dashboardDetailSections) {
         section.classList.toggle("hidden", showOverview);
     }
@@ -110,7 +195,34 @@ function dashboardApplyMode(mode) {
 
     if (dashboardOverviewNote) {
         dashboardOverviewNote.classList.toggle("hidden", !showOverview);
+        dashboardOverviewNote.textContent = dashboardMode === "screen"
+            ? "Ekran produkcyjny pokazuje tylko stanowiska przypisane do tego monitora i nie korzysta z filtrow operatora ani KKW."
+            : "Przeglad produkcji pobiera automatycznie wszystkie aktywne stanowiska i nie korzysta z filtrow operatora ani KKW.";
     }
+
+    if (dashboardOverviewSettings) {
+        dashboardOverviewSettings.classList.toggle("hidden", !showOverview);
+    }
+
+    for (const button of dashboardOverviewFilterButtons) {
+        const isActive = button.dataset.overviewFilter === dashboardOverviewFilter;
+        button.classList.toggle("active", isActive && dashboardMode === "overview");
+        button.classList.toggle("hidden", dashboardMode !== "overview");
+    }
+
+    if (dashboardCollectionTitle) {
+        dashboardCollectionTitle.textContent = dashboardMode === "screen"
+            ? "Ekran produkcyjny"
+            : "Przeglad aktywnych stanowisk";
+    }
+
+    if (dashboardCollectionCopy) {
+        dashboardCollectionCopy.textContent = dashboardMode === "screen"
+            ? "Widok dla stanowisk przypisanych do konkretnego monitora produkcyjnego."
+            : "Panel kierownika dla wszystkich aktywnych maszyn i operatorow.";
+    }
+
+    dashboardApplyScreenLayout();
 }
 
 function dashboardInitTvMode() {
@@ -127,6 +239,72 @@ function dashboardInitTvMode() {
 
     dashboardApplyTvMode(storedValue === "1");
     void dashboardApplyUltrawideMode(ultrawideValue === "1");
+}
+
+function dashboardParsePrepStations(value) {
+    return String(value || "")
+        .split(/[,\n;]+/)
+        .map((item) => item.trim().toUpperCase())
+        .filter(Boolean);
+}
+
+function dashboardSavePrepStations(value) {
+    dashboardOverviewPrepStations = dashboardParsePrepStations(value);
+    try {
+        window.localStorage.setItem("productionDashboardPrepStations", dashboardOverviewPrepStations.join(", "));
+    } catch (_error) {
+        // Ignore storage errors in kiosk-like environments.
+    }
+}
+
+function dashboardInitOverviewSettings() {
+    let storedValue = "";
+    let screenStationsValue = "";
+    let screenSettingsPinValue = "";
+
+    try {
+        storedValue = window.localStorage.getItem("productionDashboardPrepStations") || "";
+        screenStationsValue = window.localStorage.getItem("productionDashboardScreenStations") || "";
+        screenSettingsPinValue = window.localStorage.getItem("productionDashboardScreenSettingsPin") || "";
+    } catch (_error) {
+        storedValue = "";
+        screenStationsValue = "";
+        screenSettingsPinValue = "";
+    }
+
+    dashboardOverviewPrepStations = dashboardParsePrepStations(storedValue);
+    dashboardScreenStations = dashboardParsePrepStations(screenStationsValue);
+    dashboardScreenSettingsPin = String(screenSettingsPinValue || "").trim();
+
+    if (dashboardOverviewPrepStationsInput) {
+        dashboardOverviewPrepStationsInput.value = dashboardOverviewPrepStations.join(", ");
+    }
+
+    if (dashboardScreenStationsInput) {
+        dashboardScreenStationsInput.value = dashboardScreenStations.join(", ");
+    }
+
+    if (dashboardScreenSettingsPinInput) {
+        dashboardScreenSettingsPinInput.value = dashboardScreenSettingsPin;
+    }
+
+    let autoRefreshValue = "1";
+    let filterValue = "all";
+
+    try {
+        autoRefreshValue = window.localStorage.getItem("productionDashboardOverviewAutoRefresh") || "1";
+        filterValue = window.localStorage.getItem("productionDashboardOverviewFilter") || "all";
+    } catch (_error) {
+        autoRefreshValue = "1";
+        filterValue = "all";
+    }
+
+    dashboardOverviewAutoRefresh = autoRefreshValue !== "0";
+    dashboardOverviewFilter = filterValue;
+
+    if (dashboardOverviewAutoRefreshInput) {
+        dashboardOverviewAutoRefreshInput.checked = dashboardOverviewAutoRefresh;
+    }
 }
 
 function dashboardFormatNumber(value, suffix = "") {
@@ -337,9 +515,65 @@ function dashboardGetPrepBadge(metrics) {
     return { label: "Nieaktywny", className: "phase-badge waiting" };
 }
 
+function dashboardFormatOverviewRefreshState() {
+    if (!dashboardOverviewLastFetchedAt) {
+        return "Ostatnia aktualizacja: -";
+    }
+
+    const suffix = dashboardOverviewAutoRefresh && dashboardOverviewNextRefreshAt
+        ? ` • odswieza za ${Math.max(Math.ceil((dashboardOverviewNextRefreshAt - Date.now()) / 1000), 0)}s`
+        : "";
+
+    return `Ostatnia aktualizacja: ${dashboardFormatDateTimeSeconds(dashboardOverviewLastFetchedAt)}${suffix}`;
+}
+
+function dashboardGetPrepResult(metrics) {
+    const plannedPrepMinutes = Number(metrics?.plannedPrepMinutes || 0);
+    const prepElapsedHours = metrics?.prepElapsedHours !== null && metrics?.prepElapsedHours !== undefined
+        ? Number(metrics.prepElapsedHours)
+        : null;
+
+    if (plannedPrepMinutes <= 0 || prepElapsedHours === null || Number.isNaN(prepElapsedHours)) {
+        return {
+            label: "Brak wyniku",
+            remaining: "-",
+            className: "phase-badge waiting",
+        };
+    }
+
+    const plannedPrepHours = plannedPrepMinutes / 60;
+    const deltaHours = prepElapsedHours - plannedPrepHours;
+
+    if (Math.abs(deltaHours) < (1 / 120)) {
+        return {
+            label: "Rowno z norma",
+            remaining: "0h 00m",
+            className: "phase-badge complete",
+        };
+    }
+
+    if (deltaHours < 0) {
+        return {
+            label: "Ponizej normy",
+            remaining: dashboardFormatDurationHours(Math.abs(deltaHours)),
+            className: "phase-badge loading",
+        };
+    }
+
+    return {
+        label: "Przekroczono norme",
+        remaining: `-${dashboardFormatDurationHours(deltaHours)}`,
+        className: "phase-badge error",
+    };
+}
+
 function dashboardGetProductionBadge(metrics) {
     if ((metrics.plannedWorkHours || 0) <= 0) {
         return { label: "Brak normy", className: "phase-badge waiting" };
+    }
+
+    if (metrics.activePhase?.key === "prep") {
+        return { label: "Oczekuje", className: "phase-badge waiting" };
     }
 
     if (metrics.activePhase?.key === "production") {
@@ -362,11 +596,27 @@ function dashboardSyncLiveView() {
         return;
     }
 
-    if (dashboardMode === "overview") {
+    if (dashboardMode === "overview" || dashboardMode === "screen") {
         renderDashboardSummary(dashboardCurrentData);
-        renderProductionOverview(dashboardCurrentData);
+        if (dashboardMode === "screen") {
+            renderProductionScreen(dashboardCurrentData);
+        } else {
+            renderProductionOverview(dashboardCurrentData);
+        }
         renderDashboardDebug(dashboardCurrentData);
-        dashboardSetStatus("success", "Przeglad produkcji");
+        if (dashboardOverviewRefreshState) {
+            dashboardOverviewRefreshState.textContent = dashboardFormatOverviewRefreshState();
+        }
+        dashboardApplyScreenLayout();
+        if (
+            dashboardOverviewAutoRefresh
+            && dashboardOverviewNextRefreshAt
+            && Date.now() >= dashboardOverviewNextRefreshAt
+            && !dashboardRunInFlight
+        ) {
+            void runDashboard({ silent: true, preserveView: true, source: "auto-refresh" });
+        }
+        dashboardSetStatus("success", dashboardMode === "screen" ? "Ekran produkcyjny" : "Przeglad produkcji");
         return;
     }
 
@@ -409,7 +659,7 @@ function dashboardCollectPayload() {
         vendoUserPassword: dashboardConnectionForm?.vendoUserPassword?.value || "",
     };
 
-    if (dashboardMode === "overview") {
+    if (dashboardMode === "overview" || dashboardMode === "screen") {
         return basePayload;
     }
 
@@ -441,6 +691,8 @@ async function dashboardPostJson(url, payload) {
 
 function clearDashboardView() {
     dashboardCurrentData = null;
+    dashboardOverviewLastFetchedAt = null;
+    dashboardOverviewNextRefreshAt = null;
     dashboardStopClock();
     dashboardError?.classList.add("hidden");
     if (dashboardError) {
@@ -472,6 +724,12 @@ function clearDashboardView() {
         dashboardOverviewGrid.textContent = "Uruchom przeglad produkcji, aby pobrac aktywne stanowiska z Vendo.";
     }
 
+    if (dashboardOverviewRefreshState) {
+        dashboardOverviewRefreshState.textContent = "Ostatnia aktualizacja: -";
+    }
+
+    dashboardApplyScreenLayout();
+
     if (dashboardDebug) {
         dashboardDebug.className = "dashboard-debug-empty";
         dashboardDebug.textContent = "Brak danych debug.";
@@ -483,6 +741,12 @@ function clearDashboardView() {
 }
 
 function renderDashboardSummary(data) {
+    if (dashboardMode === "screen") {
+        dashboardSummary.classList.add("hidden");
+        dashboardSummary.innerHTML = "";
+        return;
+    }
+
     if (dashboardMode === "overview") {
         return renderOverviewSummary(data);
     }
@@ -566,6 +830,7 @@ function renderDashboardMetrics(data) {
     const metrics = dashboardGetLiveMetrics(data.metrics || {});
     const prepWidth = Math.max(0, Math.min(metrics.prepProgressPercent || 0, 100));
     const prepBadge = dashboardGetPrepBadge(metrics);
+    const prepResult = dashboardGetPrepResult(metrics);
 
     dashboardMetrics.className = "phase-panel";
     dashboardMetrics.innerHTML = `
@@ -589,6 +854,13 @@ function renderDashboardMetrics(data) {
                 <span>Zuzycie normy</span>
                 <strong>${dashboardFormatPercent(metrics.prepProgressPercent)}</strong>
             </div>
+            <div class="dashboard-metric-row">
+                <span>Pozostalo</span>
+                <strong>${prepResult.remaining}</strong>
+            </div>
+            <div class="dashboard-inline-badge-row">
+                <span class="${prepResult.className}">${prepResult.label}</span>
+            </div>
             <div class="dashboard-progress">
                 <div class="dashboard-progress-bar" style="width: ${prepWidth}%"></div>
             </div>
@@ -600,6 +872,7 @@ function renderDashboardTimeline(data) {
     const metrics = dashboardGetLiveMetrics(data.metrics || {});
     const productionWidth = Math.max(0, Math.min(metrics.productionProgressPercent || 0, 100));
     const productionBadge = dashboardGetProductionBadge(metrics);
+    const productionStarted = metrics.activePhase?.key === "production" || (Number(metrics.completedQuantity || 0) > 0) || (Number(metrics.productionElapsedHours || 0) > 0);
     dashboardTimeline.className = "phase-panel";
     dashboardTimeline.innerHTML = `
         <section class="${dashboardGetPhaseCardClass(metrics.activePhase, "production")}">
@@ -636,19 +909,19 @@ function renderDashboardTimeline(data) {
             </div>
             <div class="dashboard-metric-row">
                 <span>Czas wykorzystany</span>
-                <strong>${dashboardFormatDurationHours(metrics.productionElapsedHours)}</strong>
+                <strong>${productionStarted ? dashboardFormatDurationHours(metrics.productionElapsedHours) : "-"}</strong>
             </div>
             <div class="dashboard-metric-row">
                 <span>Zuzycie normy</span>
-                <strong>${dashboardFormatPercent(metrics.productionProgressPercent)}</strong>
+                <strong>${productionStarted ? dashboardFormatPercent(metrics.productionProgressPercent) : "-"}</strong>
             </div>
             <div class="dashboard-metric-row">
                 <span>Zakladany koniec</span>
-                <strong>${dashboardFormatDateTime(metrics.expectedFinishAt)}</strong>
+                <strong>${productionStarted ? dashboardFormatDateTime(metrics.expectedFinishAt) : "-"}</strong>
             </div>
             <div class="dashboard-metric-row">
                 <span>Przewidywany koniec</span>
-                <strong>${dashboardFormatDateTime(metrics.predictedFinishAt)}</strong>
+                <strong>${productionStarted ? dashboardFormatDateTime(metrics.predictedFinishAt) : "-"}</strong>
             </div>
             <div class="dashboard-progress">
                 <div class="dashboard-progress-bar" style="width: ${productionWidth}%"></div>
@@ -658,8 +931,29 @@ function renderDashboardTimeline(data) {
 }
 
 function renderDashboardDebug(data) {
+    const debugPanel = dashboardDebug?.closest("section");
+    const rawPanel = dashboardRawOutput?.closest(".raw-panel");
+
+    if (dashboardMode === "screen") {
+        if (debugPanel) {
+            debugPanel.classList.add("hidden");
+        }
+        dashboardDebug.className = "dashboard-debug-empty hidden";
+        dashboardDebug.textContent = "Brak danych debug.";
+        if (rawPanel) {
+            rawPanel.classList.add("hidden");
+        }
+        return;
+    }
+
     const debug = data.debug || {};
     const metrics = dashboardGetLiveMetrics(data.metrics || {});
+    if (debugPanel) {
+        debugPanel.classList.remove("hidden");
+    }
+    if (rawPanel) {
+        rawPanel.classList.remove("hidden");
+    }
     dashboardDebug.className = "dashboard-debug-grid";
     dashboardDebug.innerHTML = `
         <div class="dashboard-mini-card">
@@ -739,19 +1033,62 @@ function dashboardInferDepartment(record) {
     return "INNE";
 }
 
+function dashboardShouldShowPrep(record, metrics) {
+    const stationCode = String(record?.station?.code || "").trim().toUpperCase();
+    const configuredStations = dashboardOverviewPrepStations;
+    const listedStation = stationCode && configuredStations.includes(stationCode);
+    const activePrep = metrics?.activePhase?.key === "prep";
+
+    if (!configuredStations.length) {
+        return activePrep;
+    }
+
+    return listedStation || activePrep;
+}
+
+function dashboardGetScreenRecords(data) {
+    const allRecords = Array.isArray(data?.records) ? data.records : [];
+    if (!dashboardScreenStations.length) {
+        return [];
+    }
+
+    return allRecords.filter((record) => dashboardScreenStations.includes(String(record?.station?.code || "").trim().toUpperCase()));
+}
+
+function dashboardGetOverviewCategory(record) {
+    const metrics = dashboardGetLiveMetrics(record.metrics || {});
+
+    if (metrics.activePhase?.key === "prep") {
+        return "prep";
+    }
+
+    if (metrics.timeStatusTone === "error" || Number(metrics.timeDeltaHours || 0) > 0) {
+        return "late";
+    }
+
+    if (
+        metrics.timeStatusTone === "loading"
+        || metrics.statusTone === "error"
+        || metrics.statusTone === "loading"
+    ) {
+        return "risk";
+    }
+
+    return "production";
+}
+
 function dashboardGetOverviewPriority(record) {
     const metrics = dashboardGetLiveMetrics(record.metrics || {});
-    const toneRank = {
-        error: 0,
-        loading: 1,
-        success: 2,
-        idle: 3,
+    const category = dashboardGetOverviewCategory(record);
+    const categoryRank = {
+        late: 0,
+        risk: 1,
+        prep: 2,
+        production: 3,
     };
-    const activePhaseRank = metrics.activePhase?.key === "prep" ? 0 : 1;
 
     return [
-        toneRank[metrics.statusTone] ?? 4,
-        activePhaseRank,
+        categoryRank[category] ?? 4,
         -(Number(metrics.timeProgressPercent) || 0),
         -(Number(metrics.productionProgressPercent) || 0),
         String(record.station?.code || ""),
@@ -776,14 +1113,49 @@ function dashboardCompareOverviewRecords(left, right) {
 
 function renderOverviewCard(record) {
     const metrics = dashboardGetLiveMetrics(record.metrics || {});
+    const category = dashboardGetOverviewCategory(record);
     const prepBadge = dashboardGetPrepBadge(metrics);
+    const prepResult = dashboardGetPrepResult(metrics);
     const productionBadge = dashboardGetProductionBadge(metrics);
-    const prepWidth = Math.max(0, Math.min(metrics.prepProgressPercent || 0, 100));
     const productionWidth = Math.max(0, Math.min(metrics.productionProgressPercent || 0, 100));
+    const productionStarted = metrics.activePhase?.key === "production" || (Number(metrics.completedQuantity || 0) > 0) || (Number(metrics.productionElapsedHours || 0) > 0);
     const productLabel = [record.kkw?.productCode, record.kkw?.productName].filter(Boolean).join(" - ") || record.kkw?.productName || record.kkw?.productCode || "-";
+    const showPrep = dashboardShouldShowPrep(record, metrics);
+    const prepSection = showPrep ? `
+        <section class="overview-card-prep ${metrics.activePhase?.key === "prep" ? "overview-card-prep-active" : ""}">
+            <div class="overview-card-prep-header">
+                <div>
+                    <span class="phase-card-eyebrow">Przyrzad</span>
+                    <strong>${dashboardFormatDurationMinutes(metrics.plannedPrepMinutes)}</strong>
+                </div>
+                <div class="overview-card-prep-badges">
+                    <span class="${prepBadge.className}">${prepBadge.label}</span>
+                    <span class="${prepResult.className}">${prepResult.label}</span>
+                </div>
+            </div>
+            <div class="overview-card-prep-grid">
+                <div class="overview-card-prep-item">
+                    <span>Norma</span>
+                    <strong>${dashboardFormatDurationMinutes(metrics.plannedPrepMinutes)}</strong>
+                </div>
+                <div class="overview-card-prep-item">
+                    <span>Czas</span>
+                    <strong>${dashboardFormatDurationHours(metrics.prepElapsedHours)}</strong>
+                </div>
+                <div class="overview-card-prep-item">
+                    <span>% normy</span>
+                    <strong>${dashboardFormatPercent(metrics.prepProgressPercent)}</strong>
+                </div>
+                <div class="overview-card-prep-item">
+                    <span>Pozostalo</span>
+                    <strong>${prepResult.remaining}</strong>
+                </div>
+            </div>
+        </section>
+    ` : "";
 
     return `
-        <article class="overview-card">
+        <article class="overview-card overview-card-tone-${category}">
             <div class="overview-card-header">
                 <div>
                     <span class="phase-card-eyebrow">${record.station?.code || "-"}</span>
@@ -798,39 +1170,16 @@ function renderOverviewCard(record) {
                 <span>${record.operator?.name || "-"}</span>
                 <strong>${dashboardFormatDateTime(metrics.startedAt || record.execution?.startedAt)}</strong>
             </div>
-            <div class="overview-card-phase-grid">
-                <section class="${dashboardGetPhaseCardClass(metrics.activePhase, "prep")}">
-                    <div class="phase-card-header">
-                        <div>
-                            <span class="phase-card-eyebrow">Etap</span>
-                            <h4>Przyrzad</h4>
-                        </div>
-                        <span class="${prepBadge.className}">${prepBadge.label}</span>
+            ${prepSection}
+            <section class="${dashboardGetPhaseCardClass(metrics.activePhase, "production")} overview-card-production">
+                <div class="phase-card-header">
+                    <div>
+                        <span class="phase-card-eyebrow">Etap</span>
+                        <h4>Produkcja</h4>
                     </div>
-                    <div class="dashboard-metric-row">
-                        <span>Norma</span>
-                        <strong>${dashboardFormatDurationMinutes(metrics.plannedPrepMinutes)}</strong>
-                    </div>
-                    <div class="dashboard-metric-row">
-                        <span>Czas</span>
-                        <strong>${dashboardFormatDurationHours(metrics.prepElapsedHours)}</strong>
-                    </div>
-                    <div class="dashboard-metric-row">
-                        <span>% normy</span>
-                        <strong>${dashboardFormatPercent(metrics.prepProgressPercent)}</strong>
-                    </div>
-                    <div class="dashboard-progress">
-                        <div class="dashboard-progress-bar" style="width: ${prepWidth}%"></div>
-                    </div>
-                </section>
-                <section class="${dashboardGetPhaseCardClass(metrics.activePhase, "production")}">
-                    <div class="phase-card-header">
-                        <div>
-                            <span class="phase-card-eyebrow">Etap</span>
-                            <h4>Produkcja</h4>
-                        </div>
-                        <span class="${productionBadge.className}">${productionBadge.label}</span>
-                    </div>
+                    <span class="${productionBadge.className}">${productionBadge.label}</span>
+                </div>
+                <div class="overview-card-production-grid">
                     <div class="dashboard-metric-row">
                         <span>Norma</span>
                         <strong>${dashboardFormatDurationHours(metrics.plannedWorkHours)}</strong>
@@ -842,6 +1191,10 @@ function renderOverviewCard(record) {
                     <div class="dashboard-metric-row">
                         <span>Czas 1 szt. wg normy</span>
                         <strong>${dashboardFormatCycleTimeFromRate(metrics.expectedRate)}</strong>
+                    </div>
+                    <div class="dashboard-metric-row">
+                        <span>Czas</span>
+                        <strong>${productionStarted ? dashboardFormatDurationHours(metrics.productionElapsedHours) : "-"}</strong>
                     </div>
                     <div class="dashboard-metric-row">
                         <span>Ilosc do wykonania</span>
@@ -856,36 +1209,40 @@ function renderOverviewCard(record) {
                         <strong>${dashboardFormatNumber(metrics.remainingQuantity)} szt.</strong>
                     </div>
                     <div class="dashboard-metric-row">
-                        <span>Czas</span>
-                        <strong>${dashboardFormatDurationHours(metrics.productionElapsedHours)}</strong>
-                    </div>
-                    <div class="dashboard-metric-row">
                         <span>% normy</span>
-                        <strong>${dashboardFormatPercent(metrics.productionProgressPercent)}</strong>
+                        <strong>${productionStarted ? dashboardFormatPercent(metrics.productionProgressPercent) : "-"}</strong>
                     </div>
                     <div class="dashboard-metric-row">
                         <span>Planowane zakonczenie</span>
-                        <strong>${dashboardFormatDateTime(metrics.expectedFinishAt)}</strong>
+                        <strong>${productionStarted ? dashboardFormatDateTime(metrics.expectedFinishAt) : "-"}</strong>
                     </div>
-                    <div class="dashboard-progress">
-                        <div class="dashboard-progress-bar" style="width: ${productionWidth}%"></div>
-                    </div>
-                </section>
-            </div>
+                </div>
+                <div class="dashboard-progress">
+                    <div class="dashboard-progress-bar" style="width: ${productionWidth}%"></div>
+                </div>
+            </section>
         </article>
     `;
 }
 
 function renderProductionOverview(data) {
-    const records = Array.isArray(data.records) ? data.records : [];
+    const allRecords = Array.isArray(data.records) ? data.records : [];
 
     if (!dashboardOverviewGrid) {
         return;
     }
 
+    const records = allRecords.filter((record) => {
+        if (dashboardOverviewFilter === "all") {
+            return true;
+        }
+
+        return dashboardGetOverviewCategory(record) === dashboardOverviewFilter;
+    });
+
     if (!records.length) {
         dashboardOverviewGrid.className = "dashboard-overview-empty";
-        dashboardOverviewGrid.textContent = "Brak aktywnych stanowisk.";
+        dashboardOverviewGrid.textContent = "Brak stanowisk dla wybranego filtra.";
         return;
     }
 
@@ -925,21 +1282,106 @@ function renderProductionOverview(data) {
     dashboardOverviewGrid.innerHTML = sections.join("");
 }
 
-async function runDashboard() {
-    clearDashboardView();
-    dashboardSetStatus("loading", "Pobieranie");
+function renderProductionScreen(data) {
+    if (!dashboardOverviewGrid) {
+        return;
+    }
+
+    if (!dashboardScreenStations.length) {
+        dashboardOverviewGrid.className = "dashboard-overview-empty";
+        dashboardOverviewGrid.textContent = "Ustaw stanowiska dla tego ekranu, aby pokazac lokalny panel produkcyjny.";
+        return;
+    }
+
+    const records = dashboardGetScreenRecords(data);
+    if (!records.length) {
+        dashboardOverviewGrid.className = "dashboard-overview-empty";
+        dashboardOverviewGrid.textContent = "Brak aktywnych prac dla stanowisk przypisanych do tego ekranu.";
+        return;
+    }
+
+    const sortedRecords = records.slice().sort(dashboardCompareOverviewRecords);
+    if (sortedRecords.length === 1) {
+        dashboardOverviewGrid.className = "dashboard-screen-single";
+        dashboardOverviewGrid.innerHTML = renderOverviewCard(sortedRecords[0]);
+        return;
+    }
+
+    dashboardOverviewGrid.className = "dashboard-screen-grid";
+    dashboardOverviewGrid.innerHTML = sortedRecords.map((record) => renderOverviewCard(record)).join("");
+}
+
+function dashboardSetOverviewFilter(filter) {
+    dashboardOverviewFilter = filter || "all";
+
+    for (const button of dashboardOverviewFilterButtons) {
+        const isActive = button.dataset.overviewFilter === dashboardOverviewFilter;
+        button.classList.toggle("active", isActive);
+    }
+
+    try {
+        window.localStorage.setItem("productionDashboardOverviewFilter", dashboardOverviewFilter);
+    } catch (_error) {
+        // Ignore storage errors in kiosk-like environments.
+    }
+
+    if ((dashboardMode === "overview" || dashboardMode === "screen") && dashboardCurrentData) {
+        if (dashboardMode === "screen") {
+            renderProductionScreen(dashboardCurrentData);
+        } else {
+            renderProductionOverview(dashboardCurrentData);
+        }
+    }
+}
+
+async function runDashboard(options = {}) {
+    const { silent = false, preserveView = false, source = "manual" } = options;
+
+    if (dashboardRunInFlight) {
+        return;
+    }
+
+    dashboardRunInFlight = true;
+
+    if (!preserveView) {
+        clearDashboardView();
+    }
+
+    if (!silent) {
+        dashboardSetStatus("loading", "Pobieranie");
+    }
+
     dashboardSubmitButton.disabled = true;
 
     try {
-        const endpoint = dashboardMode === "overview" ? "/api/production-overview" : "/api/production-dashboard";
+        const endpoint = (dashboardMode === "overview" || dashboardMode === "screen")
+            ? "/api/production-overview"
+            : "/api/production-dashboard";
         const data = await dashboardPostJson(endpoint, dashboardCollectPayload());
         dashboardCurrentData = data;
+        if (dashboardMode === "overview" || dashboardMode === "screen") {
+            dashboardOverviewLastFetchedAt = new Date().toISOString();
+            dashboardOverviewNextRefreshAt = dashboardOverviewAutoRefresh
+                ? Date.now() + DASHBOARD_OVERVIEW_REFRESH_MS
+                : null;
+        } else {
+            dashboardOverviewLastFetchedAt = null;
+            dashboardOverviewNextRefreshAt = null;
+        }
         dashboardRawOutput.textContent = JSON.stringify(data, null, 2);
-        if (dashboardMode === "overview") {
+        if (dashboardMode === "overview" || dashboardMode === "screen") {
             renderDashboardSummary(data);
-            renderProductionOverview(data);
+            if (dashboardMode === "screen") {
+                renderProductionScreen(data);
+            } else {
+                renderProductionOverview(data);
+            }
             renderDashboardDebug(data);
-            dashboardSetStatus("success", "Przeglad produkcji");
+            if (dashboardOverviewRefreshState) {
+                dashboardOverviewRefreshState.textContent = dashboardFormatOverviewRefreshState();
+            }
+            dashboardApplyScreenLayout();
+            dashboardSetStatus("success", dashboardMode === "screen" ? "Ekran produkcyjny" : "Przeglad produkcji");
         } else {
             dashboardSyncLiveView();
         }
@@ -949,6 +1391,12 @@ async function runDashboard() {
         dashboardError.classList.remove("hidden");
         dashboardSetStatus("error", "Blad");
     } finally {
+        if (source !== "auto-refresh" || !dashboardCurrentData) {
+            dashboardSubmitButton.disabled = false;
+        } else {
+            dashboardSubmitButton.disabled = false;
+        }
+        dashboardRunInFlight = false;
         dashboardSubmitButton.disabled = false;
     }
 }
@@ -976,9 +1424,102 @@ if (dashboardToggleTvModeButton) {
     });
 }
 
+if (dashboardScreenTvToggleButton) {
+    dashboardScreenTvToggleButton.addEventListener("click", () => {
+        if (dashboardUltrawideMode) {
+            void dashboardApplyUltrawideMode(false);
+        }
+        dashboardApplyTvMode(!dashboardTvMode);
+    });
+}
+
 if (dashboardToggleUltrawideModeButton) {
     dashboardToggleUltrawideModeButton.addEventListener("click", async () => {
         await dashboardApplyUltrawideMode(!dashboardUltrawideMode);
+    });
+}
+
+if (dashboardScreenUltrawideToggleButton) {
+    dashboardScreenUltrawideToggleButton.addEventListener("click", async () => {
+        await dashboardApplyUltrawideMode(!dashboardUltrawideMode);
+    });
+}
+
+if (dashboardScreenSettingsToggleButton) {
+    dashboardScreenSettingsToggleButton.addEventListener("click", () => {
+        if (!dashboardScreenSettingsOpen && dashboardScreenSettingsPin) {
+            const enteredPin = window.prompt("Podaj PIN do ustawien ekranu:");
+            if ((enteredPin || "").trim() !== dashboardScreenSettingsPin) {
+                dashboardSetStatus("error", "Bledny PIN");
+                return;
+            }
+        }
+
+        dashboardScreenSettingsOpen = !dashboardScreenSettingsOpen;
+        dashboardApplyScreenLayout();
+    });
+}
+
+if (dashboardOverviewPrepStationsInput) {
+    dashboardOverviewPrepStationsInput.addEventListener("change", () => {
+        dashboardSavePrepStations(dashboardOverviewPrepStationsInput.value);
+        dashboardApplyScreenLayout();
+        if ((dashboardMode === "overview" || dashboardMode === "screen") && dashboardCurrentData) {
+            if (dashboardMode === "screen") {
+                renderProductionScreen(dashboardCurrentData);
+            } else {
+                renderProductionOverview(dashboardCurrentData);
+            }
+        }
+    });
+}
+
+if (dashboardScreenStationsInput) {
+    dashboardScreenStationsInput.addEventListener("change", () => {
+        dashboardScreenStations = dashboardParsePrepStations(dashboardScreenStationsInput.value);
+
+        try {
+            window.localStorage.setItem("productionDashboardScreenStations", dashboardScreenStations.join(", "));
+        } catch (_error) {
+            // Ignore storage errors in kiosk-like environments.
+        }
+
+        dashboardApplyScreenLayout();
+        if (dashboardMode === "screen" && dashboardCurrentData) {
+            renderProductionScreen(dashboardCurrentData);
+        }
+    });
+}
+
+if (dashboardScreenSettingsPinInput) {
+    dashboardScreenSettingsPinInput.addEventListener("change", () => {
+        dashboardSaveScreenSettingsPin(dashboardScreenSettingsPinInput.value);
+    });
+}
+
+if (dashboardOverviewAutoRefreshInput) {
+    dashboardOverviewAutoRefreshInput.addEventListener("change", () => {
+        dashboardOverviewAutoRefresh = dashboardOverviewAutoRefreshInput.checked;
+        dashboardOverviewNextRefreshAt = dashboardOverviewAutoRefresh
+            ? Date.now() + DASHBOARD_OVERVIEW_REFRESH_MS
+            : null;
+
+        try {
+            window.localStorage.setItem("productionDashboardOverviewAutoRefresh", dashboardOverviewAutoRefresh ? "1" : "0");
+        } catch (_error) {
+            // Ignore storage errors in kiosk-like environments.
+        }
+
+        if (dashboardOverviewRefreshState) {
+            dashboardOverviewRefreshState.textContent = dashboardFormatOverviewRefreshState();
+        }
+        dashboardApplyScreenLayout();
+    });
+}
+
+for (const button of dashboardOverviewFilterButtons) {
+    button.addEventListener("click", () => {
+        dashboardSetOverviewFilter(button.dataset.overviewFilter || "all");
     });
 }
 
@@ -993,7 +1534,7 @@ for (const button of dashboardModeButtons) {
         dashboardApplyMode(button.dataset.dashboardMode || "single");
         clearDashboardView();
         dashboardSetStatus("idle", "Gotowe");
-        if (dashboardMode === "overview" && dashboardConnectionForm?.vendoUserLogin?.value?.trim() && dashboardConnectionForm?.vendoUserPassword?.value) {
+        if ((dashboardMode === "overview" || dashboardMode === "screen") && dashboardConnectionForm?.vendoUserLogin?.value?.trim() && dashboardConnectionForm?.vendoUserPassword?.value) {
             await runDashboard();
         }
     });
@@ -1001,4 +1542,5 @@ for (const button of dashboardModeButtons) {
 
 clearDashboardView();
 dashboardInitTvMode();
+dashboardInitOverviewSettings();
 dashboardApplyMode("single");

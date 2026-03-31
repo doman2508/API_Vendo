@@ -17,7 +17,19 @@
             <div class="hero-actions">
                 <button type="button" id="toggle-tv-mode">TV mode</button>
                 <button type="button" id="toggle-ultrawide-mode" class="ghost">3440 x 1440</button>
-                <a class="ghost nav-link" href="/console">Wroc do API Console</a>
+            </div>
+        </section>
+
+        <section id="production-screen-topbar" class="panel screen-topbar hidden">
+            <div class="screen-topbar-copy">
+                <p class="eyebrow">Ekran hali</p>
+                <h2 id="production-screen-title">Ekran produkcyjny</h2>
+                <p id="production-screen-meta" class="screen-topbar-meta">Stanowiska: -</p>
+            </div>
+            <div class="screen-topbar-actions">
+                <button type="button" id="screen-settings-toggle" class="ghost">Ustawienia</button>
+                <button type="button" id="screen-tv-toggle" class="ghost">TV mode</button>
+                <button type="button" id="screen-ultrawide-toggle" class="ghost">3440 x 1440</button>
             </div>
         </section>
 
@@ -52,6 +64,7 @@
 
             <div class="view-switcher" id="production-dashboard-mode-switcher">
                 <button type="button" class="switch-button active" data-dashboard-mode="single">Stanowisko</button>
+                <button type="button" class="switch-button" data-dashboard-mode="screen">Ekran produkcyjny</button>
                 <button type="button" class="switch-button" data-dashboard-mode="overview">Przeglad produkcji</button>
             </div>
 
@@ -83,6 +96,23 @@
             <p id="production-overview-note" class="note hidden">
                 Przeglad produkcji pobiera automatycznie wszystkie aktywne stanowiska i nie korzysta z filtrow operatora ani KKW.
             </p>
+            <div id="production-overview-settings" class="overview-settings hidden">
+                <label>
+                    <span>Stanowiska dla tego ekranu</span>
+                    <input id="screen-stations" type="text" placeholder="np. SMD-01, SMD-04, THT-12">
+                </label>
+                <label>
+                    <span>Pokazuj Przyrzad dla stanowisk</span>
+                    <input id="overview-prep-stations" type="text" placeholder="np. SMD-01, SMD-04, THT-12">
+                </label>
+                <label>
+                    <span>Kod PIN do ustawien ekranu</span>
+                    <input id="screen-settings-pin" type="password" inputmode="numeric" placeholder="np. 2580">
+                </label>
+                <p class="note">
+                    Jesli pole ekranu jest puste, ekran produkcyjny nie pokaze zadnych stanowisk. Przyrzad pokazuje sie tylko dla aktywnego etapu albo dla stanowisk wpisanych na liscie. Gdy ustawisz PIN, przycisk ustawien w ekranie hali bedzie wymagal kodu.
+                </p>
+            </div>
         </section>
 
         <section class="panel">
@@ -123,8 +153,26 @@
 
             <section id="production-overview-section" class="warehouse-panel hidden">
                 <div class="warehouse-panel-header">
-                    <h3>Przeglad aktywnych stanowisk</h3>
-                    <p>Panel kierownika dla wszystkich aktywnych maszyn i operatorow.</p>
+                    <div>
+                        <h3 id="production-collection-title">Przeglad aktywnych stanowisk</h3>
+                        <p id="production-collection-copy">Panel kierownika dla wszystkich aktywnych maszyn i operatorow.</p>
+                    </div>
+                    <div class="overview-refresh-meta">
+                        <span id="production-overview-refresh-state">Ostatnia aktualizacja: -</span>
+                    </div>
+                </div>
+                <div id="production-overview-toolbar" class="overview-toolbar">
+                    <div id="production-overview-filters" class="overview-filter-group">
+                        <button type="button" class="overview-filter-button active" data-overview-filter="all">Wszystkie</button>
+                        <button type="button" class="overview-filter-button" data-overview-filter="late">Po czasie</button>
+                        <button type="button" class="overview-filter-button" data-overview-filter="risk">Ryzyko</button>
+                        <button type="button" class="overview-filter-button" data-overview-filter="prep">Przyrzad</button>
+                        <button type="button" class="overview-filter-button" data-overview-filter="production">Produkcja</button>
+                    </div>
+                    <label class="overview-refresh-toggle">
+                        <input id="production-overview-auto-refresh" type="checkbox" checked>
+                        <span>Auto-refresh 30s</span>
+                    </label>
                 </div>
                 <div id="production-overview-grid" class="dashboard-overview-empty">
                     Uruchom przeglad produkcji, aby pobrac aktywne stanowiska z Vendo.
