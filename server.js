@@ -2503,6 +2503,10 @@ function resolveStaticPath(urlPath) {
         return { pathname: "/production-dashboard/index.html" };
     }
 
+    if (urlPath === "/kosztykkw") {
+        return { pathname: "/kosztykkw/index.html" };
+    }
+
     if (urlPath.endsWith("/")) {
         return { pathname: `${urlPath}index.html` };
     }
