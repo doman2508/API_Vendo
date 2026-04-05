@@ -15,6 +15,8 @@ const kkwCostsSummaryBody = document.getElementById("kkw-costs-summary-body");
 const kkwCostsOperationsBody = document.getElementById("kkw-costs-operations-body");
 const kkwCostsMaterialsBody = document.getElementById("kkw-costs-materials-body-kkw");
 const kkwCostsRawOutput = document.getElementById("kkw-costs-raw-output");
+const docsBody = document.getElementById("docs-body");
+const docsZlpInfo = document.getElementById("docs-zlp-info");
 
 let lastKkwData = null;
 let extraCostValue = 0;
@@ -129,21 +131,54 @@ function renderKkwCostsSummaryCards(data) {
     }
 
     kkwCostsSummary.innerHTML = [
-        renderGroup("Identyfikacja", "identity", [
-            ["Numer KKW", result.KkwNumer || "-"],
-            ["Produkt", productLabel || "-", true],
-            ["Ilosc KKW", formatStock(result.Ilosc)],
-            ["Caly obiekt", report.Korzen?.Nazwa || result.KkwNumer || "-"],
-        ]),
+        renderGroup("Identyfikacja", "identity", (() => {
+            const allDocs = result.DokumentyZlecenia?.Wszystkie || [];
+            const zoDoc = allDocs.find((d) => d.RodzajKod === "ZO");
+            const klient = zoDoc?.Klient1Nazwa || allDocs[0]?.Klient1Nazwa || "-";
+            return [
+                ["Numer KKW", result.KkwNumer || "-"],
+                ["Produkt", productLabel || "-", true],
+                ["Ilosc KKW", formatStock(result.Ilosc)],
+                ["Termin", formatDate(result.TerminRealizacji)],
+                ["Klient", klient],
+            ];
+        })()),
         renderGroup("Koszty globalne", "financial", globalCards),
-        `<section class="summary-group summary-group-unit">
+        (() => {
+            const allDocs = result.DokumentyZlecenia?.Wszystkie || [];
+            const zoDoc = allDocs.find((d) => d.RodzajKod === "ZO");
+            const fvDocs = allDocs.filter((d) => d.RodzajKod === "FV");
+            const towarKod = result.TowarKod;
+            let cenaSprzedazy = 0;
+            let cenaZrodlo = "";
+            for (const fvDoc of fvDocs) {
+                if (!fvDoc?.Pozycje) continue;
+                const poz = fvDoc.Pozycje.find((p) => p.Towar?.Kod === towarKod);
+                if (poz) { cenaSprzedazy = Number(poz.CenaNettoWalutaDok) || 0; cenaZrodlo = "FV"; break; }
+            }
+            if (!cenaSprzedazy && zoDoc?.Pozycje) {
+                const poz = zoDoc.Pozycje.find((p) => p.Towar?.Kod === towarKod);
+                if (poz) { cenaSprzedazy = Number(poz.CenaNettoWalutaDok) || 0; cenaZrodlo = "ZO"; }
+            }
+            const zysk = cenaSprzedazy > 0 ? cenaSprzedazy - totalPerUnit : 0;
+            const marza = cenaSprzedazy > 0 ? (zysk / cenaSprzedazy) * 100 : 0;
+            const narzut = totalPerUnit > 0 ? (zysk / totalPerUnit) * 100 : 0;
+            const zyskColor = zysk >= 0 ? "#2e7d32" : "#c62828";
+            const niezafakturowane = cenaZrodlo === "ZO";
+
+            const marzaStr = `${marza >= 0 ? "+" : ""}${currencyFormatter.format(marza)}%`;
+            const razemHtml = cenaSprzedazy > 0
+                ? `${currencyFormatter.format(totalPerUnit)}/${currencyFormatter.format(cenaSprzedazy)} (<span style="color:${zyskColor}">${marzaStr}</span>)`
+                : currencyFormatter.format(totalPerUnit);
+
+            return `<section class="summary-group summary-group-unit">
             <div class="summary-group-header">
                 <h3>Koszt na sztuke</h3>
             </div>
             <div class="summary-group-grid">
                 <div class="summary-card">
-                    <span>RAZEM</span>
-                    <strong>${currencyFormatter.format(totalPerUnit)}</strong>
+                    <span>RAZEM${niezafakturowane ? ' <span style="color:#c62828;font-weight:600;">NIEZAFAKTUROWANE</span>' : ''}</span>
+                    <strong>${razemHtml}</strong>
                 </div>
                 <div class="summary-card">
                     <span>Materialy</span>
@@ -163,7 +198,8 @@ function renderKkwCostsSummaryCards(data) {
                                font-variant-numeric:tabular-nums; color:#212529;">
                 </div>
             </div>
-        </section>`,
+        </section>`;
+        })(),
     ].join("");
     kkwCostsSummary.classList.remove("hidden");
 
@@ -317,6 +353,105 @@ function renderKkwCostsTables(data) {
     renderMaterialRows(materialRows);
 }
 
+function formatDate(dateStr) {
+    if (!dateStr) return "-";
+    const d = new Date(dateStr);
+    if (isNaN(d)) return dateStr;
+    return d.toLocaleDateString("pl-PL");
+}
+
+function renderDocsSection(data) {
+    if (!docsBody) return;
+    const result = data?.Wynik || {};
+    const docs = result.DokumentyZlecenia?.Wszystkie || [];
+
+    if (docsZlpInfo) {
+        const zlpNr = result.ZlecenieNumer;
+        docsZlpInfo.textContent = zlpNr
+            ? `ZLP: ${zlpNr} (ID: ${result.ZlecenieID}) — ${docs.length} dokumentow`
+            : `Brak powiazanego zlecenia produkcyjnego.`;
+    }
+
+    if (!docs.length) {
+        docsBody.innerHTML = `<tr><td colspan="8" class="empty-state">Brak dokumentow${result.ZlecenieNumer ? " dla ZLP " + result.ZlecenieNumer : ""}.</td></tr>`;
+        return;
+    }
+
+    const fvDoc = docs.find((d) => d.RodzajKod === "FV");
+    const fvIloscByNazwa = new Map();
+    if (fvDoc?.Pozycje) {
+        for (const p of fvDoc.Pozycje) {
+            if (p.Nazwa && p.Ilosc) fvIloscByNazwa.set(p.Nazwa, p.Ilosc);
+        }
+    }
+
+    docsBody.innerHTML = docs.map((doc, idx) => {
+        const typ = doc.RodzajKod || doc.Prefix || "?";
+        const numer = doc.NumerPelny || "-";
+        const nrObcy = doc.NumerObcy || "-";
+        const data1 = formatDate(doc.Data1);
+        const klient = doc.Klient1Nazwa || "-";
+        const zamkniety = doc.Zamkniety;
+        const stan = zamkniety ? "Zamkniete" : "Otwarte";
+        const typClass = typ === "ZO" ? "font-weight:600;color:#0066cc;" : typ === "FV" ? "font-weight:600;color:#2e7d32;" : "";
+
+        const pozycje = Array.isArray(doc.Pozycje) ? doc.Pozycje : [];
+        const hasPoz = pozycje.length > 0;
+
+        let docNetto = Number(doc.WartoscNetto) || 0;
+        let docBrutto = Number(doc.WartoscBrutto) || 0;
+
+        const pozRows = pozycje.map((p) => {
+            const nazwa = p.Nazwa || "-";
+            const kod = p.Towar?.Kod || "-";
+            let ilosc = p.Ilosc ?? 0;
+            if (typ === "ZO" && ilosc === 0 && fvIloscByNazwa.has(p.Nazwa)) {
+                ilosc = fvIloscByNazwa.get(p.Nazwa);
+            }
+            const cenaNetto = p.CenaNettoWalutaDok ?? p.CenaNettoWalutaPoz ?? 0;
+            const wartNetto = ilosc * cenaNetto;
+            if (typ === "ZO") docNetto += wartNetto;
+            return `<tr><td>${kod}</td><td class="name-cell">${nazwa}</td><td>${formatStock(ilosc)}</td><td style="text-align:right;">${currencyFormatter.format(cenaNetto)}</td><td style="text-align:right;">${currencyFormatter.format(wartNetto)}</td></tr>`;
+        }).join("");
+        if (typ === "ZO" && docNetto > 0) docBrutto = docNetto;
+
+        const nettoStr = currencyFormatter.format(docNetto);
+        const bruttoStr = typ === "FV" ? currencyFormatter.format(docBrutto) : "";
+
+        return `
+            <tr class="doc-row" data-idx="${idx}" style="cursor:${hasPoz ? 'pointer' : 'default'};">
+                <td style="${typClass}">${typ}${hasPoz ? ' ▸' : ''}</td>
+                <td>${numer}</td>
+                <td>${nrObcy}</td>
+                <td>${data1}</td>
+                <td class="name-cell">${klient}</td>
+                <td style="text-align:right;">${nettoStr}</td>
+                <td style="text-align:right;">${bruttoStr}</td>
+                <td><span class="status ${zamkniety ? 'idle' : 'success'}">${stan}</span></td>
+            </tr>
+            ${hasPoz ? `<tr class="doc-pozycje hidden" data-parent="${idx}"><td colspan="8" style="padding:0;">
+                <table style="width:100%;border-collapse:collapse;font-size:11px;background:#f8f9fa;">
+                    <thead><tr><th style="padding:3px 8px;text-align:left;">Kod</th><th style="padding:3px 8px;text-align:left;">Nazwa</th><th style="padding:3px 8px;">Ilosc</th><th style="padding:3px 8px;text-align:right;">Cena netto</th><th style="padding:3px 8px;text-align:right;">Wartosc</th></tr></thead>
+                    <tbody>${pozRows}</tbody>
+                </table>
+            </td></tr>` : ''}
+        `;
+    }).join("");
+
+    docsBody.querySelectorAll(".doc-row").forEach((row) => {
+        row.addEventListener("click", () => {
+            const idx = row.dataset.idx;
+            const pozRow = docsBody.querySelector(`.doc-pozycje[data-parent="${idx}"]`);
+            if (!pozRow) return;
+            const isHidden = pozRow.classList.toggle("hidden");
+            const typCell = row.querySelector("td");
+            if (typCell) {
+                typCell.textContent = typCell.textContent.replace(/ [▸▾]/, '') + (isHidden ? ' ▸' : ' ▾');
+            }
+        });
+    });
+}
+
 function clearKkwCostsResults() {
     kkwCostsSummary.classList.add("hidden");
     kkwCostsSummary.innerHTML = "";
@@ -338,6 +473,9 @@ function clearKkwCostsResults() {
         </tr>
     `;
     kkwCostsRawOutput.textContent = "Brak danych.";
+    if (docsBody) {
+        docsBody.innerHTML = `<tr><td colspan="8" class="empty-state">Jeszcze nie pobrano dokumentow.</td></tr>`;
+    }
 }
 
 function normalizeKkwOperationSection() {
@@ -411,6 +549,7 @@ if (kkwCostsForm) {
             kkwCostsRawOutput.textContent = JSON.stringify(data, null, 2);
             renderKkwCostsSummaryCards(data);
             renderKkwCostsTables(data);
+            renderDocsSection(data);
             setStatus(kkwCostsStatusBadge, "success", "Sukces");
         } catch (error) {
             kkwCostsErrorBox.textContent = error.message || "Wystapil nieznany blad.";
@@ -439,3 +578,83 @@ if (connectionForm) {
 
 normalizeKkwOperationSection();
 clearKkwCostsResults();
+
+// --- KKW browser ---
+const kkwBrowseBtn = document.getElementById("kkw-browse-btn");
+const kkwBrowseList = document.getElementById("kkw-browse-list");
+const kkwBrowseSearch = document.getElementById("kkw-browse-search");
+let kkwBrowsePage = 0;
+
+async function loadKkwBrowser(page = 0) {
+    if (!kkwBrowseList) return;
+    kkwBrowseBtn.disabled = true;
+    kkwBrowseBtn.textContent = "...";
+    const search = kkwBrowseSearch?.value?.trim() || "";
+    try {
+        const data = await postJson("/api/kkw-list", { ...collectConnectionValues(), page, search });
+        const records = data.Rekordy || [];
+        if (!records.length && page === 0) {
+            kkwBrowseList.innerHTML = '<div style="color:#999;padding:8px 0;">Brak rekordow.</div>';
+            return;
+        }
+        const html = records.map((r) => {
+            const numer = r.Numer || "-";
+            const nazwa = r.TowarNazwa || r.TowarKod || "-";
+            const ilosc = Number(r.IloscOczekiwana) || Number(r.IloscWykonana) || 0;
+            const termin = formatDate(r.TerminZakonczeniaKKW);
+            return `<div class="kkw-browse-item" data-numer="${numer}" style="padding:4px 0;border-bottom:1px solid #eee;cursor:pointer;">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;font-family:'Cascadia Code','Fira Code',Consolas,monospace;"><span style="font-weight:600;">${numer}</span><span style="color:#888;font-size:10px;">${formatStock(ilosc)} szt.${termin !== "-" ? " · " + termin : ""}</span></div>
+                <div style="color:#555;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px;" title="${nazwa}">${nazwa}</div>
+            </div>`;
+        }).join("");
+
+        if (page === 0) {
+            kkwBrowseList.innerHTML = html;
+        } else {
+            kkwBrowseList.insertAdjacentHTML("beforeend", html);
+        }
+
+        if (data.WiecejStron) {
+            kkwBrowseList.insertAdjacentHTML("beforeend",
+                `<div id="kkw-browse-more" style="text-align:center;padding:6px;">
+                    <button class="btn btn-ghost" style="padding:3px 10px;font-size:11px;">Wiecej...</button>
+                </div>`);
+            kkwBrowseList.querySelector("#kkw-browse-more button").addEventListener("click", () => {
+                kkwBrowseList.querySelector("#kkw-browse-more").remove();
+                kkwBrowsePage++;
+                loadKkwBrowser(kkwBrowsePage);
+            });
+        }
+
+        kkwBrowseList.querySelectorAll(".kkw-browse-item").forEach((item) => {
+            item.addEventListener("click", () => {
+                const numer = item.dataset.numer;
+                kkwCostsForm.kkwNumbers.value = numer;
+                kkwCostsForm.dispatchEvent(new Event("submit"));
+            });
+        });
+
+    } catch (err) {
+        kkwBrowseList.innerHTML = `<div style="color:#c62828;padding:8px 0;">${err.message}</div>`;
+    } finally {
+        kkwBrowseBtn.disabled = false;
+        kkwBrowseBtn.textContent = "Zaladuj";
+    }
+}
+
+if (kkwBrowseBtn) {
+    kkwBrowseBtn.addEventListener("click", () => {
+        kkwBrowsePage = 0;
+        loadKkwBrowser(0);
+    });
+}
+
+if (kkwBrowseSearch) {
+    kkwBrowseSearch.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            kkwBrowsePage = 0;
+            loadKkwBrowser(0);
+        }
+    });
+}

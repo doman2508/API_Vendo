@@ -436,22 +436,30 @@ async function resolveKkwRecordsByNumbers(connection, accessToken, numbers, { al
     const response = await vendoPost(connection.baseUrl, "/Produkcja/KKW/Lista", {
         Token: accessToken,
         Model: {
-            ...buildKkwLookupModel({ numbers }),
-                ZwracanePola: [
-                    "ID",
-                    "Numer",
-                    "IloscOczekiwana",
-                    "IloscPrzyjeta",
-                    "IloscWykonana",
-                    "ZlecenieID",
-                    "ZlecenieNumer",
-                    "TowarKod",
-                    "TowarNazwa",
-                    "PozycjaZleceniaID",
-                    "PozycjaZleceniaNazwa",
-                ],
+            Cursor: true,
+            CursorCzyZamknac: true,
+            Strona: {
+                Indeks: 0,
+                LiczbaRekordow: Math.max(numbers.length * 5, 20),
             },
-        });
+            FiltrUniwersalny: numbers.join(" "),
+            FiltrUniwersalnyPola: ["Numer"],
+            ZwracanePola: [
+                "ID",
+                "Numer",
+                "IloscOczekiwana",
+                "IloscPrzyjeta",
+                "IloscWykonana",
+                "ZlecenieID",
+                "ZlecenieNumer",
+                "TowarKod",
+                "TowarNazwa",
+                "PozycjaZleceniaID",
+                "PozycjaZleceniaNazwa",
+                "TerminZakonczeniaKKW",
+            ],
+        },
+    });
 
     const records = Array.isArray(response?.Wynik?.Rekordy) ? response.Wynik.Rekordy : [];
     const byNumber = new Map(
@@ -1599,6 +1607,89 @@ async function handleApiMrpWorkCosts(req, res) {
     }
 }
 
+async function handleApiKkwList(req, res) {
+    try {
+        const missing = requireServerConfig();
+        if (missing.length) {
+            return sendJson(res, 500, { error: `Brakuje konfiguracji serwera: ${missing.join(", ")}.` });
+        }
+        const body = await readJsonBody(req);
+        const serverConfig = getServerConfig();
+        const connection = {
+            baseUrl: serverConfig.apiUrl,
+            apiLogin: serverConfig.apiLogin,
+            apiPassword: serverConfig.apiPassword,
+            vendoUserLogin: body.vendoUserLogin,
+            vendoUserPassword: body.vendoUserPassword,
+        };
+        const accessToken = await getAccessToken(connection);
+        const page = Number(body.page) || 0;
+        const pageSize = 50;
+        const search = String(body.search || "").trim();
+
+        const model = {
+            Cursor: true,
+            CursorCzyZamknac: true,
+            Strona: { Indeks: page, LiczbaRekordow: pageSize },
+            ZwracanePola: [
+                "ID", "Numer", "TowarNazwa", "TowarKod",
+                "IloscOczekiwana", "IloscWykonana",
+                "TerminZakonczeniaKKW",
+                "ZlecenieNumer", "PozycjaZleceniaNazwa",
+            ],
+        };
+        if (search) {
+            model.FiltrUniwersalny = search;
+            model.FiltrUniwersalnyPola = ["Numer", "TowarNazwa", "TowarKod", "PozycjaZleceniaNazwa", "ZlecenieNumer"];
+        }
+
+        // Step 1: open cursor, get total count
+        model.Cursor = true;
+        model.CursorCzyZamknac = false;
+        model.Strona = { Indeks: 0, LiczbaRekordow: 1 };
+        const countResp = await vendoPost(connection.baseUrl, "/Produkcja/KKW/Lista", {
+            Token: accessToken,
+            Model: model,
+        });
+        const total = Number(countResp?.Wynik?.Cursor?.LiczbaWszystkichRekordow) || 0;
+        const cursorName = countResp?.Wynik?.Cursor?.Nazwa || "";
+
+        if (!cursorName || !total) {
+            // Fallback: no cursor, fetch directly and sort
+            const fallbackResp = await vendoPost(connection.baseUrl, "/Produkcja/KKW/Lista", {
+                Token: accessToken,
+                Model: { ...model, Cursor: true, CursorCzyZamknac: true, Strona: { Indeks: 0, LiczbaRekordow: 200 } },
+            });
+            const allRecords = Array.isArray(fallbackResp?.Wynik?.Rekordy) ? fallbackResp.Wynik.Rekordy : [];
+            allRecords.sort((a, b) => (Number(b.ID) || 0) - (Number(a.ID) || 0));
+            const start = page * pageSize;
+            const records = allRecords.slice(start, start + pageSize);
+            sendJson(res, 200, { Rekordy: records, Strona: page, LiczbaRekordow: pageSize, Razem: allRecords.length, WiecejStron: start + pageSize < allRecords.length });
+            return;
+        }
+
+        // Step 2: fetch from the end using cursor offset (newest first)
+        const targetOffset = Math.max(0, total - ((page + 1) * pageSize));
+        const fetchSize = Math.min(pageSize, total - (page * pageSize));
+        const response = await vendoPost(connection.baseUrl, "/Produkcja/KKW/Lista", {
+            Token: accessToken,
+            Model: {
+                ...model,
+                CursorNazwa: cursorName,
+                CursorCzyZamknac: true,
+                Strona: { Indeks: targetOffset, LiczbaRekordow: fetchSize > 0 ? fetchSize : pageSize },
+            },
+        });
+
+        const records = Array.isArray(response?.Wynik?.Rekordy) ? response.Wynik.Rekordy : [];
+        records.reverse();
+        const hasMore = targetOffset > 0;
+        sendJson(res, 200, { Rekordy: records, Strona: page, LiczbaRekordow: pageSize, Razem: total, WiecejStron: hasMore });
+    } catch (err) {
+        sendJson(res, err.statusCode || 500, { error: err.message });
+    }
+}
+
 async function handleApiKkwCosts(req, res) {
     try {
         const missing = requireServerConfig();
@@ -1658,7 +1749,10 @@ async function handleApiKkwCosts(req, res) {
                 useCalcPrices: true,
             }),
         });
-        const pracownicyResponse = await vendoPost(connection.baseUrl, "/Produkcja/KKW/PracownicyWykonanLista", {
+        const zleceniId = Number(kkwRecord?.ZlecenieID) || null;
+
+        const [pracownicyResponse, zlpResponse] = await Promise.all([
+        vendoPost(connection.baseUrl, "/Produkcja/KKW/PracownicyWykonanLista", {
             Token: accessToken,
             Model: {
                 Cursor: true,
@@ -1671,7 +1765,18 @@ async function handleApiKkwCosts(req, res) {
                     "Rbh", "DataRozpoczecia", "DataZakonczenia",
                 ],
             },
-        });
+        }),
+        zleceniId
+            ? vendoPost(connection.baseUrl, "/Dokumenty/Dokumenty/Lista", {
+                Token: accessToken,
+                Model: {
+                    ZleceniaID: [zleceniId],
+                    Strona: { Indeks: 0, LiczbaRekordow: 50 },
+                },
+              })
+            : Promise.resolve(null),
+        ]);
+
         const pracownicyRecords = Array.isArray(pracownicyResponse?.Wynik?.Rekordy)
             ? pracownicyResponse.Wynik.Rekordy
             : [];
@@ -1755,12 +1860,73 @@ async function handleApiKkwCosts(req, res) {
         const operationsCost = Number(operationsBranch?.Post?.Wartosc) || 0;
         const materialsCost = Number(materialsBranch?.Post?.Wartosc) || 0;
 
+        let allDocs = Array.isArray(zlpResponse?.Wynik?.Rekordy) ? zlpResponse.Wynik.Rekordy : [];
+        let fvDocs = allDocs.filter((d) => d.RodzajKod === "FV");
+
+        // If no FV found directly on ZLP, discover FV via Skojarzone chain:
+        // Step 1: ZO → Skojarzone(Generowane) → finds WZ (and merges them)
+        // Step 2: WZ → Skojarzone(Generowane) → finds FV
+        if (fvDocs.length === 0) {
+            try {
+                const fetchSkojarzone = async (docs) => {
+                    const results = await Promise.all(
+                        docs.map((doc) =>
+                            vendoPost(connection.baseUrl, "/Dokumenty/Dokumenty/Skojarzone", {
+                                Token: accessToken,
+                                Model: { DokumentID: Number(doc.ID), Generowane: true },
+                            })
+                        )
+                    );
+                    const ids = new Set();
+                    for (const sr of results) {
+                        for (const item of (Array.isArray(sr?.Wynik) ? sr.Wynik : [])) {
+                            if (item.DataType === "Dokument" && item.ID) ids.add(Number(item.ID));
+                        }
+                    }
+                    return ids;
+                };
+
+                const mergeNewDocs = async (discoveredIds) => {
+                    const existingIds = new Set(allDocs.map((d) => Number(d.ID)));
+                    const newIds = [...discoveredIds].filter((id) => !existingIds.has(id));
+                    if (newIds.length === 0) return;
+                    const resp = await vendoPost(connection.baseUrl, "/Dokumenty/Dokumenty/Lista", {
+                        Token: accessToken,
+                        Model: { DokumentyID: newIds, Strona: { Indeks: 0, LiczbaRekordow: 50 } },
+                    });
+                    const newDocs = Array.isArray(resp?.Wynik?.Rekordy) ? resp.Wynik.Rekordy : [];
+                    allDocs = allDocs.concat(newDocs);
+                };
+
+                // Step 1: if we have WZ already, skip to step 2; otherwise discover WZ from ZO
+                let wzDocs = allDocs.filter((d) => d.RodzajKod === "WZ");
+                if (wzDocs.length === 0) {
+                    const zoDocs0 = allDocs.filter((d) => d.RodzajKod === "ZO");
+                    if (zoDocs0.length > 0) {
+                        await mergeNewDocs(await fetchSkojarzone(zoDocs0));
+                        wzDocs = allDocs.filter((d) => d.RodzajKod === "WZ");
+                    }
+                }
+                // Step 2: discover FV from WZ
+                if (wzDocs.length > 0) {
+                    await mergeNewDocs(await fetchSkojarzone(wzDocs));
+                    fvDocs = allDocs.filter((d) => d.RodzajKod === "FV");
+                }
+            } catch (_) { /* FV discovery is best-effort */ }
+        }
+
+        const zoDocs = allDocs.filter((d) => d.RodzajKod === "ZO");
+        const otherDocs = allDocs.filter((d) => d.RodzajKod !== "ZO" && d.RodzajKod !== "FV");
+
         sendJson(res, 200, {
             Wynik: {
                 KkwID: kkwId,
                 KkwNumer: kkwNumber,
+                ZlecenieID: zleceniId,
+                ZlecenieNumer: kkwRecord?.ZlecenieNumer || null,
                 TowarKod: kkwRecord?.TowarKod || null,
                 TowarNazwa: kkwRecord?.TowarNazwa || null,
+                TerminRealizacji: kkwRecord?.TerminZakonczeniaKKW || null,
                 Ilosc: quantity,
                 Raport: {
                     Korzen: root,
@@ -1814,11 +1980,18 @@ async function handleApiKkwCosts(req, res) {
                 KosztyOperacjiWgStawek: kosztOperacjiWgStawek,
                 SumaKosztowOperacjiWgStawek: Math.round(sumaKosztowOperacji * 100) / 100,
                 SzacowanieKosztow: estimate,
+                DokumentyZlecenia: {
+                    ZO: zoDocs,
+                    FV: fvDocs,
+                    Inne: otherDocs,
+                    Wszystkie: allDocs,
+                },
             },
             ResponseStatus: {
                 Materialowka: materialsResponse?.ResponseStatus || null,
                 SzacowanieKosztow: estimateResponse?.ResponseStatus || null,
                 RaportPreTechInPost: reportResponse?.ResponseStatus || null,
+                ZlecenieProdukcyjne: zlpResponse?.ResponseStatus || null,
             },
         });
     } catch (error) {
@@ -2686,6 +2859,11 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && req.url === "/api/kkw-costs") {
         await handleApiKkwCosts(req, res);
+        return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/kkw-list") {
+        await handleApiKkwList(req, res);
         return;
     }
 

@@ -378,10 +378,11 @@ body {
 }
 
 .summary-card strong {
-    font-size: 14px;
+    font-family: "Cascadia Code", "Fira Code", "SF Mono", Consolas, monospace;
+    font-size: 13px;
     font-weight: 600;
     color: #212529;
-    font-variant-numeric: tabular-nums;
+    font-variant-numeric: slashed-zero tabular-nums;
 }
 
 .summary-card-wide {

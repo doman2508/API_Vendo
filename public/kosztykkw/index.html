@@ -28,8 +28,9 @@
         <div class="main-grid">
             <!-- Left panel: results -->
             <div class="left-panel">
-                <div class="section-header">
+                <div class="section-header" style="display:flex; align-items:center; justify-content:space-between;">
                     <h1>Koszty KKW</h1>
+                    <img src="/kosztykkw/logo.png" alt="MSX elektronika" style="height:48px;">
                 </div>
 
                 <!-- Inline search form -->
@@ -72,31 +73,33 @@
                 </section>
 
                 <!-- Table: Materialy -->
-                <section class="table-section">
-                    <div class="table-section-header">
-                        <h3>Materialy</h3>
-                        <p>Rozbicie materialowki na skladniki z ilosciami i kosztem po realizacji.</p>
-                    </div>
-                    <div class="table-wrap">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th style="width:56px;">Kod</th>
-                                    <th>Nazwa</th>
-                                    <th style="width:64px;">Ilosc</th>
-                                    <th style="width:64px;">Uzyto</th>
-                                    <th style="width:72px;">Cena</th>
-                                    <th style="width:84px;">Koszt</th>
-                                </tr>
-                            </thead>
-                            <tbody id="kkw-costs-materials-body-kkw">
-                                <tr>
-                                    <td colspan="6" class="empty-state">Jeszcze nie pobrano materialow.</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
+                <details open class="raw-panel">
+                    <summary>Materialy</summary>
+                    <section class="table-section" style="margin-top: 8px;">
+                        <div class="table-section-header">
+                            <p>Rozbicie materialowki na skladniki z ilosciami i kosztem po realizacji.</p>
+                        </div>
+                        <div class="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th style="width:56px;">Kod</th>
+                                        <th>Nazwa</th>
+                                        <th style="width:64px;">Ilosc</th>
+                                        <th style="width:64px;">Uzyto</th>
+                                        <th style="width:72px;">Cena</th>
+                                        <th style="width:84px;">Koszt</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="kkw-costs-materials-body-kkw">
+                                    <tr>
+                                        <td colspan="6" class="empty-state">Jeszcze nie pobrano materialow.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </details>
 
                 <!-- Szczegoly raportu (zwijane) -->
                 <details class="raw-panel">
@@ -127,6 +130,37 @@
                     </section>
                 </details>
 
+                <!-- Dokumenty zlecenia (ZO, FV, WZ, ...) -->
+                <details open class="raw-panel">
+                    <summary>Dokumenty zlecenia</summary>
+                    <section class="table-section" style="margin-top: 8px;">
+                        <div class="table-section-header">
+                            <p id="docs-zlp-info">Dokumenty powiazane ze zleceniem produkcyjnym (ZO, FV, RW, PW, WZ).</p>
+                        </div>
+                        <div class="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Typ</th>
+                                        <th>Numer</th>
+                                        <th>Numer obcy</th>
+                                        <th>Data</th>
+                                        <th>Klient</th>
+                                        <th style="text-align:right;">Netto</th>
+                                        <th style="text-align:right;">Brutto</th>
+                                        <th>Stan</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="docs-body">
+                                    <tr>
+                                        <td colspan="8" class="empty-state">Jeszcze nie pobrano dokumentow.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </details>
+
                 <!-- Raw JSON -->
                 <details class="raw-panel">
                     <summary>Surowa odpowiedz JSON</summary>
@@ -136,7 +170,6 @@
 
             <!-- Right panel: connection -->
             <div class="right-panel">
-                <h2>Polaczenie</h2>
                 <form id="connection-form" class="form-stack">
                     <label>
                         <span>Login Vendo</span>
@@ -151,10 +184,16 @@
                         <button type="button" id="clear-button" class="btn btn-ghost">Wyczysc</button>
                     </div>
                 </form>
-                <p class="note">
-                    Dane logowania Vendo sa zapisywane lokalnie pod tym samym kluczem co w konsoli
-                    (<code>vendo-api-console</code>), wiec mozesz przejsc miedzy stronami bez ponownego wpisywania.
-                </p>
+
+                <div class="kkw-browser">
+                    <div class="actions-row" style="justify-content:space-between;">
+                        <span style="font-size:12px;font-weight:600;color:#4a5568;">KKW</span>
+                        <button type="button" id="kkw-browse-btn" class="btn btn-ghost" style="padding:4px 10px;font-size:11px;">Zaladuj</button>
+                    </div>
+                    <input id="kkw-browse-search" type="text" placeholder="Szukaj (numer, nazwa, kod)..."
+                        style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:inherit;margin-top:4px;">
+                    <div id="kkw-browse-list" style="max-height:calc(100vh - 260px);overflow-y:auto;font-size:11px;"></div>
+                </div>
 
             </div>
         </div>
