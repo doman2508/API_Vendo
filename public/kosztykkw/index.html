@@ -34,8 +34,9 @@
 
                 <!-- Inline search form -->
                 <form id="kkw-costs-form" class="inline-form">
-                    <input name="kkwNumbers" type="text" placeholder="Numer KKW, np. 119/25" required>
+                    <input name="kkwNumbers" type="text" placeholder="Numer KKW, np. 119/25" value="150/26" required>
                     <button type="submit" id="kkw-costs-submit-button" class="btn btn-primary">Pobierz koszty</button>
+
                 </form>
 
                 <!-- Summary cards -->
@@ -43,32 +44,6 @@
 
                 <!-- Error -->
                 <div id="kkw-costs-error-box" class="error-box hidden"></div>
-
-                <!-- Table: Galezie raportu -->
-                <section class="table-section">
-                    <div class="table-section-header">
-                        <h3>Galezie raportu</h3>
-                        <p>Podsumowanie z raportu PreTechInPost dla korzenia, materialow i operacji.</p>
-                    </div>
-                    <div class="table-wrap">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Sekcja</th>
-                                    <th>Przed</th>
-                                    <th>Technologia</th>
-                                    <th>Norma / wejscie</th>
-                                    <th>Po realizacji</th>
-                                </tr>
-                            </thead>
-                            <tbody id="kkw-costs-summary-body">
-                                <tr>
-                                    <td colspan="5" class="empty-state">Jeszcze nie pobrano raportu kosztow KKW.</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
 
                 <!-- Table: Operacje -->
                 <section class="table-section">
@@ -80,18 +55,16 @@
                         <table>
                             <thead>
                                 <tr>
-                                    <th>Rodzaj</th>
-                                    <th>Nazwa</th>
-                                    <th>Skladnik ID</th>
-                                    <th>Przed</th>
-                                    <th>Technologia</th>
-                                    <th>Norma / wejscie</th>
-                                    <th>Po realizacji</th>
+                                    <th>Nazwa operacji</th>
+                                    <th>Rbh</th>
+                                    <th>Rbh (norma)</th>
+                                    <th>Stawka</th>
+                                    <th>Koszt wg stawki</th>
                                 </tr>
                             </thead>
                             <tbody id="kkw-costs-operations-body">
                                 <tr>
-                                    <td colspan="7" class="empty-state">Jeszcze nie pobrano szczegolow raportu.</td>
+                                    <td colspan="5" class="empty-state">Jeszcze nie pobrano operacji.</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -108,24 +81,51 @@
                         <table>
                             <thead>
                                 <tr>
-                                    <th>Kod</th>
+                                    <th style="width:56px;">Kod</th>
                                     <th>Nazwa</th>
-                                    <th>ID</th>
-                                    <th>Ilosc planowana</th>
-                                    <th>Ilosc wg wykonania</th>
-                                    <th>Ilosc przeniesiona</th>
-                                    <th>Koszt po realizacji</th>
-                                    <th>Cena po realizacji</th>
+                                    <th style="width:64px;">Ilosc</th>
+                                    <th style="width:64px;">Uzyto</th>
+                                    <th style="width:72px;">Cena</th>
+                                    <th style="width:84px;">Koszt</th>
                                 </tr>
                             </thead>
                             <tbody id="kkw-costs-materials-body-kkw">
                                 <tr>
-                                    <td colspan="8" class="empty-state">Jeszcze nie pobrano materialow.</td>
+                                    <td colspan="6" class="empty-state">Jeszcze nie pobrano materialow.</td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
                 </section>
+
+                <!-- Szczegoly raportu (zwijane) -->
+                <details class="raw-panel">
+                    <summary>Szczegoly raportu</summary>
+                    <section class="table-section" style="margin-top: 8px;">
+                        <div class="table-section-header">
+                            <h3>Galezie raportu</h3>
+                            <p>Podsumowanie z raportu PreTechInPost dla korzenia, materialow i operacji.</p>
+                        </div>
+                        <div class="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Sekcja</th>
+                                        <th>Przed</th>
+                                        <th>Technologia</th>
+                                        <th>Norma / wejscie</th>
+                                        <th>Po realizacji</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="kkw-costs-summary-body">
+                                    <tr>
+                                        <td colspan="5" class="empty-state">Jeszcze nie pobrano raportu kosztow KKW.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </details>
 
                 <!-- Raw JSON -->
                 <details class="raw-panel">
@@ -155,6 +155,7 @@
                     Dane logowania Vendo sa zapisywane lokalnie pod tym samym kluczem co w konsoli
                     (<code>vendo-api-console</code>), wiec mozesz przejsc miedzy stronami bez ponownego wpisywania.
                 </p>
+
             </div>
         </div>
     </main>

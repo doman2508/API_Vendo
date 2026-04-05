@@ -33,6 +33,9 @@ body {
     flex-direction: column;
     height: 100vh;
     overflow: hidden;
+    max-width: 1400px;
+    margin: 0 auto;
+    width: 100%;
 }
 
 /* --- Nav bar (tabs) ----------------------------------------- */
@@ -482,6 +485,11 @@ body {
 
 .table-wrap tbody tr:hover {
     background: #f8f9fa;
+}
+
+.table-wrap td.name-cell {
+    white-space: normal;
+    word-break: break-word;
 }
 
 .table-wrap .empty-state {

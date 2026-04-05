@@ -501,6 +501,54 @@ async function resolveKkwRecordsByIds(connection, accessToken, ids, { allowMissi
     return ids.map((id) => byId.get(id));
 }
 
+const STAWKI_OPERACJI = {
+    "Przyjęcie na magazyn": 55,
+    "Montaż automatyczny SMD-TOP": 205,
+    "Montaż automatyczny SMD-BOT": 205,
+    "Montaż automatyczny SMD": 205,
+    "Inspekcja automatyczna AOI-TOP": 130,
+    "Inspekcja automatyczna AOI-BOT": 130,
+    "Inspekcja automatyczna AOI": 130,
+    "Inspekcja manualna": 67,
+    "Osadzanie elementów": 55,
+    "Montaż ręczny": 55,
+    "FALA": 84,
+    "Poprawki po fali": 55,
+    "Uruchamianie/testowanie": 67,
+    "Kontrola finalna": 66,
+    "Lakierowanie": 89,
+    "Mycie (myjka ultradźwiękowa)": 55.5,
+    "Pakowanie(mycie, depanelizacja)": 55,
+    "Frezowanie": 66.5,
+    "Poprawki AOI": 66.5,
+    "Program AOI": 66.5,
+    "INNE - 1": 55,
+    "INNE - 2": 55,
+    "INNE - 3": 55,
+    "INNE - 4": 55,
+    "INNE - 5": 55,
+    "INNE - 6": 55,
+    "Kooperacja": 55,
+    "SERWIS": 64,
+    "Oklejanie kaptonem": 55,
+};
+
+const OPERACJE_JEDNORAZOWE = new Set([
+    "Program AOI",
+]);
+
+function getStawkaOperacji(nazwaOperacji) {
+    if (!nazwaOperacji) return null;
+    const name = nazwaOperacji.trim();
+    if (STAWKI_OPERACJI[name] !== undefined) return STAWKI_OPERACJI[name];
+    const lower = name.toLowerCase();
+    for (const [key, val] of Object.entries(STAWKI_OPERACJI)) {
+        if (key.toLowerCase() === lower) return val;
+        if (lower.startsWith(key.toLowerCase()) || key.toLowerCase().startsWith(lower)) return val;
+    }
+    return null;
+}
+
 function buildKkwCostEstimateModel({ kkwId, operationsBy }) {
     return {
         ID: Number(kkwId),
@@ -586,10 +634,16 @@ function buildKkwDocumentPositionsModel({ kkwId, pageSize }) {
     };
 }
 
-function buildKkwPreTechInPostModel({ kkwId }) {
-    return {
+function buildKkwPreTechInPostModel({ kkwId, useCalcPrices }) {
+    const model = {
         KKWID: [Number(kkwId)],
     };
+
+    if (useCalcPrices) {
+        model.InWgCenyKalkulacyjnej = true;
+    }
+
+    return model;
 }
 
 function buildCzasozliczarkaListModel({ operatorName, pageSize }) {
@@ -1601,8 +1655,60 @@ async function handleApiKkwCosts(req, res) {
             Token: accessToken,
             Model: buildKkwPreTechInPostModel({
                 kkwId,
+                useCalcPrices: true,
             }),
         });
+        const pracownicyResponse = await vendoPost(connection.baseUrl, "/Produkcja/KKW/PracownicyWykonanLista", {
+            Token: accessToken,
+            Model: {
+                Cursor: true,
+                CursorCzyZamknac: false,
+                Strona: { Indeks: 0, LiczbaRekordow: 500 },
+                KKWID: [kkwId],
+                ZwracanePola: [
+                    "ID", "OperacjaNazwa", "OperacjaLp",
+                    "PracownikImie", "PracownikNazwisko",
+                    "Rbh", "DataRozpoczecia", "DataZakonczenia",
+                ],
+            },
+        });
+        const pracownicyRecords = Array.isArray(pracownicyResponse?.Wynik?.Rekordy)
+            ? pracownicyResponse.Wynik.Rekordy
+            : [];
+
+        const rbhByOperation = {};
+        for (const rec of pracownicyRecords) {
+            const name = rec.OperacjaNazwa || "?";
+            if (!rbhByOperation[name]) {
+                rbhByOperation[name] = { Rbh: 0, Stawka: getStawkaOperacji(name), Wykonania: [] };
+            }
+            const rbh = Number(rec.Rbh) || 0;
+            rbhByOperation[name].Rbh += rbh;
+            rbhByOperation[name].Wykonania.push({
+                Pracownik: [rec.PracownikImie, rec.PracownikNazwisko].filter(Boolean).join(" "),
+                Rbh: rbh,
+                DataRozpoczecia: rec.DataRozpoczecia,
+                DataZakonczenia: rec.DataZakonczenia,
+            });
+        }
+
+        const kosztOperacjiWgStawek = {};
+        let sumaKosztowOperacji = 0;
+        for (const [name, data] of Object.entries(rbhByOperation)) {
+            const stawka = data.Stawka || 0;
+            const koszt = data.Rbh * stawka;
+            const jednorazowa = OPERACJE_JEDNORAZOWE.has(name);
+            kosztOperacjiWgStawek[name] = {
+                Rbh: Math.round(data.Rbh * 10000) / 10000,
+                StawkaNowa: stawka,
+                KosztWgNowejStawki: Math.round(koszt * 100) / 100,
+                Jednorazowa: jednorazowa,
+                Wykonania: data.Wykonania,
+            };
+            if (!jednorazowa) {
+                sumaKosztowOperacji += koszt;
+            }
+        }
 
         const materialRecords = Array.isArray(materialsResponse?.Wynik?.Rekordy) ? materialsResponse.Wynik.Rekordy : [];
         const estimate = estimateResponse?.Wynik || {};
@@ -1610,6 +1716,16 @@ async function handleApiKkwCosts(req, res) {
         const root = elements.find((item) => item?.Rodzaj === "Korzen") || null;
         const branches = elements.filter((item) => typeof item?.Rodzaj === "string" && item.Rodzaj.startsWith("Galaz"));
         const leaves = elements.filter((item) => typeof item?.Rodzaj === "string" && item.Rodzaj.startsWith("Lisc"));
+        const operationLeaves = leaves.filter((item) => item?.Rodzaj === "Lisc, Operacja");
+        for (const leaf of operationLeaves) {
+            const name = leaf?.Nazwa;
+            const stawka = getStawkaOperacji(name);
+            const rbhWyk = Number(leaf?.Post?.Ilosc) || 0;
+            leaf.StawkaNowa = stawka;
+            leaf.KosztWgStawki = stawka != null ? Math.round(rbhWyk * stawka * 100) / 100 : null;
+            leaf.Jednorazowa = OPERACJE_JEDNORAZOWE.has(name);
+        }
+
         const materialLeaves = leaves.filter((item) => item?.Rodzaj === "Lisc, Material");
         const materialsBranch = branches.find((item) => item?.Rodzaj === "Galaz, Material") || null;
         const operationsBranch = branches.find((item) => item?.Rodzaj === "Galaz, Operacja") || null;
@@ -1690,7 +1806,13 @@ async function handleApiKkwCosts(req, res) {
                     KosztNaSztuke: quantity > 0 ? totalCost / quantity : 0,
                     MaterialyNaSztuke: quantity > 0 ? materialsCost / quantity : 0,
                     OperacjeNaSztuke: quantity > 0 ? operationsCost / quantity : 0,
+                    OperacjeWgNowychStawek: Math.round(sumaKosztowOperacji * 100) / 100,
+                    OperacjeWgNowychStawekNaSztuke: quantity > 0
+                        ? Math.round((sumaKosztowOperacji / quantity) * 100) / 100
+                        : 0,
                 },
+                KosztyOperacjiWgStawek: kosztOperacjiWgStawek,
+                SumaKosztowOperacjiWgStawek: Math.round(sumaKosztowOperacji * 100) / 100,
                 SzacowanieKosztow: estimate,
             },
             ResponseStatus: {
@@ -2566,6 +2688,7 @@ const server = http.createServer(async (req, res) => {
         await handleApiKkwCosts(req, res);
         return;
     }
+
 
     if (req.method === "POST" && req.url === "/api/production-order-costs") {
         await handleApiProductionOrderCosts(req, res);

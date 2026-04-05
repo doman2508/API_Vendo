@@ -16,10 +16,17 @@ const kkwCostsOperationsBody = document.getElementById("kkw-costs-operations-bod
 const kkwCostsMaterialsBody = document.getElementById("kkw-costs-materials-body-kkw");
 const kkwCostsRawOutput = document.getElementById("kkw-costs-raw-output");
 
+let lastKkwData = null;
+let extraCostValue = 0;
+
 const STORAGE_KEY = "vendo-api-console";
 const numberFormatter = new Intl.NumberFormat("pl-PL", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 4,
+});
+const currencyFormatter = new Intl.NumberFormat("pl-PL", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
 });
 
 function setStatus(target, type, text) {
@@ -80,13 +87,20 @@ function renderKkwCostsSummaryCards(data) {
     const result = data?.Wynik || {};
     const summary = result.Podsumowanie || {};
     const report = result.Raport || {};
+    const quantity = Number(result.Ilosc) || 0;
+    const extraPerUnit = extraCostValue;
+    const extraGlobal = extraPerUnit * quantity;
     const productLabel = [result.TowarKod, result.TowarNazwa].filter(Boolean).join(" - ");
     const materialowkaCostValue =
         summary.MaterialowkaKosztKalkulacyjny ?? summary.MaterialowkaKosztPoRealizacji;
-    const materialowkaCost =
-        materialowkaCostValue === null || materialowkaCostValue === undefined
-            ? "-"
-            : numberFormatter.format(Number(materialowkaCostValue) || 0);
+
+    const matPerUnit = Number(summary.MaterialyNaSztuke) || 0;
+    const opsPerUnit = Number(summary.OperacjeWgNowychStawekNaSztuke) || 0;
+    const totalPerUnit = matPerUnit + opsPerUnit + extraPerUnit;
+
+    const matGlobal = Number(summary.MaterialyPostWartosc) || 0;
+    const opsGlobal = Number(summary.OperacjeWgNowychStawek) || 0;
+    const totalGlobal = matGlobal + opsGlobal + extraGlobal;
 
     const renderGroup = (title, tone, cards) => `
         <section class="summary-group summary-group-${tone}">
@@ -104,6 +118,16 @@ function renderKkwCostsSummaryCards(data) {
         </section>
     `;
 
+    const globalCards = [
+        ["Koszt calkowity", currencyFormatter.format(totalGlobal)],
+        ["Materialy po realizacji", currencyFormatter.format(matGlobal)],
+        ["Operacje wg stawek", currencyFormatter.format(opsGlobal)],
+        ["Koszt materialow z materialowki", currencyFormatter.format(Number(materialowkaCostValue) || 0)],
+    ];
+    if (extraGlobal > 0) {
+        globalCards.push(["Koszty dodatkowe", currencyFormatter.format(extraGlobal)]);
+    }
+
     kkwCostsSummary.innerHTML = [
         renderGroup("Identyfikacja", "identity", [
             ["Numer KKW", result.KkwNumer || "-"],
@@ -111,24 +135,45 @@ function renderKkwCostsSummaryCards(data) {
             ["Ilosc KKW", formatStock(result.Ilosc)],
             ["Caly obiekt", report.Korzen?.Nazwa || result.KkwNumer || "-"],
         ]),
-        renderGroup("Koszty globalne", "financial", [
-            ["Koszt calkowity", numberFormatter.format(Number(summary.KorzenPostWartosc) || 0)],
-            ["Materialy po realizacji", numberFormatter.format(Number(summary.MaterialyPostWartosc) || 0)],
-            ["Operacje po realizacji", numberFormatter.format(Number(summary.OperacjePostWartosc) || 0)],
-            ["Koszt materialow z materialowki", materialowkaCost],
-        ]),
-        renderGroup("Koszt na sztuke", "unit", [
-            ["Koszt na sztuke", numberFormatter.format(Number(summary.KosztNaSztuke) || 0)],
-            ["Materialy na sztuke", numberFormatter.format(Number(summary.MaterialyNaSztuke) || 0)],
-            ["Operacje na sztuke", numberFormatter.format(Number(summary.OperacjeNaSztuke) || 0)],
-        ]),
-        renderGroup("Struktura raportu", "meta", [
-            ["Pozycje materialowki", summary.LiczbaPozycjiMaterialowki ?? 0],
-            ["Liczba galezi", summary.LiczbaGalezi ?? 0],
-            ["Liczba lisci", summary.LiczbaLisci ?? 0],
-        ]),
+        renderGroup("Koszty globalne", "financial", globalCards),
+        `<section class="summary-group summary-group-unit">
+            <div class="summary-group-header">
+                <h3>Koszt na sztuke</h3>
+            </div>
+            <div class="summary-group-grid">
+                <div class="summary-card">
+                    <span>RAZEM</span>
+                    <strong>${currencyFormatter.format(totalPerUnit)}</strong>
+                </div>
+                <div class="summary-card">
+                    <span>Materialy</span>
+                    <strong>${currencyFormatter.format(matPerUnit)}</strong>
+                </div>
+                <div class="summary-card">
+                    <span>Montaz</span>
+                    <strong>${currencyFormatter.format(opsPerUnit)}</strong>
+                </div>
+                <div class="summary-card">
+                    <span>Koszty dodatkowe</span>
+                    <input id="extra-cost-input" type="number" step="0.01" min="0"
+                        value="${extraCostValue || ''}"
+                        placeholder="0.00"
+                        style="width:100%; padding:4px 6px; border:1px solid #ddd; border-radius:6px;
+                               font-size:14px; font-weight:600; font-family:inherit;
+                               font-variant-numeric:tabular-nums; color:#212529;">
+                </div>
+            </div>
+        </section>`,
     ].join("");
     kkwCostsSummary.classList.remove("hidden");
+
+    const input = document.getElementById("extra-cost-input");
+    if (input) {
+        input.addEventListener("input", () => {
+            extraCostValue = Number(input.value) || 0;
+            if (lastKkwData) renderKkwCostsSummaryCards(lastKkwData);
+        });
+    }
 }
 
 function renderKkwCostsTables(data) {
@@ -173,43 +218,103 @@ function renderKkwCostsTables(data) {
     if (!operationLeaves.length) {
         kkwCostsOperationsBody.innerHTML = `
             <tr>
-                <td colspan="6" class="empty-state">Brak operacji dla tego KKW.</td>
+                <td colspan="5" class="empty-state">Brak danych o operacjach.</td>
             </tr>
         `;
     } else {
-        kkwCostsOperationsBody.innerHTML = operationLeaves.map((item) => `
-            <tr>
-                <td>${item.Nazwa ?? "-"}</td>
-                <td>${formatStock(item?.Tech?.Ilosc)}</td>
+        kkwCostsOperationsBody.innerHTML = operationLeaves.map((item) => {
+            const name = item.Nazwa ?? "-";
+            const jednorazowa = item.Jednorazowa || false;
+            const stawka = item.StawkaNowa;
+            const koszt = item.KosztWgStawki;
+            return `
+            <tr style="${jednorazowa ? 'opacity: 0.45; text-decoration: line-through;' : ''}">
+                <td>${name}${jednorazowa ? ' (jednorazowa)' : ''}</td>
                 <td>${formatStock(item?.Post?.Ilosc)}</td>
-                <td>${formatStock(item?.Tech?.Wartosc)}</td>
-                <td>${formatStock(item?.Post?.Wartosc)}</td>
-                <td>${Math.round(Number(item?.In?.Cena ?? item?.Tech?.Cena) || 0)}</td>
+                <td>${formatStock(item?.Tech?.Ilosc)}</td>
+                <td>${stawka != null ? currencyFormatter.format(stawka) : '-'}</td>
+                <td>${koszt != null ? currencyFormatter.format(koszt) : '-'}</td>
             </tr>
-        `).join("");
+            `;
+        }).join("");
     }
 
     if (!materialRows.length) {
         kkwCostsMaterialsBody.innerHTML = `
             <tr>
-                <td colspan="8" class="empty-state">Brak materiałow dla tego KKW.</td>
+                <td colspan="6" class="empty-state">Brak materialow dla tego KKW.</td>
             </tr>
         `;
         return;
     }
 
-    kkwCostsMaterialsBody.innerHTML = materialRows.map((item) => `
-        <tr>
-            <td>${item.SkladnikKod ?? "-"}</td>
-            <td>${item.SkladnikNazwa ?? "-"}</td>
-            <td>${item.SkladnikID ?? "-"}</td>
-            <td>${formatStock(item.IloscPlanowana)}</td>
-            <td>${formatStock(item.IloscZWykonania)}</td>
-            <td>${formatStock(item.IloscPrzeniesiona)}</td>
-            <td>${formatStock(item.KosztPoRealizacji)}</td>
-            <td>${formatStock(item.CenaPoRealizacji)}</td>
-        </tr>
-    `).join("");
+    let materialsSortCol = null;
+    let materialsSortAsc = true;
+    const materialsTable = kkwCostsMaterialsBody.closest("table");
+
+    function renderMaterialRows(rows) {
+        kkwCostsMaterialsBody.innerHTML = rows.map((item) => {
+            const ilosc = Number(item.IloscZWykonania) || 0;
+            const przeniesiona = Number(item.IloscPrzeniesiona) || 0;
+            const uzyto = przeniesiona - ilosc;
+            const uzytoStr = uzyto > 0 ? "+" + formatStock(uzyto) : formatStock(uzyto);
+            return `
+                <tr>
+                    <td>${item.SkladnikKod ?? "-"}</td>
+                    <td class="name-cell" title="${item.SkladnikNazwa ?? ''}">${item.SkladnikNazwa ?? "-"}</td>
+                    <td>${formatStock(ilosc)}</td>
+                    <td>${uzytoStr}</td>
+                    <td style="width:72px; text-align:right;">${currencyFormatter.format(Number(item.CenaPoRealizacji) || 0)}</td>
+                    <td style="width:84px; text-align:right;">${currencyFormatter.format(Number(item.KosztPoRealizacji) || 0)}</td>
+                </tr>
+            `;
+        }).join("");
+    }
+
+    function sortMaterials(colIndex) {
+        if (materialsSortCol === colIndex) {
+            materialsSortAsc = !materialsSortAsc;
+        } else {
+            materialsSortCol = colIndex;
+            materialsSortAsc = true;
+        }
+
+        const keys = [
+            (r) => (r.SkladnikKod ?? "").toLowerCase(),
+            (r) => (r.SkladnikNazwa ?? "").toLowerCase(),
+            (r) => Number(r.IloscZWykonania) || 0,
+            (r) => (Number(r.IloscPrzeniesiona) || 0) - (Number(r.IloscZWykonania) || 0),
+            (r) => Number(r.CenaPoRealizacji) || 0,
+            (r) => Number(r.KosztPoRealizacji) || 0,
+        ];
+        const keyFn = keys[colIndex] || keys[0];
+        const sorted = [...materialRows].sort((a, b) => {
+            const va = keyFn(a);
+            const vb = keyFn(b);
+            if (va < vb) return materialsSortAsc ? -1 : 1;
+            if (va > vb) return materialsSortAsc ? 1 : -1;
+            return 0;
+        });
+
+        renderMaterialRows(sorted);
+
+        const headers = materialsTable.querySelectorAll("thead th");
+        headers.forEach((th, i) => {
+            th.textContent = th.textContent.replace(/ [▲▼]$/, "");
+            if (i === colIndex) {
+                th.textContent += materialsSortAsc ? " ▲" : " ▼";
+            }
+        });
+    }
+
+    if (materialsTable) {
+        materialsTable.querySelectorAll("thead th").forEach((th, i) => {
+            th.style.cursor = "pointer";
+            th.addEventListener("click", () => sortMaterials(i));
+        });
+    }
+
+    renderMaterialRows(materialRows);
 }
 
 function clearKkwCostsResults() {
@@ -224,12 +329,12 @@ function clearKkwCostsResults() {
     `;
     kkwCostsOperationsBody.innerHTML = `
         <tr>
-            <td colspan="6" class="empty-state">Jeszcze nie pobrano operacji.</td>
+            <td colspan="5" class="empty-state">Jeszcze nie pobrano operacji.</td>
         </tr>
     `;
     kkwCostsMaterialsBody.innerHTML = `
         <tr>
-            <td colspan="8" class="empty-state">Jeszcze nie pobrano materialow.</td>
+            <td colspan="6" class="empty-state">Jeszcze nie pobrano materialow.</td>
         </tr>
     `;
     kkwCostsRawOutput.textContent = "Brak danych.";
@@ -247,21 +352,20 @@ function normalizeKkwOperationSection() {
     const headRow = operationsTable.querySelector("thead tr");
 
     if (heading) {
-        heading.textContent = "Operacje";
+        heading.textContent = "Operacje (wg nowych stawek)";
     }
 
     if (description) {
-        description.textContent = "Rozbicie kosztow operacyjnych na RBH, koszt i stawke RBH z cennika operacji.";
+        description.textContent = "Koszty operacji przeliczone na podstawie Rbh z wykonan i aktualnych stawek.";
     }
 
     if (headRow) {
         headRow.innerHTML = `
             <th>Nazwa operacji</th>
-            <th>Rbh Norma</th>
-            <th>Rbh Wyk</th>
-            <th>Koszt Norma</th>
-            <th>Koszt Wyk</th>
-            <th>Stawka Rbh</th>
+            <th>Rbh</th>
+            <th>Rbh (norma)</th>
+            <th>Stawka</th>
+            <th>Koszt wg stawki</th>
         `;
     }
 }
@@ -303,6 +407,7 @@ if (kkwCostsForm) {
                 ...collectKkwCostsValues(),
             });
 
+            lastKkwData = data;
             kkwCostsRawOutput.textContent = JSON.stringify(data, null, 2);
             renderKkwCostsSummaryCards(data);
             renderKkwCostsTables(data);
@@ -321,6 +426,8 @@ if (clearButton) {
     clearButton.addEventListener("click", () => {
         connectionForm.reset();
         localStorage.removeItem(STORAGE_KEY);
+        lastKkwData = null;
+        extraCostValue = 0;
         clearKkwCostsResults();
         setStatus(kkwCostsStatusBadge, "idle", "Gotowe");
     });
