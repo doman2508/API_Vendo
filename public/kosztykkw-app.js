@@ -241,9 +241,9 @@ function normalizeKkwOperationSection() {
         return;
     }
 
-    const operationsSection = kkwCostsOperationsBody.closest(".warehouse-panel");
-    const heading = operationsSection?.querySelector(".warehouse-panel-header h3");
-    const description = operationsSection?.querySelector(".warehouse-panel-header p");
+    const operationsSection = kkwCostsOperationsBody.closest(".table-section");
+    const heading = operationsSection?.querySelector(".table-section-header h3");
+    const description = operationsSection?.querySelector(".table-section-header p");
     const headRow = operationsTable.querySelector("thead tr");
 
     if (heading) {

@@ -1,0 +1,544 @@
+/* ============================================================
+   Koszty KKW — styl Vendo-lookup
+   ============================================================ */
+
+/* --- Reset & globals ---------------------------------------- */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html, body {
+    height: 100%;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+    font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 1.5;
+    color: #212529;
+    background: #f5f5f5;
+}
+
+/* --- App shell (100vh flex column) -------------------------- */
+.app-shell {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* --- Nav bar (tabs) ----------------------------------------- */
+.nav-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: #fafafa;
+    border-bottom: 1px solid #eee;
+    flex-shrink: 0;
+}
+
+.nav-bar .tab {
+    display: inline-flex;
+    align-items: center;
+    padding: 8px 16px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    background: #fff;
+    color: #212529;
+    font-size: 13px;
+    font-weight: 500;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.nav-bar .tab:hover {
+    background: #f0f0f0;
+}
+
+.nav-bar .tab.active {
+    background: #0066cc;
+    color: #fff;
+    border-color: #0066cc;
+    font-weight: 600;
+}
+
+/* --- Context bar -------------------------------------------- */
+.context-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    min-height: 36px;
+    background: #f8f9fa;
+    border-bottom: 1px solid #eee;
+    font-size: 13px;
+    color: #4a5568;
+    flex-shrink: 0;
+}
+
+.context-bar code {
+    font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
+    font-size: 12px;
+    background: #edf2f7;
+    padding: 1px 5px;
+    border-radius: 4px;
+}
+
+/* --- Main content (two-panel grid) -------------------------- */
+.main-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* --- Left panel --------------------------------------------- */
+.left-panel {
+    padding: 16px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.left-panel h1 {
+    font-size: 20px;
+    font-weight: 600;
+    margin: 0;
+}
+
+/* --- Right panel (connection / details) --------------------- */
+.right-panel {
+    border-left: 1px solid #eee;
+    padding: 16px;
+    background: #fff;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.right-panel h2 {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0;
+}
+
+.right-panel .note {
+    font-size: 11px;
+    color: #666;
+    line-height: 1.45;
+}
+
+.right-panel .note code {
+    font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
+    font-size: 10px;
+    background: #f5f5f5;
+    padding: 1px 4px;
+    border-radius: 3px;
+}
+
+/* --- Form elements ------------------------------------------ */
+.form-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.form-stack label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #4a5568;
+}
+
+.form-stack input {
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: inherit;
+    color: #212529;
+    background: #fff;
+    transition: border-color 0.15s;
+}
+
+.form-stack input:focus {
+    outline: none;
+    border-color: #0066cc;
+    box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
+}
+
+/* --- Inline form (search bar style) ------------------------- */
+.inline-form {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.inline-form input {
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: inherit;
+    color: #212529;
+    background: #fff;
+    flex: 1;
+    max-width: 280px;
+    transition: border-color 0.15s;
+}
+
+.inline-form input:focus {
+    outline: none;
+    border-color: #0066cc;
+    box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
+}
+
+/* --- Buttons ------------------------------------------------ */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-family: inherit;
+    font-weight: 500;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s, opacity 0.15s;
+    white-space: nowrap;
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-primary {
+    background: #1e88e5;
+    color: #fff;
+    border: 1px solid #1e88e5;
+}
+
+.btn-primary:hover:not(:disabled) {
+    background: #1976d2;
+}
+
+.btn-success {
+    background: #43a047;
+    color: #fff;
+    border: 1px solid #43a047;
+}
+
+.btn-success:hover:not(:disabled) {
+    background: #388e3c;
+}
+
+.btn-ghost {
+    background: transparent;
+    color: #666;
+    border: 1px solid #ddd;
+}
+
+.btn-ghost:hover:not(:disabled) {
+    background: #f5f5f5;
+    color: #212529;
+}
+
+.btn-link {
+    background: none;
+    border: none;
+    color: #0066cc;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.btn-link:hover {
+    text-decoration: underline;
+}
+
+/* --- Actions row -------------------------------------------- */
+.actions-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* --- Status badge ------------------------------------------- */
+.status {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+.status.idle {
+    background: #f0f0f0;
+    color: #666;
+}
+
+.status.loading {
+    background: #e3f2fd;
+    color: #1565c0;
+}
+
+.status.success {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+
+.status.error {
+    background: #ffebee;
+    color: #c62828;
+}
+
+/* --- Section header ----------------------------------------- */
+.section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.section-header h2 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0;
+}
+
+/* --- Summary cards ------------------------------------------ */
+.summary {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+}
+
+.summary-group {
+    border: 1px solid #eee;
+    border-radius: 10px;
+    padding: 12px;
+    background: #fafafa;
+}
+
+.summary-group-header {
+    margin-bottom: 8px;
+}
+
+.summary-group-header h3 {
+    margin: 0;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #777;
+}
+
+.summary-group-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 8px;
+}
+
+.summary-card {
+    background: #fff;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.summary-card span {
+    font-size: 11px;
+    color: #777;
+}
+
+.summary-card strong {
+    font-size: 14px;
+    font-weight: 600;
+    color: #212529;
+    font-variant-numeric: tabular-nums;
+}
+
+.summary-card-wide {
+    grid-column: span 2;
+}
+
+/* Summary group tones */
+.summary-group-identity {
+    background: #f8f9fa;
+    border-color: #e2e8f0;
+}
+
+.summary-group-financial {
+    background: #f0fdf4;
+    border-color: #bbf7d0;
+}
+
+.summary-group-unit {
+    background: #eff6ff;
+    border-color: #bfdbfe;
+}
+
+.summary-group-meta {
+    background: #fefce8;
+    border-color: #fde68a;
+}
+
+/* --- Error box ---------------------------------------------- */
+.error-box {
+    padding: 10px 14px;
+    border-radius: 8px;
+    background: #fff5f5;
+    color: #c62828;
+    border: 1px solid #ffcdd2;
+    font-size: 13px;
+}
+
+/* --- Table panel (warehouse-panel equivalent) --------------- */
+.table-section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.table-section-header h3 {
+    font-size: 13px;
+    font-weight: 600;
+    margin: 0;
+    color: #212529;
+}
+
+.table-section-header p {
+    font-size: 11px;
+    color: #777;
+    margin: 2px 0 0;
+}
+
+/* --- Table -------------------------------------------------- */
+.table-wrap {
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    background: #fff;
+    overflow: auto;
+    max-height: 400px;
+}
+
+.table-wrap table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: "Cascadia Code", "Fira Code", "SF Mono", Consolas, monospace;
+    font-size: 12px;
+    font-variant-numeric: slashed-zero tabular-nums;
+}
+
+.table-wrap thead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.table-wrap th {
+    padding: 6px 12px;
+    background: #f5f5f5;
+    border-bottom: 1px solid #ddd;
+    font-weight: 600;
+    text-align: left;
+    white-space: nowrap;
+    font-size: 11px;
+    color: #4a5568;
+}
+
+.table-wrap td {
+    padding: 4px 12px;
+    border-bottom: 1px solid #eee;
+    white-space: nowrap;
+}
+
+.table-wrap tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.table-wrap tbody tr:hover {
+    background: #f8f9fa;
+}
+
+.table-wrap .empty-state {
+    text-align: center;
+    color: #999;
+    font-size: 12px;
+    font-family: Inter, "Segoe UI", system-ui, sans-serif;
+    padding: 20px 12px;
+    white-space: normal;
+}
+
+/* --- Raw JSON panel ----------------------------------------- */
+.raw-panel {
+    font-size: 12px;
+    color: #666;
+}
+
+.raw-panel summary {
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    color: #777;
+    padding: 6px 0;
+}
+
+.raw-panel summary:hover {
+    color: #212529;
+}
+
+.raw-panel pre {
+    margin-top: 8px;
+    padding: 12px;
+    background: #fafafa;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    overflow: auto;
+    max-height: 300px;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+/* --- Utility ------------------------------------------------ */
+.hidden {
+    display: none !important;
+}
+
+/* --- Responsive: collapse to single column on narrow -------- */
+@media (max-width: 860px) {
+    .main-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .right-panel {
+        border-left: none;
+        border-top: 1px solid #eee;
+    }
+}
