@@ -47,30 +47,32 @@
                 <div id="kkw-costs-error-box" class="error-box hidden"></div>
 
                 <!-- Table: Operacje -->
-                <section class="table-section">
-                    <div class="table-section-header">
-                        <h3>Szczegoly lisci</h3>
-                        <p>Pozycje szczegolowe z raportu, ktore buduja koncowe koszty materialow i operacji.</p>
-                    </div>
-                    <div class="table-wrap">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Nazwa operacji</th>
-                                    <th>Rbh</th>
-                                    <th>Rbh (norma)</th>
-                                    <th>Stawka</th>
-                                    <th>Koszt wg stawki</th>
-                                </tr>
-                            </thead>
-                            <tbody id="kkw-costs-operations-body">
-                                <tr>
-                                    <td colspan="5" class="empty-state">Jeszcze nie pobrano operacji.</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
+                <details open class="raw-panel">
+                    <summary>Operacje</summary>
+                    <section class="table-section" style="margin-top: 8px;">
+                        <div class="table-section-header">
+                            <p>Koszty operacji przeliczone na podstawie Rbh z wykonan i aktualnych stawek.</p>
+                        </div>
+                        <div class="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Nazwa operacji</th>
+                                        <th>Rbh</th>
+                                        <th>Rbh (norma)</th>
+                                        <th>Stawka</th>
+                                        <th>Koszt wg stawki</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="kkw-costs-operations-body">
+                                    <tr>
+                                        <td colspan="5" class="empty-state">Jeszcze nie pobrano operacji.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </details>
 
                 <!-- Table: Materialy -->
                 <details open class="raw-panel">
@@ -94,35 +96,6 @@
                                 <tbody id="kkw-costs-materials-body-kkw">
                                     <tr>
                                         <td colspan="6" class="empty-state">Jeszcze nie pobrano materialow.</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </section>
-                </details>
-
-                <!-- Szczegoly raportu (zwijane) -->
-                <details class="raw-panel">
-                    <summary>Szczegoly raportu</summary>
-                    <section class="table-section" style="margin-top: 8px;">
-                        <div class="table-section-header">
-                            <h3>Galezie raportu</h3>
-                            <p>Podsumowanie z raportu PreTechInPost dla korzenia, materialow i operacji.</p>
-                        </div>
-                        <div class="table-wrap">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>Sekcja</th>
-                                        <th>Przed</th>
-                                        <th>Technologia</th>
-                                        <th>Norma / wejscie</th>
-                                        <th>Po realizacji</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="kkw-costs-summary-body">
-                                    <tr>
-                                        <td colspan="5" class="empty-state">Jeszcze nie pobrano raportu kosztow KKW.</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -154,6 +127,35 @@
                                 <tbody id="docs-body">
                                     <tr>
                                         <td colspan="8" class="empty-state">Jeszcze nie pobrano dokumentow.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </details>
+
+                <!-- Szczegoly raportu (zwijane) -->
+                <details class="raw-panel">
+                    <summary>Szczegoly raportu</summary>
+                    <section class="table-section" style="margin-top: 8px;">
+                        <div class="table-section-header">
+                            <h3>Galezie raportu</h3>
+                            <p>Podsumowanie z raportu PreTechInPost dla korzenia, materialow i operacji.</p>
+                        </div>
+                        <div class="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Sekcja</th>
+                                        <th>Przed</th>
+                                        <th>Technologia</th>
+                                        <th>Norma / wejscie</th>
+                                        <th>Po realizacji</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="kkw-costs-summary-body">
+                                    <tr>
+                                        <td colspan="5" class="empty-state">Jeszcze nie pobrano raportu kosztow KKW.</td>
                                     </tr>
                                 </tbody>
                             </table>

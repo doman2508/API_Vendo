@@ -1640,7 +1640,7 @@ async function handleApiKkwList(req, res) {
         };
         if (search) {
             model.FiltrUniwersalny = search;
-            model.FiltrUniwersalnyPola = ["Numer", "TowarNazwa", "TowarKod", "PozycjaZleceniaNazwa", "ZlecenieNumer"];
+            model.FiltrUniwersalnyPola = ["Numer", "TowarNazwa", "TowarKod", "PozycjaZleceniaNazwa", "ZlecenieNumer", "ZlecenieKontrahentNazwa"];
         }
 
         // Step 1: open cursor, get total count
@@ -2802,11 +2802,288 @@ function resolveStaticPath(urlPath) {
         return { pathname: "/kosztykkw/index.html" };
     }
 
+    if (urlPath === "/piaskownica") {
+        return { pathname: "/piaskownica/index.html" };
+    }
+
+    if (urlPath === "/rentownosc") {
+        return { pathname: "/rentownosc/index.html" };
+    }
+
     if (urlPath.endsWith("/")) {
         return { pathname: `${urlPath}index.html` };
     }
 
     return { pathname: urlPath };
+}
+
+async function handleApiRentownoscInvoices(req, res) {
+    try {
+        const missing = requireServerConfig();
+        if (missing.length) {
+            return sendJson(res, 500, { error: `Brakuje konfiguracji serwera: ${missing.join(", ")}.` });
+        }
+        const body = await readJsonBody(req);
+        const serverConfig = getServerConfig();
+        const connection = {
+            baseUrl: serverConfig.apiUrl,
+            apiLogin: serverConfig.apiLogin,
+            apiPassword: serverConfig.apiPassword,
+            vendoUserLogin: body.vendoUserLogin,
+            vendoUserPassword: body.vendoUserPassword,
+        };
+        const accessToken = await getAccessToken(connection);
+
+        const monthStr = String(body.month || "").trim();
+        const match = monthStr.match(/^(\d{1,2})\D(\d{4})$/);
+        if (!match) {
+            return sendJson(res, 400, { error: "Podaj miesiac w formacie MM/RRRR, np. 03/2026." });
+        }
+        const month = Number(match[1]);
+        const year = Number(match[2]);
+        const dataOd = `${year}-${String(month).padStart(2, "0")}-01T00:00:00`;
+        const lastDay = new Date(year, month, 0).getDate();
+        const dataDo = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}T23:59:59`;
+
+        // Step 1: Fetch FV invoices for the month
+        const fvResponse = await vendoPost(connection.baseUrl, "/Dokumenty/Dokumenty/Lista", {
+            Token: accessToken,
+            Model: {
+                Strona: { Indeks: 0, LiczbaRekordow: 500 },
+                RodzajeID: [1],
+                DataTyp: "Data1",
+                DataOd: dataOd,
+                DataDo: dataDo,
+            },
+        });
+        const invoices = Array.isArray(fvResponse?.Wynik?.Rekordy) ? fvResponse.Wynik.Rekordy : [];
+
+        // Step 2: Collect all unique SkladnikIDs (TowarID) from invoice positions
+        const skladnikIdSet = new Set();
+        for (const fv of invoices) {
+            for (const p of (fv.Pozycje || [])) {
+                const kod = p.Towar?.Kod || "";
+                const id = Number(p.Towar?.ID);
+                if (kod.length >= 6 && id) skladnikIdSet.add(id);
+            }
+        }
+        const allSkladnikIds = [...skladnikIdSet];
+
+        // Step 3: Query PozycjeDokumentowLista by SkladnikID to find KKW links for all products
+        const kkwBySkladnikId = {};
+        const BATCH_SIZE = 30;
+        for (let i = 0; i < allSkladnikIds.length; i += BATCH_SIZE) {
+            const batch = allSkladnikIds.slice(i, i + BATCH_SIZE);
+            const result = await vendoPost(connection.baseUrl, "/Produkcja/KKW/PozycjeDokumentowLista", {
+                Token: accessToken,
+                Model: {
+                    SkladnikID: batch,
+                    Strona: { Indeks: 0, LiczbaRekordow: 5000 },
+                    Typ: ["JawnyWyrob"],
+                    ZwracanePola: ["ID", "KKWID", "KKWNumer", "SkladnikID", "SkladnikKod", "SkladnikNazwa", "Ilosc"],
+                },
+            }).catch(() => null);
+            const recs = result?.Wynik?.Rekordy || [];
+            for (const rec of recs) {
+                const sid = rec.SkladnikID;
+                if (!kkwBySkladnikId[sid]) kkwBySkladnikId[sid] = [];
+                kkwBySkladnikId[sid].push(rec);
+            }
+        }
+
+        // Step 4: For each product, pick the most recent KKW (highest KKWID)
+        const latestKkwBySkladnikId = {};
+        for (const [sid, recs] of Object.entries(kkwBySkladnikId)) {
+            // Sort by KKWID descending — highest = most recent
+            recs.sort((a, b) => b.KKWID - a.KKWID);
+            latestKkwBySkladnikId[sid] = recs[0];
+        }
+
+        // Step 5: Build invoice result with KKW links
+        const faktury = invoices.map(fv => {
+            const pozycje = (fv.Pozycje || [])
+                .filter(p => (p.Towar?.Kod || "").length >= 6)
+                .map(p => {
+                    const towarId = Number(p.Towar?.ID);
+                    const latestKkw = latestKkwBySkladnikId[towarId];
+                    const kkwLinks = latestKkw ? [{
+                        KKWID: latestKkw.KKWID,
+                        KKWNumer: latestKkw.KKWNumer,
+                        Ilosc: latestKkw.Ilosc,
+                    }] : [];
+                    return {
+                        Nazwa: p.Nazwa,
+                        TowarKod: p.Towar?.Kod || null,
+                        TowarID: p.Towar?.ID || null,
+                        Ilosc: Number(p.Ilosc) || 0,
+                        CenaNetto: Number(p.CenaNettoWalutaDok) || 0,
+                        KkwLinks: kkwLinks,
+                    };
+                });
+
+            return {
+                ID: fv.ID,
+                NumerPelny: fv.NumerPelny,
+                Data1: fv.Data1,
+                Klient1Nazwa: fv.Klient1Nazwa,
+                Klient1Kod: fv.Klient1Kod,
+                WartoscNetto: fv.WartoscNetto,
+                WartoscBrutto: fv.WartoscBrutto,
+                Pozycje: pozycje,
+            };
+        });
+
+        sendJson(res, 200, {
+            Miesiac: monthStr,
+            DataOd: dataOd,
+            DataDo: dataDo,
+            Faktury: faktury,
+        });
+    } catch (err) {
+        sendJson(res, err.statusCode || 500, { error: err.message });
+    }
+}
+
+async function handleApiRentownoscKkwCosts(req, res) {
+    try {
+        const missing = requireServerConfig();
+        if (missing.length) {
+            return sendJson(res, 500, { error: `Brakuje konfiguracji serwera: ${missing.join(", ")}.` });
+        }
+        const body = await readJsonBody(req);
+        const serverConfig = getServerConfig();
+        const connection = {
+            baseUrl: serverConfig.apiUrl,
+            apiLogin: serverConfig.apiLogin,
+            apiPassword: serverConfig.apiPassword,
+            vendoUserLogin: body.vendoUserLogin,
+            vendoUserPassword: body.vendoUserPassword,
+        };
+        const accessToken = await getAccessToken(connection);
+
+        const kkwIds = Array.isArray(body.kkwIds) ? body.kkwIds.map(Number).filter(Boolean) : [];
+        if (!kkwIds.length) {
+            return sendJson(res, 400, { error: "Podaj kkwIds." });
+        }
+
+        // Fetch KKW records
+        const kkwRecords = await resolveKkwRecordsByIds(connection, accessToken, kkwIds, { allowMissing: true });
+
+        // For each KKW, get report + workers for cost calculation
+        const costs = {};
+        const BATCH = 5;
+        for (let i = 0; i < kkwRecords.length; i += BATCH) {
+            const batch = kkwRecords.slice(i, i + BATCH);
+            const results = await Promise.all(batch.map(async (kkw) => {
+                const kkwId = Number(kkw.ID);
+                try {
+                    const [reportResp, workersResp] = await Promise.all([
+                        vendoPost(connection.baseUrl, "/Produkcja/KKW/RaportPreTechInPost", {
+                            Token: accessToken,
+                            Model: buildKkwPreTechInPostModel({ kkwId, useCalcPrices: true }),
+                        }),
+                        vendoPost(connection.baseUrl, "/Produkcja/KKW/PracownicyWykonanLista", {
+                            Token: accessToken,
+                            Model: {
+                                Cursor: true, CursorCzyZamknac: true,
+                                Strona: { Indeks: 0, LiczbaRekordow: 500 },
+                                KKWID: [kkwId],
+                                ZwracanePola: ["ID", "OperacjaNazwa", "Rbh"],
+                            },
+                        }),
+                    ]);
+
+                    const elements = Array.isArray(reportResp?.Wynik?.Elementy) ? reportResp.Wynik.Elementy : [];
+                    const materialsBranch = elements.find(e => e?.Rodzaj === "Galaz, Material");
+                    const materialsCost = Number(materialsBranch?.Post?.Wartosc) || 0;
+
+                    const quantity = Number(kkw.IloscWykonana) || Number(kkw.IloscPrzyjeta) || Number(kkw.IloscOczekiwana) || 0;
+
+                    // Calculate operations cost using custom rates
+                    const workers = Array.isArray(workersResp?.Wynik?.Rekordy) ? workersResp.Wynik.Rekordy : [];
+                    let opsTotal = 0;
+                    for (const w of workers) {
+                        const name = w.OperacjaNazwa || "";
+                        if (typeof OPERACJE_JEDNORAZOWE !== "undefined" && OPERACJE_JEDNORAZOWE.has(name)) continue;
+                        const stawka = getStawkaOperacji(name);
+                        opsTotal += (Number(w.Rbh) || 0) * (stawka || 0);
+                    }
+
+                    return {
+                        kkwId,
+                        MaterialyPostWartosc: materialsCost,
+                        MaterialyNaSztuke: quantity > 0 ? materialsCost / quantity : 0,
+                        OperacjeWgNowychStawek: Math.round(opsTotal * 100) / 100,
+                        OperacjeWgNowychStawekNaSztuke: quantity > 0 ? Math.round((opsTotal / quantity) * 100) / 100 : 0,
+                        Ilosc: quantity,
+                        KkwNumer: kkw.Numer,
+                    };
+                } catch {
+                    return { kkwId, error: true };
+                }
+            }));
+
+            for (const r of results) {
+                costs[r.kkwId] = r;
+            }
+        }
+
+        sendJson(res, 200, { Koszty: costs });
+    } catch (err) {
+        sendJson(res, err.statusCode || 500, { error: err.message });
+    }
+}
+
+async function handleApiSandboxInvoices(req, res) {
+    try {
+        const missing = requireServerConfig();
+        if (missing.length) {
+            return sendJson(res, 500, { error: `Brakuje konfiguracji serwera: ${missing.join(", ")}.` });
+        }
+        const body = await readJsonBody(req);
+        const serverConfig = getServerConfig();
+        const connection = {
+            baseUrl: serverConfig.apiUrl,
+            apiLogin: serverConfig.apiLogin,
+            apiPassword: serverConfig.apiPassword,
+            vendoUserLogin: body.vendoUserLogin,
+            vendoUserPassword: body.vendoUserPassword,
+        };
+        const accessToken = await getAccessToken(connection);
+
+        const monthStr = String(body.month || "").trim();
+        const match = monthStr.match(/^(\d{1,2})\D(\d{4})$/);
+        if (!match) {
+            return sendJson(res, 400, { error: "Podaj miesiac w formacie MM/RRRR, np. 03/2026." });
+        }
+        const month = Number(match[1]);
+        const year = Number(match[2]);
+        const dataOd = `${year}-${String(month).padStart(2, "0")}-01T00:00:00`;
+        const lastDay = new Date(year, month, 0).getDate();
+        const dataDo = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}T23:59:59`;
+
+        const response = await vendoPost(connection.baseUrl, "/Dokumenty/Dokumenty/Lista", {
+            Token: accessToken,
+            Model: {
+                Strona: { Indeks: 0, LiczbaRekordow: 500 },
+                RodzajeID: [1],
+                DataTyp: "Data1",
+                DataOd: dataOd,
+                DataDo: dataDo,
+            },
+        });
+
+        const records = Array.isArray(response?.Wynik?.Rekordy) ? response.Wynik.Rekordy : [];
+        sendJson(res, 200, {
+            Miesiac: monthStr,
+            DataOd: dataOd,
+            DataDo: dataDo,
+            Razem: records.length,
+            Rekordy: records,
+        });
+    } catch (err) {
+        sendJson(res, err.statusCode || 500, { error: err.message });
+    }
 }
 
 function handleStatic(req, res) {
@@ -2892,6 +3169,22 @@ const server = http.createServer(async (req, res) => {
         await handleApiProductBatchStates(req, res);
         return;
     }
+
+    if (req.method === "POST" && req.url === "/api/sandbox/invoices") {
+        await handleApiSandboxInvoices(req, res);
+        return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/rentownosc/invoices") {
+        await handleApiRentownoscInvoices(req, res);
+        return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/rentownosc/kkw-costs") {
+        await handleApiRentownoscKkwCosts(req, res);
+        return;
+    }
+
 
     if (req.method === "GET") {
         handleStatic(req, res);

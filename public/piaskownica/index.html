@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="pl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Piaskownica</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/kosztykkw/kosztykkw.css">
+</head>
+<body>
+    <main class="app-shell">
+        <nav class="nav-bar">
+            <a class="tab" href="/console">Konsola API</a>
+            <a class="tab" href="/kosztykkw">Koszty KKW</a>
+            <a class="tab" href="/production-dashboard">Produkcja</a>
+            <a class="tab active" href="/piaskownica">Piaskownica</a>
+        </nav>
+
+        <div class="context-bar">
+            <span>Piaskownica &mdash; testowanie endpointow Vendo</span>
+            <span id="status-badge" class="status idle">Gotowe</span>
+        </div>
+
+        <div class="main-grid">
+            <div class="left-panel">
+                <h1>Piaskownica</h1>
+
+                <form id="sandbox-form" class="inline-form">
+                    <input name="month" type="text" placeholder="Miesiac, np. 03/2026" value="03/2026" required style="max-width:160px;">
+                    <button type="submit" id="submit-btn" class="btn btn-primary">Pobierz faktury</button>
+                </form>
+
+                <div id="error-box" class="error-box hidden"></div>
+
+                <div id="result-area"></div>
+
+                <details class="raw-panel">
+                    <summary>Surowa odpowiedz JSON</summary>
+                    <pre id="result-output" style="
+                        width:100%;
+                        max-height:400px;
+                        overflow:auto;
+                        padding:12px;
+                        background:#fafafa;
+                        border:1px solid #eee;
+                        border-radius:8px;
+                        font-family:'Cascadia Code','Fira Code',Consolas,monospace;
+                        font-size:11px;
+                        line-height:1.5;
+                        white-space:pre-wrap;
+                        word-break:break-all;
+                        color:#212529;
+                    ">Brak danych.</pre>
+                </details>
+            </div>
+
+            <div class="right-panel">
+                <form id="connection-form" class="form-stack">
+                    <label>
+                        <span>Login Vendo</span>
+                        <input name="vendoUserLogin" type="text" required>
+                    </label>
+                    <label>
+                        <span>Haslo Vendo</span>
+                        <input name="vendoUserPassword" type="password" required>
+                    </label>
+                    <div class="actions-row">
+                        <button type="button" id="save-connection" class="btn btn-success">Zapamietaj</button>
+                        <button type="button" id="clear-button" class="btn btn-ghost">Wyczysc</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </main>
+
+    <script src="/piaskownica-app.js"></script>
+</body>
+</html>
