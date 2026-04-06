@@ -3,151 +3,202 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Koszty KKW (wersja robocza)</title>
-    <link rel="stylesheet" href="/styles.css">
+    <title>Koszty KKW</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/kosztykkw/kosztykkw.css">
 </head>
 <body>
     <main class="app-shell">
-        <section class="hero">
-            <p class="eyebrow">Osobny widok do rozwoju</p>
-            <h1>Koszty KKW</h1>
-            <p class="hero-copy">
-                Ta strona korzysta z tego samego endpointu co konsola, ale ma wlasny front-end
-                — mozesz ja zmieniac bez ryzyka dla <code>/console</code>.
-            </p>
-            <div class="hero-actions">
-                <a class="ghost nav-link" href="/console">Powrot do Vendo API Console</a>
+        <!-- Nav bar -->
+        <nav class="nav-bar">
+            <a class="tab" href="/console">Konsola API</a>
+            <a class="tab active" href="/kosztykkw">Koszty KKW</a>
+            <a class="tab" href="/production-dashboard">Produkcja</a>
+        </nav>
+
+        <!-- Context bar -->
+        <div class="context-bar">
+            <span>Widok kosztow KKW &mdash; dane z <code>/Produkcja/KKW/RaportPreTechInPost</code></span>
+            <span id="kkw-costs-status-badge" class="status idle">Gotowe</span>
+        </div>
+
+        <!-- Two-panel grid -->
+        <div class="main-grid">
+            <!-- Left panel: results -->
+            <div class="left-panel">
+                <div class="section-header" style="display:flex; align-items:center; justify-content:space-between;">
+                    <h1>Koszty KKW</h1>
+                    <img src="/kosztykkw/logo.png" alt="MSX elektronika" style="height:48px;">
+                </div>
+
+                <!-- Inline search form -->
+                <form id="kkw-costs-form" class="inline-form">
+                    <input name="kkwNumbers" type="text" placeholder="Numer KKW, np. 119/25" value="150/26" required>
+                    <button type="submit" id="kkw-costs-submit-button" class="btn btn-primary">Pobierz koszty</button>
+
+                </form>
+
+                <!-- Summary cards -->
+                <div id="kkw-costs-summary" class="summary hidden"></div>
+
+                <!-- Error -->
+                <div id="kkw-costs-error-box" class="error-box hidden"></div>
+
+                <!-- Table: Operacje -->
+                <details open class="raw-panel">
+                    <summary>Operacje</summary>
+                    <section class="table-section" style="margin-top: 8px;">
+                        <div class="table-section-header">
+                            <p>Koszty operacji przeliczone na podstawie Rbh z wykonan i aktualnych stawek.</p>
+                        </div>
+                        <div class="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Nazwa operacji</th>
+                                        <th>Rbh</th>
+                                        <th>Rbh (norma)</th>
+                                        <th>Stawka</th>
+                                        <th>Koszt wg stawki</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="kkw-costs-operations-body">
+                                    <tr>
+                                        <td colspan="5" class="empty-state">Jeszcze nie pobrano operacji.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </details>
+
+                <!-- Table: Materialy -->
+                <details open class="raw-panel">
+                    <summary>Materialy</summary>
+                    <section class="table-section" style="margin-top: 8px;">
+                        <div class="table-section-header">
+                            <p>Rozbicie materialowki na skladniki z ilosciami i kosztem po realizacji.</p>
+                        </div>
+                        <div class="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th style="width:56px;">Kod</th>
+                                        <th>Nazwa</th>
+                                        <th style="width:64px;">Ilosc</th>
+                                        <th style="width:64px;">Uzyto</th>
+                                        <th style="width:72px;">Cena</th>
+                                        <th style="width:84px;">Koszt</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="kkw-costs-materials-body-kkw">
+                                    <tr>
+                                        <td colspan="6" class="empty-state">Jeszcze nie pobrano materialow.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </details>
+
+                <!-- Dokumenty zlecenia (ZO, FV, WZ, ...) -->
+                <details open class="raw-panel">
+                    <summary>Dokumenty zlecenia</summary>
+                    <section class="table-section" style="margin-top: 8px;">
+                        <div class="table-section-header">
+                            <p id="docs-zlp-info">Dokumenty powiazane ze zleceniem produkcyjnym (ZO, FV, RW, PW, WZ).</p>
+                        </div>
+                        <div class="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Typ</th>
+                                        <th>Numer</th>
+                                        <th>Numer obcy</th>
+                                        <th>Data</th>
+                                        <th>Klient</th>
+                                        <th style="text-align:right;">Netto</th>
+                                        <th style="text-align:right;">Brutto</th>
+                                        <th>Stan</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="docs-body">
+                                    <tr>
+                                        <td colspan="8" class="empty-state">Jeszcze nie pobrano dokumentow.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </details>
+
+                <!-- Szczegoly raportu (zwijane) -->
+                <details class="raw-panel">
+                    <summary>Szczegoly raportu</summary>
+                    <section class="table-section" style="margin-top: 8px;">
+                        <div class="table-section-header">
+                            <h3>Galezie raportu</h3>
+                            <p>Podsumowanie z raportu PreTechInPost dla korzenia, materialow i operacji.</p>
+                        </div>
+                        <div class="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Sekcja</th>
+                                        <th>Przed</th>
+                                        <th>Technologia</th>
+                                        <th>Norma / wejscie</th>
+                                        <th>Po realizacji</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="kkw-costs-summary-body">
+                                    <tr>
+                                        <td colspan="5" class="empty-state">Jeszcze nie pobrano raportu kosztow KKW.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </details>
+
+                <!-- Raw JSON -->
+                <details class="raw-panel">
+                    <summary>Surowa odpowiedz JSON</summary>
+                    <pre id="kkw-costs-raw-output">Brak danych.</pre>
+                </details>
             </div>
-        </section>
 
-        <section class="panel">
-            <h2>Polaczenie</h2>
-            <form id="connection-form" class="form-grid">
-                <label>
-                    <span>Login Vendo</span>
-                    <input name="vendoUserLogin" type="text" required>
-                </label>
-                <label>
-                    <span>Haslo Vendo</span>
-                    <input name="vendoUserPassword" type="password" required>
-                </label>
+            <!-- Right panel: connection -->
+            <div class="right-panel">
+                <form id="connection-form" class="form-stack">
+                    <label>
+                        <span>Login Vendo</span>
+                        <input name="vendoUserLogin" type="text" required>
+                    </label>
+                    <label>
+                        <span>Haslo Vendo</span>
+                        <input name="vendoUserPassword" type="password" required>
+                    </label>
+                    <div class="actions-row">
+                        <button type="button" id="save-connection" class="btn btn-success">Zapamietaj</button>
+                        <button type="button" id="clear-button" class="btn btn-ghost">Wyczysc</button>
+                    </div>
+                </form>
 
-                <div class="actions">
-                    <button type="button" id="save-connection">Zapamietaj</button>
-                    <button type="button" id="clear-button" class="ghost">Wyczysc formularz</button>
+                <div class="kkw-browser">
+                    <div class="actions-row" style="justify-content:space-between;">
+                        <span style="font-size:12px;font-weight:600;color:#4a5568;">KKW</span>
+                        <button type="button" id="kkw-browse-btn" class="btn btn-ghost" style="padding:4px 10px;font-size:11px;">Zaladuj</button>
+                    </div>
+                    <input id="kkw-browse-search" type="text" placeholder="Szukaj (numer, nazwa, kod)..."
+                        style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:inherit;margin-top:4px;">
+                    <div id="kkw-browse-list" style="max-height:calc(100vh - 260px);overflow-y:auto;font-size:11px;"></div>
                 </div>
-            </form>
 
-            <p class="note">
-                Dane logowania Vendo sa zapisywane lokalnie pod tym samym kluczem co w konsoli
-                (<code>vendo-api-console</code>), wiec mozesz przejsc miedzy stronami bez ponownego wpisywania.
-            </p>
-        </section>
-
-        <section class="panel" id="kkw-costs-main">
-            <div class="section-header">
-                <h2>Koszty KKW</h2>
-                <span id="kkw-costs-status-badge" class="status idle">Gotowe</span>
             </div>
-
-            <form id="kkw-costs-form" class="subform-grid">
-                <label>
-                    <span>Numer KKW</span>
-                    <input name="kkwNumbers" type="text" placeholder="np. 119/25" required>
-                </label>
-                <div class="actions">
-                    <button type="submit" id="kkw-costs-submit-button">Pobierz koszty KKW</button>
-                </div>
-            </form>
-
-            <div id="kkw-costs-summary" class="summary hidden"></div>
-            <div id="kkw-costs-error-box" class="error hidden"></div>
-
-            <section class="warehouse-panel">
-                <div class="warehouse-panel-header">
-                    <h3>Galezie raportu</h3>
-                    <p>Podsumowanie z `/Produkcja/KKW/RaportPreTechInPost` dla korzenia, materialow i operacji.</p>
-                </div>
-                <div class="table-wrap compact">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Sekcja</th>
-                                <th>Przed</th>
-                                <th>Technologia</th>
-                                <th>Norma / wejscie</th>
-                                <th>Po realizacji</th>
-                            </tr>
-                        </thead>
-                        <tbody id="kkw-costs-summary-body">
-                            <tr>
-                                <td colspan="5" class="empty-state">Jeszcze nie pobrano raportu kosztow KKW.</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-
-            <section class="warehouse-panel">
-                <div class="warehouse-panel-header">
-                    <h3>Szczegoly lisci</h3>
-                    <p>Pozycje szczegolowe z raportu, ktore buduja koncowe koszty materialow i operacji.</p>
-                </div>
-                <div class="table-wrap compact">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Rodzaj</th>
-                                <th>Nazwa</th>
-                                <th>Skladnik ID</th>
-                                <th>Przed</th>
-                                <th>Technologia</th>
-                                <th>Norma / wejscie</th>
-                                <th>Po realizacji</th>
-                            </tr>
-                        </thead>
-                        <tbody id="kkw-costs-operations-body">
-                            <tr>
-                                <td colspan="7" class="empty-state">Jeszcze nie pobrano szczegolow raportu.</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-
-            <section class="warehouse-panel">
-                <div class="warehouse-panel-header">
-                    <h3>Materialy</h3>
-                    <p>Rozbicie materialowki na skladniki z ilosciami i kosztem po realizacji.</p>
-                </div>
-                <div class="table-wrap compact">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Kod</th>
-                                <th>Nazwa</th>
-                                <th>ID</th>
-                                <th>Ilosc planowana</th>
-                                <th>Ilosc wg wykonania</th>
-                                <th>Ilosc przeniesiona</th>
-                                <th>Koszt po realizacji</th>
-                                <th>Cena po realizacji</th>
-                            </tr>
-                        </thead>
-                        <tbody id="kkw-costs-materials-body-kkw">
-                            <tr>
-                                <td colspan="8" class="empty-state">Jeszcze nie pobrano materialow.</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-
-            <details class="raw-panel">
-                <summary>Surowa odpowiedz JSON</summary>
-                <pre id="kkw-costs-raw-output">Brak danych.</pre>
-            </details>
-        </section>
+        </div>
     </main>
 
     <script src="/kosztykkw-app.js"></script>
