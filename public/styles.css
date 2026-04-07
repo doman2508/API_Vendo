@@ -1109,13 +1109,182 @@ body.screen-mode #production-overview-section > .warehouse-panel-header {
     font-size: 24px;
 }
 
+.matrix-groups {
+    display: grid;
+    gap: 12px;
+}
+
+.matrix-table {
+    display: grid;
+    gap: 8px;
+}
+
+.matrix-header {
+    display: grid;
+    grid-template-columns: minmax(260px, 1fr) minmax(260px, 0.95fr) minmax(420px, 1.35fr);
+    gap: 8px;
+    align-items: stretch;
+}
+
+.matrix-header-cell {
+    padding: 6px 12px 2px;
+    color: var(--accent-strong);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.matrix-rows {
+    display: grid;
+    gap: 8px;
+}
+
+.matrix-row {
+    display: grid;
+    grid-template-columns: minmax(260px, 1fr) minmax(260px, 0.95fr) minmax(420px, 1.35fr);
+    gap: 8px;
+    align-items: stretch;
+    padding: 10px;
+    border-radius: 18px;
+    border: 1px solid rgba(47, 38, 29, 0.08);
+    background: rgba(255, 255, 255, 0.9);
+}
+
+.matrix-row-order,
+.matrix-row-phase {
+    border-radius: 14px;
+    border: 1px solid rgba(47, 38, 29, 0.08);
+    background: rgba(255, 255, 255, 0.82);
+    padding: 10px 12px;
+    display: grid;
+    gap: 6px;
+}
+
+.matrix-row-phase-active {
+    border-color: rgba(12, 122, 106, 0.22);
+    background: rgba(12, 122, 106, 0.06);
+}
+
+.matrix-row-phase-empty {
+    opacity: 0.56;
+    background: rgba(255, 255, 255, 0.55);
+    border-style: dashed;
+}
+
+.matrix-row-badges {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.matrix-row-line {
+    display: grid;
+    gap: 8px 12px;
+    align-items: end;
+}
+
+.matrix-row-order .matrix-row-line {
+    grid-template-columns: minmax(110px, 0.7fr) minmax(170px, 1.1fr) minmax(90px, 0.5fr) minmax(240px, 1.7fr) minmax(150px, 0.9fr);
+}
+
+.matrix-row-line-prep {
+    grid-template-columns: minmax(170px, 1fr) repeat(4, minmax(78px, auto));
+}
+
+.matrix-row-line-production {
+    grid-template-columns: minmax(240px, 1.2fr) repeat(5, minmax(82px, auto));
+}
+
+.matrix-row-phase-meta {
+    display: grid;
+    align-content: center;
+}
+
+.matrix-row-phase-meta-production {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.matrix-row-meta-inline {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.matrix-row-meta-inline span {
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.1;
+}
+
+.matrix-row-meta-inline strong {
+    font-size: 14px;
+    line-height: 1.08;
+}
+
+.matrix-row-item {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.matrix-row-item-wide {
+    min-width: 0;
+}
+
+.matrix-row-item span {
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.1;
+}
+
+.matrix-row-item strong {
+    font-size: 15px;
+    line-height: 1.08;
+    overflow-wrap: anywhere;
+}
+
+.matrix-row-phase-empty .matrix-row-item strong {
+    font-size: 13px;
+}
+
+.matrix-row-order .matrix-row-item:nth-child(2) strong,
+.matrix-row-order .matrix-row-item:nth-child(4) strong {
+    font-size: 16px;
+}
+
+.matrix-row-line-production .matrix-row-item strong,
+.matrix-row-line-prep .matrix-row-item strong {
+    font-size: 14px;
+}
+
+.matrix-row-phase-meta .phase-badge,
+.matrix-row-phase-meta .phase-badge.good,
+.matrix-row-phase-meta .phase-badge.warning,
+.matrix-row-phase-meta .phase-badge.danger,
+.matrix-row-phase-meta .phase-badge.neutral {
+    padding: 6px 10px;
+    font-size: 12px;
+}
+
 @media (max-width: 900px) {
     .phase-grid {
         grid-template-columns: 1fr;
     }
 
     .overview-card-production-grid,
-    .overview-card-prep-grid {
+    .overview-card-prep-grid,
+    .matrix-header,
+    .matrix-row,
+    .matrix-row-line,
+    .matrix-row-order .matrix-row-line,
+    .matrix-row-line-prep,
+    .matrix-row-line-production {
         grid-template-columns: 1fr;
     }
 }
