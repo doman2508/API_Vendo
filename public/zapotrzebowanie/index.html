@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="pl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Zapotrzebowanie</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/zapotrzebowanie/zapotrzebowanie.css?v=20260410-10">
+</head>
+<body>
+    <main class="app-shell">
+        <nav class="nav-bar">
+            <a class="tab" href="/console">Konsola API</a>
+            <a class="tab" href="/kosztykkw">Koszty KKW</a>
+            <a class="tab" href="/production-dashboard">Produkcja</a>
+            <a class="tab" href="/rentownosc">Rentownosc</a>
+            <a class="tab" href="/piaskownica">Piaskownica</a>
+            <a class="tab active" href="/zapotrzebowanie">Zapotrzebowanie</a>
+        </nav>
+
+        <div class="context-bar">
+            <span>Zapotrzebowanie ma teraz dwa tryby pracy: operacyjny panel naglowkow z SQLite oraz osobny raport zakupowy liczony z Access, WMS i Vendo.</span>
+            <span id="status-badge" class="status idle">Gotowe</span>
+        </div>
+
+        <section class="module-view-switch">
+            <button type="button" class="module-view-tab active" data-view-switch="operations">Panel operacyjny</button>
+            <button type="button" class="module-view-tab" data-view-switch="report">Raport zakupowy</button>
+        </section>
+
+        <div class="main-grid zapotrzebowanie-grid">
+            <div class="left-panel">
+                <section id="operations-view" class="module-view" data-module-view="operations">
+                    <section class="table-section">
+                        <div class="table-section-header">
+                            <h3>Dashboard operacyjny</h3>
+                            <p>Pierwszy widok odzwierciedla aplikacje Accessa: naglowki produkcyjne, ich statusy robocze oraz pozycje BOM do pracy zakupowca i produkcji.</p>
+                        </div>
+
+                        <div id="operations-summary" class="detail-summary hidden"></div>
+                        <div id="operations-error" class="error-box hidden"></div>
+
+                        <div class="vendo-pilot-panel">
+                            <div>
+                                <strong>Pilot naglowka z Vendo</strong>
+                                <span>Pozycja ZLP jako zrodlo naglowka, BOM z KKW albo technologii.</span>
+                            </div>
+                            <form id="vendo-pilot-form" class="vendo-pilot-form">
+                                <label class="compact-field">
+                                    <span>Pozycja ZLP ID</span>
+                                    <input id="vendo-pilot-position-id" name="planPositionId" type="number" min="1" value="6699">
+                                </label>
+                                <button type="submit" id="vendo-pilot-submit" class="btn btn-primary">Pobierz z Vendo</button>
+                            </form>
+                            <div id="vendo-pilot-summary" class="detail-summary hidden"></div>
+                            <div id="vendo-pilot-error" class="error-box hidden"></div>
+                            <details id="vendo-pilot-raw" class="vendo-pilot-raw hidden">
+                                <summary>Surowy JSON pilota</summary>
+                                <pre id="vendo-pilot-output">Brak danych.</pre>
+                            </details>
+                        </div>
+
+                        <div class="results-toolbar">
+                            <label class="compact-field compact-field-search">
+                                <span>Wyszukaj naglowek</span>
+                                <input id="header-search" type="search" placeholder="KKW, indeks, produkt lub klient">
+                            </label>
+                            <label class="compact-field">
+                                <span>Status</span>
+                                <select id="header-status-filter">
+                                    <option value="OPEN">Otwarte</option>
+                                    <option value="ALL">Wszystkie</option>
+                                    <option value="SHORTAGE">Z brakami w BOM</option>
+                                    <option value="CLOSED">Tylko gotowe</option>
+                                </select>
+                            </label>
+                            <label class="compact-field">
+                                <span>Etap</span>
+                                <select id="header-phase-filter">
+                                    <option value="ALL">Wszystkie etapy</option>
+                                    <option value="PENDING_BOTH">Pelny BOM</option>
+                                    <option value="PENDING_SMD">Bez THT</option>
+                                    <option value="PENDING_THT">Bez SMD</option>
+                                    <option value="EXCLUDED_ALL">Bez SMD/THT</option>
+                                    <option value="READY">Do kontroli</option>
+                                </select>
+                            </label>
+                            <div class="results-toolbar-actions">
+                                <button type="button" id="reset-header-filters" class="btn btn-ghost">Resetuj filtry</button>
+                            </div>
+                            <div class="results-toolbar-meta">
+                                <span id="headers-count" class="results-count">Widoczne: 0 z 0</span>
+                            </div>
+                        </div>
+
+                        <div class="table-wrap zapotrzebowanie-table-wrap operations-table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Termin</th>
+                                        <th>KKW</th>
+                                        <th>Indeks</th>
+                                        <th>Produkt</th>
+                                        <th>Klient</th>
+                                        <th>Ilosc</th>
+                                        <th>Etap</th>
+                                        <th>BOM</th>
+                                        <th>Otw.</th>
+                                        <th>Braki</th>
+                                        <th>Uwagi</th>
+                                        <th>Utw.</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="headers-body">
+                                    <tr>
+                                        <td colspan="12" class="empty-state">Ladowanie dashboardu operacyjnego...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <section id="header-detail-section" class="table-section hidden">
+                        <div class="table-section-header detail-section-header">
+                            <div>
+                                <h3 id="header-detail-title">Pozycje naglowka</h3>
+                                <p id="header-detail-description">Kliknij indeks produktu w tabeli naglowkow, aby zobaczyc pozycje BOM i stan roboczy.</p>
+                            </div>
+                            <button type="button" id="header-detail-close" class="btn btn-ghost hidden">Zamknij szczegoly</button>
+                        </div>
+                        <div id="header-detail-summary" class="detail-summary hidden"></div>
+                        <div id="header-detail-error" class="error-box hidden"></div>
+                        <div class="table-wrap zapotrzebowanie-detail-wrap operations-detail-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Kod</th>
+                                        <th>Komponent</th>
+                                        <th>Rodzaj</th>
+                                        <th>Il/BOM</th>
+                                        <th>Wym.</th>
+                                        <th>WMS</th>
+                                        <th>Vendo</th>
+                                        <th>To ord.</th>
+                                        <th>SMD</th>
+                                        <th>THT</th>
+                                        <th>Uwagi</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="header-detail-body">
+                                    <tr>
+                                        <td colspan="11" class="empty-state">Szczegoly pojawia sie po kliknieciu indeksu w tabeli naglowkow.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </section>
+
+                <section id="report-view" class="module-view hidden" data-module-view="report">
+                    <section class="table-section">
+                        <div class="table-section-header">
+                            <h3>Filtr raportu zakupowego</h3>
+                            <p>Ten widok zostawiamy jako osobna zakladke. Liczy zapotrzebowanie z trzech zrodel i sluzy do szybkiego raportu zakupowego.</p>
+                        </div>
+
+                        <form id="zapotrzebowanie-form" class="inline-form zapotrzebowanie-toolbar">
+                            <label class="compact-field">
+                                <span>Rodzaj</span>
+                                <select name="rodzaj">
+                                    <option value="PCB">PCB</option>
+                                    <option value="ALL">Wszystkie</option>
+                                    <option value="SMD">SMD</option>
+                                    <option value="THT">THT</option>
+                                    <option value="POLFABRYKAT">POLFABRYKAT</option>
+                                    <option value="MECH">MECH</option>
+                                    <option value="INNE">INNE</option>
+                                    <option value="WG">WG</option>
+                                </select>
+                            </label>
+                            <div class="toolbar-actions">
+                                <button type="submit" id="zapotrzebowanie-submit" class="btn btn-primary">Pobierz zapotrzebowanie</button>
+                            </div>
+                        </form>
+                    </section>
+
+                    <div id="zapotrzebowanie-summary" class="detail-summary hidden"></div>
+                    <div id="zapotrzebowanie-error" class="error-box hidden"></div>
+
+                    <section class="table-section">
+                        <div class="table-section-header">
+                            <h3>Wynik</h3>
+                            <p>Kolumny odpowiadaja logice znanej z widoku Accessowego, ale sa liczone po naszej stronie. Ujemny <code>To order</code> oznacza brak. Kliknij kod komponentu, aby zobaczyc rozbicie na produkty i zamowienia.</p>
+                        </div>
+                        <div class="results-toolbar">
+                            <label class="compact-field compact-field-search">
+                                <span>Wyszukaj</span>
+                                <input id="results-search" type="search" placeholder="Kod, komponent lub rodzaj">
+                            </label>
+                            <label class="compact-field">
+                                <span>Bilans</span>
+                                <select id="balance-filter">
+                                    <option value="ALL">Wszystkie pozycje</option>
+                                    <option value="SHORTAGE">Tylko do zamowienia</option>
+                                    <option value="ZERO">Dokladnie zero</option>
+                                    <option value="SURPLUS">Tylko nadwyzka</option>
+                                    <option value="COVERED">Pokryte lub z nadwyzka</option>
+                                </select>
+                            </label>
+                            <div class="results-toolbar-actions">
+                                <button type="button" id="reset-filters" class="btn btn-ghost">Resetuj filtry</button>
+                                <button type="button" id="export-csv" class="btn btn-success">Eksport CSV</button>
+                            </div>
+                            <div class="results-toolbar-meta">
+                                <span id="results-count" class="results-count">Widoczne: 0 z 0</span>
+                            </div>
+                        </div>
+                        <div class="table-wrap zapotrzebowanie-table-wrap report-results-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Kod</th>
+                                        <th>Komponent</th>
+                                        <th>Suma wymagane</th>
+                                        <th>Stan WMS</th>
+                                        <th>Vendo stan</th>
+                                        <th>Vendo oczekiwane</th>
+                                        <th>Rodzaj</th>
+                                        <th>Status</th>
+                                        <th>To order</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="zapotrzebowanie-body">
+                                    <tr>
+                                        <td colspan="9" class="empty-state">Jeszcze nie pobrano danych zapotrzebowania.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <section id="detail-section" class="table-section hidden">
+                        <div class="table-section-header detail-section-header">
+                            <div>
+                                <h3 id="detail-title">Szczegoly komponentu</h3>
+                                <p id="detail-description">Kliknij kod komponentu w tabeli powyzej, aby zobaczyc rozbicie na produkty i zamowienia.</p>
+                            </div>
+                            <button type="button" id="detail-close" class="btn btn-ghost hidden">Zamknij szczegoly</button>
+                        </div>
+                        <div id="detail-summary" class="detail-summary hidden"></div>
+                        <div id="detail-error" class="error-box hidden"></div>
+                        <div class="table-wrap zapotrzebowanie-detail-wrap report-detail-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Termin</th>
+                                        <th>KKW</th>
+                                        <th>Zlecenie</th>
+                                        <th>Nr obcy</th>
+                                        <th>Indeks prod.</th>
+                                        <th>Produkt</th>
+                                        <th>Klient</th>
+                                        <th>Ilosc prod.</th>
+                                        <th>Potrzeba</th>
+                                        <th>Dostepne przed</th>
+                                        <th>Brak</th>
+                                        <th>Bilans po</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="detail-body">
+                                    <tr>
+                                        <td colspan="12" class="empty-state">Szczegoly pojawia sie po kliknieciu kodu komponentu.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <details class="raw-panel">
+                        <summary>Surowa odpowiedz JSON</summary>
+                        <pre id="zapotrzebowanie-raw-output">Brak danych.</pre>
+                    </details>
+                </section>
+            </div>
+
+            <div class="right-panel">
+                <section class="zapotrzebowanie-side-panel">
+                    <h2>Snapshot SQLite</h2>
+                    <p class="side-panel-copy">To jest nasza lokalna baza robocza pod nowa wersje aplikacji. Mozesz recznie odswiezyc dane z Accessa i od razu zobaczyc wynik na liscie naglowkow.</p>
+                    <div class="actions-row">
+                        <button type="button" id="refresh-storage" class="btn btn-primary">Odswiez z Accessa</button>
+                    </div>
+                    <pre id="storage-meta" class="module-meta">Ladowanie snapshotu...</pre>
+                </section>
+
+                <form id="connection-form" class="form-stack">
+                    <label>
+                        <span>Login Vendo</span>
+                        <input name="vendoUserLogin" type="text" required>
+                    </label>
+                    <label>
+                        <span>Haslo Vendo</span>
+                        <input name="vendoUserPassword" type="password" required>
+                    </label>
+                    <div class="actions-row">
+                        <button type="button" id="save-connection" class="btn btn-success">Zapamietaj</button>
+                        <button type="button" id="clear-button" class="btn btn-ghost">Wyczysc</button>
+                    </div>
+                </form>
+
+                <section class="zapotrzebowanie-side-panel">
+                    <h2>Zrodla danych</h2>
+                    <div class="quick-links">
+                        <article class="quick-link quick-link-static">
+                            <strong>Access backend</strong>
+                            <span>Naglowki i pozycje BOM przechodza do naszego snapshotu `SQLite`.</span>
+                        </article>
+                        <article class="quick-link quick-link-static">
+                            <strong>WMS SQL</strong>
+                            <span>Stan magazynowy liczony z `dbo.LogisticUnits` oraz `dbo.Materials`.</span>
+                        </article>
+                        <article class="quick-link quick-link-static">
+                            <strong>Vendo API</strong>
+                            <span>Raport zakupowy i szczegoly komponentow dalej moga dociagac dane live z Vendo.</span>
+                        </article>
+                    </div>
+                </section>
+
+                <section class="zapotrzebowanie-side-panel">
+                    <h2>Meta modulu</h2>
+                    <pre id="module-meta" class="module-meta">Ladowanie danych modulu...</pre>
+                </section>
+            </div>
+        </div>
+    </main>
+
+    <script src="/zapotrzebowanie/zapotrzebowanie.js?v=20260410-10"></script>
+</body>
+</html>
