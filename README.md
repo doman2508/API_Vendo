@@ -27,6 +27,12 @@ Dostepne widoki:
 
 - `/console` - konsola API do pracy operacyjnej i testow,
 - `/production-dashboard` - osobny modul dla produkcji oparty o ten sam backend.
+- `/zapotrzebowanie` - modul zakupowy oparty o Access, WMS i Vendo, rozwijany docelowo jako niezalezna aplikacja.
+
+## Dokumentacja
+
+- `docs/kosztykkw.md`
+- `docs/zapotrzebowanie-plan.md`
 
 ## Konfiguracja
 
@@ -41,6 +47,12 @@ Mozesz wpisac wartosci bezposrednio w pliku albo zostawic puste pola i korzystac
 - `VENDO_API_PASSWORD`
 - `VENDO_USER_LOGIN`
 - `VENDO_USER_PASSWORD`
+- `WMS_SQL_SERVER`
+- `WMS_SQL_DATABASE`
+- `WMS_SQL_USER`
+- `WMS_SQL_PASSWORD`
+- `ACCESS_BACKEND_PATH`
+- `SQLITE_DB_PATH`
 
 W **bezpiecznym wariancie** aplikacji webowej dane do API sa trzymane po stronie serwera w zmiennych:
 
@@ -49,6 +61,21 @@ W **bezpiecznym wariancie** aplikacji webowej dane do API sa trzymane po stronie
 - `VENDO_API_PASSWORD`
 
 Uzytkownik w przegladarce wpisuje tylko `Login Vendo` i `Haslo Vendo`.
+
+## SQLite Dla Zapotrzebowania
+
+Modul `Zapotrzebowanie` dostal fundament pod lokalna baze `SQLite`.
+
+- lokalnie domyslna sciezka to `.data/zapotrzebowanie.db`
+- docelowo plik `.db` i `server.js` powinny byc na tej samej maszynie
+- plan migracji jest opisany w [docs/zapotrzebowanie-plan.md](docs/zapotrzebowanie-plan.md)
+
+Dostepne endpointy techniczne:
+
+- `GET /api/zapotrzebowanie/storage/meta`
+- `POST /api/zapotrzebowanie/storage/import-access`
+- `GET /api/zapotrzebowanie/operational/overview`
+- `POST /api/zapotrzebowanie/operational/header-details`
 
 ## Uruchomienie
 

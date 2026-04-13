@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="pl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MES Operator | Piec</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="mes-operator-page">
+    <main class="mes-operator-shell">
+        <section class="mes-operator-topbar">
+            <div>
+                <p class="eyebrow">MES operator</p>
+                <h1>Piec / Reflow</h1>
+            </div>
+            <span id="operator-refresh-state" class="phase-badge neutral">-</span>
+        </section>
+
+        <section class="mes-scan-panel">
+            <form id="operator-scan-form">
+                <label>
+                    <span>Zeskanuj KKW</span>
+                    <input id="operator-scan-input" name="scan" autocomplete="off" inputmode="text" placeholder="np. 258/25" autofocus>
+                </label>
+                <button type="submit">Start partii</button>
+            </form>
+            <p id="operator-message" class="note">Zeskanuj kod z karty KKW. Planowana ilosc zostanie pobrana z Vendo.</p>
+        </section>
+
+        <section id="operator-active-batch" class="mes-active-batch">
+            <div class="mes-empty-state">
+                <span>Brak aktywnej partii</span>
+                <strong>Zeskanuj KKW</strong>
+            </div>
+        </section>
+
+        <section class="mes-operator-actions">
+            <button id="operator-end-batch" class="danger-button" type="button">Zakoncz partie</button>
+            <a class="button ghost" href="/mes">Diagnostyka</a>
+        </section>
+    </main>
+
+    <script src="/mes/operator/operator.js"></script>
+</body>
+</html>

@@ -1,0 +1,251 @@
+const mesForm = document.getElementById("mes-form");
+const mesSummary = document.getElementById("mes-summary");
+const mesBatchesBody = document.getElementById("mes-batches-body");
+const mesEventsBody = document.getElementById("mes-events-body");
+const mesStatus = document.getElementById("mes-status");
+const mesUpdatedAt = document.getElementById("mes-updated-at");
+const mesSelectedBatch = document.getElementById("mes-selected-batch");
+const mesAutoRefreshInput = document.getElementById("mes-auto-refresh");
+
+let mesRefreshTimer = null;
+let selectedBatchId = null;
+
+const numberFormatter = new Intl.NumberFormat("pl-PL", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+});
+
+function formatNumber(value, suffix = "") {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+        return "-";
+    }
+
+    return `${numberFormatter.format(numeric)}${suffix}`;
+}
+
+function escapeHtml(value) {
+    return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+function formatDateTime(value) {
+    if (!value) {
+        return "-";
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return String(value);
+    }
+
+    return date.toLocaleString("pl-PL", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+    });
+}
+
+function formatDuration(seconds) {
+    const numeric = Number(seconds);
+    if (!Number.isFinite(numeric)) {
+        return "-";
+    }
+
+    const hours = Math.floor(numeric / 3600);
+    const minutes = Math.floor((numeric % 3600) / 60);
+    const restSeconds = Math.floor(numeric % 60);
+
+    if (hours > 0) {
+        return `${hours}h ${String(minutes).padStart(2, "0")}m`;
+    }
+
+    return `${minutes}m ${String(restSeconds).padStart(2, "0")}s`;
+}
+
+async function fetchJson(url) {
+    const response = await fetch(url);
+    const data = await response.json();
+    if (!response.ok) {
+        throw new Error(data.error || "Nie udalo sie pobrac danych MES.");
+    }
+
+    return data;
+}
+
+function getDeviceId() {
+    return String(mesForm?.deviceId?.value || "reflow_1").trim() || "reflow_1";
+}
+
+function getKkwNumber() {
+    return String(mesForm?.kkwNumber?.value || "").trim();
+}
+
+function getBatchTitle(batch) {
+    if (!batch) {
+        return "-";
+    }
+
+    const product = [batch.productCode, batch.productName].filter(Boolean).join(" - ");
+    return product || batch.kkwNumber || "-";
+}
+
+function renderSummary(payload) {
+    const summary = payload?.summary || {};
+    const activeBatch = summary.activeBatch || null;
+    const activeTitle = activeBatch ? `${activeBatch.kkwNumber} | ${getBatchTitle(activeBatch)}` : "Brak aktywnej partii";
+    const cards = [
+        ["Aktywne KKW", activeTitle],
+        ["Wykonano KKW / plan", activeBatch ? `${formatNumber(activeBatch.pulseCount, " szt.")} / ${activeBatch.plannedQuantity ? formatNumber(activeBatch.plannedQuantity, " szt.") : "-"}` : "-"],
+        ["Realizacja", activeBatch?.progressPercent === null || activeBatch?.progressPercent === undefined ? "-" : formatNumber(activeBatch.progressPercent, "%")],
+        ["Ta partia", activeBatch ? formatNumber(activeBatch.batchPulseCount ?? activeBatch.pulseCount, " szt.") : "-"],
+        ["Status pieca", summary.status || "-"],
+        ["Ostatni impuls", formatDateTime(summary.lastPulse?.ts)],
+        ["Dzisiaj", formatNumber(summary.counts?.today || 0, " szt.")],
+        ["Device", summary.deviceId || "-"],
+    ];
+
+    mesSummary.innerHTML = cards.map(([label, value]) => `
+        <article class="summary-card">
+            <span>${escapeHtml(label)}</span>
+            <strong>${escapeHtml(value)}</strong>
+        </article>
+    `).join("");
+    mesSummary.classList.remove("hidden");
+}
+
+function renderBatches(payload) {
+    const batches = Array.isArray(payload?.batches) ? payload.batches : [];
+    if (!batches.length) {
+        mesBatchesBody.innerHTML = `<tr><td colspan="7">Brak partii dla wybranego filtra.</td></tr>`;
+        selectedBatchId = null;
+        return null;
+    }
+
+    if (!selectedBatchId || !batches.some((batch) => Number(batch.id) === Number(selectedBatchId))) {
+        selectedBatchId = batches[0].id;
+    }
+
+    const selected = batches.find((batch) => Number(batch.id) === Number(selectedBatchId)) || batches[0];
+    selectedBatchId = selected.id;
+    mesSelectedBatch.textContent = `Partia #${selected.id}`;
+
+    mesBatchesBody.innerHTML = batches.map((batch) => {
+        const isSelected = Number(batch.id) === Number(selectedBatchId);
+        const planned = batch.plannedQuantity ? formatNumber(batch.plannedQuantity, " szt.") : "-";
+        const status = batch.status === "active" ? "Aktywna" : "Zamknieta";
+
+        return `
+            <tr class="mes-batch-row ${isSelected ? "selected" : ""}" data-batch-id="${batch.id}">
+                <td><strong>${escapeHtml(batch.kkwNumber)}</strong><small>#${batch.id}</small></td>
+                <td>${escapeHtml(getBatchTitle(batch))}</td>
+                <td>${formatDateTime(batch.startedAt)}</td>
+                <td>${formatDateTime(batch.endedAt)}</td>
+                <td>${formatNumber(batch.batchPulseCount ?? batch.pulseCount, " szt.")}</td>
+                <td>${formatNumber(batch.pulseCount, " szt.")} / ${planned}</td>
+                <td><span class="phase-badge ${batch.status === "active" ? "good" : "neutral"}">${status}</span></td>
+            </tr>
+        `;
+    }).join("");
+
+    mesBatchesBody.querySelectorAll("[data-batch-id]").forEach((row) => {
+        row.addEventListener("click", () => {
+            selectedBatchId = Number(row.dataset.batchId);
+            void loadMesData({ keepSelectedBatch: true }).catch((error) => {
+                mesStatus.textContent = error.message || "Blad pobierania MES.";
+            });
+        });
+    });
+
+    return selected;
+}
+
+function renderEvents(payload) {
+    const events = Array.isArray(payload?.events) ? payload.events : [];
+    if (!events.length) {
+        mesEventsBody.innerHTML = `<tr><td colspan="5">Brak impulsow dla wybranej partii.</td></tr>`;
+        return;
+    }
+
+    mesEventsBody.innerHTML = events.map((event) => `
+        <tr>
+            <td>${event.id}</td>
+            <td>${escapeHtml(event.deviceId || "-")}</td>
+            <td>${event.batchId || "-"}</td>
+            <td>${formatDateTime(event.ts)}</td>
+            <td><code>${escapeHtml(event.payloadJson || "-")}</code></td>
+        </tr>
+    `).join("");
+}
+
+async function loadMesData({ keepSelectedBatch = false } = {}) {
+    const deviceId = encodeURIComponent(getDeviceId());
+    const kkwNumber = getKkwNumber();
+    const kkwQuery = kkwNumber ? `&kkw_number=${encodeURIComponent(kkwNumber)}` : "";
+    mesStatus.textContent = "Pobieranie danych...";
+
+    if (!keepSelectedBatch) {
+        selectedBatchId = null;
+    }
+
+    const [summary, batches] = await Promise.all([
+        fetchJson(`/api/mes/oven/summary?device_id=${deviceId}`),
+        fetchJson(`/api/mes/oven/batch/history?device_id=${deviceId}${kkwQuery}&limit=50`),
+    ]);
+
+    renderSummary(summary);
+    const selected = renderBatches(batches);
+    const events = selected
+        ? await fetchJson(`/api/mes/oven/events?batch_id=${encodeURIComponent(selected.id)}&limit=100`)
+        : { events: [] };
+    renderEvents(events);
+
+    const now = new Date();
+    mesUpdatedAt.textContent = `Aktualizacja: ${formatDateTime(now.toISOString())}`;
+    mesStatus.textContent = selected
+        ? `Pokazuje partie KKW ${selected.kkwNumber}.`
+        : "Brak partii dla wybranego filtra.";
+}
+
+function restartMesRefreshTimer() {
+    if (mesRefreshTimer) {
+        clearInterval(mesRefreshTimer);
+        mesRefreshTimer = null;
+    }
+
+    if (!mesAutoRefreshInput?.checked) {
+        return;
+    }
+
+    mesRefreshTimer = setInterval(() => {
+        void loadMesData({ keepSelectedBatch: true }).catch((error) => {
+            mesStatus.textContent = error.message || "Blad odswiezania MES.";
+        });
+    }, 5000);
+}
+
+if (mesForm) {
+    mesForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        void loadMesData().catch((error) => {
+            mesStatus.textContent = error.message || "Blad pobierania MES.";
+        });
+        restartMesRefreshTimer();
+    });
+}
+
+if (mesAutoRefreshInput) {
+    mesAutoRefreshInput.addEventListener("change", restartMesRefreshTimer);
+}
+
+void loadMesData().catch((error) => {
+    mesStatus.textContent = error.message || "Blad pobierania MES.";
+});
+restartMesRefreshTimer();

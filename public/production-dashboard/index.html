@@ -17,6 +17,7 @@
             <div class="hero-actions">
                 <button type="button" id="toggle-tv-mode">TV mode</button>
                 <button type="button" id="toggle-ultrawide-mode" class="ghost">3440 x 1440</button>
+                <a class="ghost nav-link" href="/zapotrzebowanie">Zapotrzebowanie</a>
             </div>
         </section>
 
@@ -66,6 +67,7 @@
                 <button type="button" class="switch-button active" data-dashboard-mode="single">Stanowisko</button>
                 <button type="button" class="switch-button" data-dashboard-mode="screen">Ekran produkcyjny</button>
                 <button type="button" class="switch-button" data-dashboard-mode="overview">Przeglad produkcji</button>
+                <button type="button" class="switch-button" data-dashboard-mode="matrix">Siatka</button>
             </div>
 
             <form id="production-dashboard-form" class="subform-grid production-dashboard-detail">
@@ -96,23 +98,23 @@
             <p id="production-overview-note" class="note hidden">
                 Przeglad produkcji pobiera automatycznie wszystkie aktywne stanowiska i nie korzysta z filtrow operatora ani KKW.
             </p>
-            <div id="production-overview-settings" class="overview-settings hidden">
-                <label>
-                    <span>Stanowiska dla tego ekranu</span>
-                    <input id="screen-stations" type="text" placeholder="np. SMD-01, SMD-04, THT-12">
-                </label>
-                <label>
-                    <span>Pokazuj Przyrzad dla stanowisk</span>
-                    <input id="overview-prep-stations" type="text" placeholder="np. SMD-01, SMD-04, THT-12">
-                </label>
-                <label>
-                    <span>Kod PIN do ustawien ekranu</span>
-                    <input id="screen-settings-pin" type="password" inputmode="numeric" placeholder="np. 2580">
-                </label>
-                <p class="note">
-                    Jesli pole ekranu jest puste, ekran produkcyjny nie pokaze zadnych stanowisk. Przyrzad pokazuje sie tylko dla aktywnego etapu albo dla stanowisk wpisanych na liscie. Gdy ustawisz PIN, przycisk ustawien w ekranie hali bedzie wymagal kodu.
-                </p>
-            </div>
+              <div id="production-overview-settings" class="overview-settings hidden">
+                  <label id="screen-stations-setting">
+                      <span>Stanowiska dla tego ekranu</span>
+                      <input id="screen-stations" type="text" placeholder="np. SMD-01, SMD-04, THT-12">
+                  </label>
+                  <label id="prep-stations-setting">
+                      <span>Pokazuj Przyrzad dla stanowisk</span>
+                      <input id="overview-prep-stations" type="text" placeholder="np. SMD-01, SMD-04, THT-12">
+                  </label>
+                  <label id="screen-pin-setting">
+                      <span>Kod PIN do ustawien ekranu</span>
+                      <input id="screen-settings-pin" type="password" inputmode="numeric" placeholder="np. 2580">
+                  </label>
+                  <p id="production-overview-settings-note" class="note">
+                      Jesli pole ekranu jest puste, ekran produkcyjny nie pokaze zadnych stanowisk. Przyrzad pokazuje sie tylko dla aktywnego etapu albo dla stanowisk wpisanych na liscie. Gdy ustawisz PIN, przycisk ustawien w ekranie hali bedzie wymagal kodu.
+                  </p>
+              </div>
         </section>
 
         <section class="panel">

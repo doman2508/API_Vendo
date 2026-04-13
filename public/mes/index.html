@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="pl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MES | Oven Monitor</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <main class="app-shell">
+        <section class="hero">
+            <div class="hero-content">
+                <p class="eyebrow">MES online</p>
+                <h1>Diagnostyka KKW na piecu</h1>
+                <p class="hero-copy">
+                    Podglad partii KKW, wykonanych impulsow i historii przejazdu przez piec.
+                </p>
+            </div>
+            <div class="hero-actions">
+                <a class="button" href="/mes/operator">Tryb operatora</a>
+                <a class="button ghost" href="/production-dashboard">Production Dashboard</a>
+            </div>
+        </section>
+
+        <section class="panel mes-control-panel">
+            <form id="mes-form" class="dashboard-form">
+                <label>
+                    <span>Device ID</span>
+                    <input name="deviceId" value="reflow_1" autocomplete="off">
+                </label>
+                <label>
+                    <span>KKW</span>
+                    <input name="kkwNumber" autocomplete="off" placeholder="np. 258/25">
+                </label>
+                <label class="checkbox-field">
+                    <input id="mes-auto-refresh" type="checkbox" checked>
+                    <span>Auto-refresh 5s</span>
+                </label>
+                <button type="submit">Odswiez</button>
+            </form>
+            <p id="mes-status" class="note">Gotowe.</p>
+        </section>
+
+        <section id="mes-summary" class="summary hidden"></section>
+
+        <section class="panel">
+            <div class="section-heading">
+                <div>
+                    <p class="eyebrow">KKW / partie</p>
+                    <h2>Historia partii na piecu</h2>
+                </div>
+                <span id="mes-selected-batch" class="phase-badge neutral">Wybierz partie</span>
+            </div>
+            <div class="table-wrap">
+                <table class="mes-events-table">
+                    <thead>
+                        <tr>
+                            <th>KKW</th>
+                            <th>Produkt</th>
+                            <th>Start</th>
+                            <th>Koniec</th>
+                            <th>Ta partia</th>
+                            <th>Wykonano KKW / plan</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="mes-batches-body">
+                        <tr>
+                            <td colspan="7">Brak danych.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="section-heading">
+                <div>
+                    <p class="eyebrow">Event log</p>
+                    <h2>Impulsy dla wybranej partii</h2>
+                </div>
+                <span id="mes-updated-at" class="phase-badge neutral">-</span>
+            </div>
+            <div class="table-wrap">
+                <table class="mes-events-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Device</th>
+                            <th>Batch</th>
+                            <th>Czas</th>
+                            <th>Payload</th>
+                        </tr>
+                    </thead>
+                    <tbody id="mes-events-body">
+                        <tr>
+                            <td colspan="5">Brak danych.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <script src="/mes/mes.js"></script>
+</body>
+</html>

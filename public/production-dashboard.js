@@ -9,6 +9,10 @@ const dashboardTimeline = document.getElementById("production-dashboard-timeline
 const dashboardOverviewSection = document.getElementById("production-overview-section");
 const dashboardOverviewGrid = document.getElementById("production-overview-grid");
 const dashboardOverviewSettings = document.getElementById("production-overview-settings");
+const dashboardScreenStationsSetting = document.getElementById("screen-stations-setting");
+const dashboardPrepStationsSetting = document.getElementById("prep-stations-setting");
+const dashboardScreenPinSetting = document.getElementById("screen-pin-setting");
+const dashboardOverviewSettingsNote = document.getElementById("production-overview-settings-note");
 const dashboardScreenStationsInput = document.getElementById("screen-stations");
 const dashboardOverviewPrepStationsInput = document.getElementById("overview-prep-stations");
 const dashboardScreenSettingsPinInput = document.getElementById("screen-settings-pin");
@@ -178,15 +182,25 @@ function dashboardSaveScreenSettingsPin(value) {
     }
 }
 
+function dashboardSetElementVisibility(element, visible) {
+    if (!element) {
+        return;
+    }
+
+    element.hidden = !visible;
+    element.classList.toggle("hidden", !visible);
+    element.style.display = visible ? "" : "none";
+}
+
 function dashboardApplyMode(mode) {
-    dashboardMode = ["overview", "screen"].includes(mode) ? mode : "single";
+    dashboardMode = ["overview", "screen", "matrix"].includes(mode) ? mode : "single";
 
     for (const button of dashboardModeButtons) {
         const isActive = button.dataset.dashboardMode === dashboardMode;
         button.classList.toggle("active", isActive);
     }
 
-    const showOverview = dashboardMode === "overview" || dashboardMode === "screen";
+    const showOverview = dashboardMode === "overview" || dashboardMode === "screen" || dashboardMode === "matrix";
     for (const section of dashboardDetailSections) {
         section.classList.toggle("hidden", showOverview);
     }
@@ -199,28 +213,45 @@ function dashboardApplyMode(mode) {
         dashboardOverviewNote.classList.toggle("hidden", !showOverview);
         dashboardOverviewNote.textContent = dashboardMode === "screen"
             ? "Ekran produkcyjny pokazuje tylko stanowiska przypisane do tego monitora i nie korzysta z filtrow operatora ani KKW."
+            : dashboardMode === "matrix"
+                ? "Siatka pokazuje aktywne stanowiska w ukladzie wierszowym, z sekcjami Przyrzad i Produkcja."
             : "Przeglad produkcji pobiera automatycznie wszystkie aktywne stanowiska i nie korzysta z filtrow operatora ani KKW.";
     }
 
     if (dashboardOverviewSettings) {
-        dashboardOverviewSettings.classList.toggle("hidden", !showOverview);
+        dashboardSetElementVisibility(dashboardOverviewSettings, dashboardMode === "overview" || dashboardMode === "screen" || dashboardMode === "matrix");
+    }
+
+    dashboardSetElementVisibility(dashboardScreenStationsSetting, dashboardMode === "screen");
+    dashboardSetElementVisibility(dashboardPrepStationsSetting, dashboardMode === "overview" || dashboardMode === "matrix");
+    dashboardSetElementVisibility(dashboardScreenPinSetting, dashboardMode === "screen");
+
+    if (dashboardOverviewSettingsNote) {
+        dashboardSetElementVisibility(dashboardOverviewSettingsNote, dashboardMode === "overview" || dashboardMode === "screen" || dashboardMode === "matrix");
+        dashboardOverviewSettingsNote.textContent = dashboardMode === "screen"
+            ? "Jesli pole ekranu jest puste, ekran produkcyjny nie pokaze zadnych stanowisk. Gdy ustawisz PIN, przycisk ustawien w ekranie hali bedzie wymagal kodu."
+            : "Przyrzad pokazuje sie tylko dla aktywnego etapu albo dla stanowisk wpisanych na liscie.";
     }
 
     for (const button of dashboardOverviewFilterButtons) {
         const isActive = button.dataset.overviewFilter === dashboardOverviewFilter;
-        button.classList.toggle("active", isActive && dashboardMode === "overview");
-        button.classList.toggle("hidden", dashboardMode !== "overview");
+        button.classList.toggle("active", isActive && (dashboardMode === "overview" || dashboardMode === "matrix"));
+        button.classList.toggle("hidden", dashboardMode !== "overview" && dashboardMode !== "matrix");
     }
 
     if (dashboardCollectionTitle) {
         dashboardCollectionTitle.textContent = dashboardMode === "screen"
             ? "Ekran produkcyjny"
+            : dashboardMode === "matrix"
+                ? "Siatka produkcji"
             : "Przeglad aktywnych stanowisk";
     }
 
     if (dashboardCollectionCopy) {
         dashboardCollectionCopy.textContent = dashboardMode === "screen"
             ? "Widok dla stanowisk przypisanych do konkretnego monitora produkcyjnego."
+            : dashboardMode === "matrix"
+                ? "Widok wierszowy dla calej aktywnej produkcji."
             : "Panel kierownika dla wszystkich aktywnych maszyn i operatorow.";
     }
 
@@ -606,10 +637,12 @@ function dashboardSyncLiveView() {
         return;
     }
 
-    if (dashboardMode === "overview" || dashboardMode === "screen") {
+    if (dashboardMode === "overview" || dashboardMode === "screen" || dashboardMode === "matrix") {
         renderDashboardSummary(dashboardCurrentData);
         if (dashboardMode === "screen") {
             renderProductionScreen(dashboardCurrentData);
+        } else if (dashboardMode === "matrix") {
+            renderProductionMatrix(dashboardCurrentData);
         } else {
             renderProductionOverview(dashboardCurrentData);
         }
@@ -626,7 +659,7 @@ function dashboardSyncLiveView() {
         ) {
             void runDashboard({ silent: true, preserveView: true, source: "auto-refresh" });
         }
-        dashboardSetStatus("success", dashboardMode === "screen" ? "Ekran produkcyjny" : "Przeglad produkcji");
+        dashboardSetStatus("success", dashboardMode === "screen" ? "Ekran produkcyjny" : dashboardMode === "matrix" ? "Siatka produkcji" : "Przeglad produkcji");
         return;
     }
 
@@ -669,7 +702,7 @@ function dashboardCollectPayload() {
         vendoUserPassword: dashboardConnectionForm?.vendoUserPassword?.value || "",
     };
 
-    if (dashboardMode === "overview" || dashboardMode === "screen") {
+    if (dashboardMode === "overview" || dashboardMode === "screen" || dashboardMode === "matrix") {
         return basePayload;
     }
 
@@ -757,7 +790,7 @@ function renderDashboardSummary(data) {
         return;
     }
 
-    if (dashboardMode === "overview") {
+    if (dashboardMode === "overview" || dashboardMode === "matrix") {
         return renderOverviewSummary(data);
     }
 
@@ -1019,7 +1052,18 @@ function renderDashboardDebug(data) {
 }
 
 function dashboardInferDepartment(record) {
+    const operationName = dashboardNormalizeSortText(record?.operation?.name);
     const stationCode = String(record?.station?.code || "").toUpperCase();
+
+    if (operationName.includes("pakowanie")) {
+        return "PAKOWANIE";
+    }
+    if (operationName.includes("poprawki po fali")) {
+        return "FALA";
+    }
+    if (operationName === "fala" || operationName.startsWith("fala ") || operationName.includes(" po fali")) {
+        return "FALA";
+    }
 
     if (stationCode.startsWith("SMD")) {
         return "SMD";
@@ -1041,6 +1085,46 @@ function dashboardInferDepartment(record) {
     }
 
     return "INNE";
+}
+
+function dashboardNormalizeSortText(value) {
+    return String(value || "")
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .trim();
+}
+
+function dashboardGetOperationOrder(record) {
+    const department = dashboardInferDepartment(record);
+    const operationName = dashboardNormalizeSortText(record?.operation?.name);
+
+    if (department === "THT") {
+        if (operationName.includes("osadzanie element")) {
+            return 0;
+        }
+        if (operationName.includes("montaz reczny")) {
+            return 1;
+        }
+        if (operationName.includes("kontrola finalna")) {
+            return 2;
+        }
+
+        return 3;
+    }
+
+    if (department === "FALA") {
+        if (operationName.includes("poprawki po fali")) {
+            return 1;
+        }
+        if (operationName.includes("fala")) {
+            return 0;
+        }
+
+        return 2;
+    }
+
+    return 0;
 }
 
 function dashboardShouldShowPrep(record, metrics) {
@@ -1090,6 +1174,8 @@ function dashboardGetOverviewCategory(record) {
 function dashboardGetOverviewPriority(record) {
     const metrics = dashboardGetLiveMetrics(record.metrics || {});
     const category = dashboardGetOverviewCategory(record);
+    const department = dashboardInferDepartment(record);
+    const operationOrder = dashboardGetOperationOrder(record);
     const categoryRank = {
         late: 0,
         risk: 1,
@@ -1098,10 +1184,13 @@ function dashboardGetOverviewPriority(record) {
     };
 
     return [
+        operationOrder,
         categoryRank[category] ?? 4,
         -(Number(metrics.timeProgressPercent) || 0),
         -(Number(metrics.productionProgressPercent) || 0),
+        dashboardNormalizeSortText(record.operation?.name || ""),
         String(record.station?.code || ""),
+        department,
     ];
 }
 
@@ -1235,6 +1324,96 @@ function renderOverviewCard(record) {
     `;
 }
 
+function renderMatrixRow(record) {
+    const metrics = dashboardGetLiveMetrics(record.metrics || {});
+    const prepBadge = dashboardGetPrepBadge(metrics);
+    const prepResult = dashboardGetPrepResult(metrics);
+    const productionBadge = dashboardGetProductionBadge(metrics);
+    const productionStarted = metrics.activePhase?.key === "production" || (Number(metrics.completedQuantity || 0) > 0) || (Number(metrics.productionElapsedHours || 0) > 0);
+    const productLabel = [record.kkw?.productCode, record.kkw?.productName].filter(Boolean).join(" - ") || record.kkw?.productName || record.kkw?.productCode || "-";
+    const stationLabel = record.station?.code || "-";
+    const operationLabel = record.operation?.name || "-";
+    const showPrep = dashboardShouldShowPrep(record, metrics);
+    const prepSection = showPrep ? `
+            <section class="matrix-row-phase matrix-row-prep ${metrics.activePhase?.key === "prep" ? "matrix-row-phase-active" : ""}">
+                <div class="matrix-row-line matrix-row-line-prep">
+                    <div class="matrix-row-phase-meta">
+                        <div class="matrix-row-badges">
+                            <span class="${prepBadge.className}">${prepBadge.label}</span>
+                            <span class="${prepResult.className}">${prepResult.label}</span>
+                        </div>
+                    </div>
+                    <div class="matrix-row-item"><span>Norma</span><strong>${dashboardFormatDurationMinutes(metrics.plannedPrepMinutes)}</strong></div>
+                    <div class="matrix-row-item"><span>Czas</span><strong>${dashboardFormatDurationHours(metrics.prepElapsedHours)}</strong></div>
+                    <div class="matrix-row-item"><span>% normy</span><strong>${dashboardFormatPercent(metrics.prepProgressPercent)}</strong></div>
+                    <div class="matrix-row-item"><span>Pozostalo</span><strong>${prepResult.remaining}</strong></div>
+                </div>
+            </section>
+    ` : `
+            <section class="matrix-row-phase matrix-row-prep matrix-row-phase-empty">
+                <div class="matrix-row-line matrix-row-line-prep">
+                    <div class="matrix-row-phase-meta">
+                        <div class="matrix-row-badges">
+                            <span class="phase-badge neutral">Brak</span>
+                        </div>
+                    </div>
+                    <div class="matrix-row-item"><span>Norma</span><strong>-</strong></div>
+                    <div class="matrix-row-item"><span>Czas</span><strong>-</strong></div>
+                    <div class="matrix-row-item"><span>% normy</span><strong>-</strong></div>
+                    <div class="matrix-row-item"><span>Pozostalo</span><strong>-</strong></div>
+                </div>
+            </section>
+    `;
+
+    return `
+        <article class="matrix-row overview-card-tone-${dashboardGetOverviewCategory(record)}">
+            <section class="matrix-row-order">
+                <div class="matrix-row-line">
+                    <div class="matrix-row-item">
+                        <span>Stanowisko</span>
+                        <strong>${stationLabel}</strong>
+                    </div>
+                    <div class="matrix-row-item">
+                        <span>Operacja</span>
+                        <strong>${operationLabel}</strong>
+                    </div>
+                    <div class="matrix-row-item">
+                        <span>KKW</span>
+                        <strong>${record.kkw?.number || "-"}</strong>
+                    </div>
+                    <div class="matrix-row-item matrix-row-item-wide">
+                        <span>Produkt</span>
+                        <strong>${productLabel}</strong>
+                    </div>
+                        <div class="matrix-row-item">
+                            <span>Operator</span>
+                            <strong>${record.operator?.name || "-"}</strong>
+                        </div>
+                    </div>
+                </section>
+                ${prepSection}
+                <section class="matrix-row-phase matrix-row-production ${metrics.activePhase?.key === "production" ? "matrix-row-phase-active" : ""}">
+                    <div class="matrix-row-line matrix-row-line-production">
+                        <div class="matrix-row-phase-meta matrix-row-phase-meta-production">
+                            <div class="matrix-row-badges">
+                                <span class="${productionBadge.className}">${productionBadge.label}</span>
+                            </div>
+                            <div class="matrix-row-meta-inline">
+                                <span>Planowane zakonczenie</span>
+                                <strong>${productionStarted ? dashboardFormatDateTime(metrics.expectedFinishAt) : "-"}</strong>
+                            </div>
+                        </div>
+                        <div class="matrix-row-item"><span>Norma</span><strong>${dashboardFormatDurationHours(metrics.plannedWorkHours)}</strong></div>
+                        <div class="matrix-row-item"><span>Czas</span><strong>${productionStarted ? dashboardFormatDurationHours(metrics.productionElapsedHours) : "-"}</strong></div>
+                        <div class="matrix-row-item"><span>Ilosc do wykonania</span><strong>${dashboardFormatNumber(metrics.plannedQuantity)} szt.</strong></div>
+                        <div class="matrix-row-item"><span>Wykonano</span><strong>${dashboardFormatNumber(metrics.completedQuantity)} szt.</strong></div>
+                        <div class="matrix-row-item"><span>% normy</span><strong>${productionStarted ? dashboardFormatPercent(metrics.productionProgressPercent) : "-"}</strong></div>
+                    </div>
+                </section>
+            </article>
+        `;
+}
+
 function renderProductionOverview(data) {
     const allRecords = Array.isArray(data.records) ? data.records : [];
 
@@ -1292,6 +1471,57 @@ function renderProductionOverview(data) {
     dashboardOverviewGrid.innerHTML = sections.join("");
 }
 
+function renderProductionMatrix(data) {
+    const allRecords = Array.isArray(data.records) ? data.records : [];
+
+    if (!dashboardOverviewGrid) {
+        return;
+    }
+
+    const records = allRecords.filter((record) => {
+        if (dashboardOverviewFilter === "all") {
+            return true;
+        }
+
+        return dashboardGetOverviewCategory(record) === dashboardOverviewFilter;
+    });
+
+    if (!records.length) {
+        dashboardOverviewGrid.className = "dashboard-overview-empty";
+        dashboardOverviewGrid.textContent = "Brak stanowisk dla wybranego filtra.";
+        return;
+    }
+
+    const departmentOrder = ["SMD", "AOI", "THT", "FALA", "TEST", "PAKOWANIE", "INNE"];
+    const groupedRecords = new Map();
+
+    for (const record of records) {
+        const department = dashboardInferDepartment(record);
+        if (!groupedRecords.has(department)) {
+            groupedRecords.set(department, []);
+        }
+        groupedRecords.get(department).push(record);
+    }
+
+    const orderedRecords = departmentOrder
+        .filter((department) => groupedRecords.has(department))
+        .flatMap((department) => groupedRecords.get(department).slice().sort(dashboardCompareOverviewRecords));
+
+    dashboardOverviewGrid.className = "dashboard-overview-groups matrix-groups";
+    dashboardOverviewGrid.innerHTML = `
+        <section class="matrix-table">
+            <div class="matrix-header">
+                <div class="matrix-header-cell">Dane zlecenia</div>
+                <div class="matrix-header-cell">Przyrzad</div>
+                <div class="matrix-header-cell">Produkcja</div>
+            </div>
+            <div class="matrix-rows">
+                ${orderedRecords.map((record) => renderMatrixRow(record)).join("")}
+            </div>
+        </section>
+    `;
+}
+
 function renderProductionScreen(data) {
     if (!dashboardOverviewGrid) {
         return;
@@ -1335,9 +1565,11 @@ function dashboardSetOverviewFilter(filter) {
         // Ignore storage errors in kiosk-like environments.
     }
 
-    if ((dashboardMode === "overview" || dashboardMode === "screen") && dashboardCurrentData) {
+    if ((dashboardMode === "overview" || dashboardMode === "screen" || dashboardMode === "matrix") && dashboardCurrentData) {
         if (dashboardMode === "screen") {
             renderProductionScreen(dashboardCurrentData);
+        } else if (dashboardMode === "matrix") {
+            renderProductionMatrix(dashboardCurrentData);
         } else {
             renderProductionOverview(dashboardCurrentData);
         }
@@ -1364,12 +1596,12 @@ async function runDashboard(options = {}) {
     dashboardSubmitButton.disabled = true;
 
     try {
-        const endpoint = (dashboardMode === "overview" || dashboardMode === "screen")
+        const endpoint = (dashboardMode === "overview" || dashboardMode === "screen" || dashboardMode === "matrix")
             ? "/api/production-overview"
             : "/api/production-dashboard";
         const data = await dashboardPostJson(endpoint, dashboardCollectPayload());
         dashboardCurrentData = data;
-        if (dashboardMode === "overview" || dashboardMode === "screen") {
+        if (dashboardMode === "overview" || dashboardMode === "screen" || dashboardMode === "matrix") {
             dashboardOverviewLastFetchedAt = new Date().toISOString();
             dashboardOverviewNextRefreshAt = dashboardOverviewAutoRefresh
                 ? Date.now() + DASHBOARD_OVERVIEW_REFRESH_MS
@@ -1379,10 +1611,12 @@ async function runDashboard(options = {}) {
             dashboardOverviewNextRefreshAt = null;
         }
         dashboardRawOutput.textContent = JSON.stringify(data, null, 2);
-        if (dashboardMode === "overview" || dashboardMode === "screen") {
+        if (dashboardMode === "overview" || dashboardMode === "screen" || dashboardMode === "matrix") {
             renderDashboardSummary(data);
             if (dashboardMode === "screen") {
                 renderProductionScreen(data);
+            } else if (dashboardMode === "matrix") {
+                renderProductionMatrix(data);
             } else {
                 renderProductionOverview(data);
             }
@@ -1391,7 +1625,7 @@ async function runDashboard(options = {}) {
                 dashboardOverviewRefreshState.textContent = dashboardFormatOverviewRefreshState();
             }
             dashboardApplyScreenLayout();
-            dashboardSetStatus("success", dashboardMode === "screen" ? "Ekran produkcyjny" : "Przeglad produkcji");
+            dashboardSetStatus("success", dashboardMode === "screen" ? "Ekran produkcyjny" : dashboardMode === "matrix" ? "Siatka produkcji" : "Przeglad produkcji");
         } else {
             dashboardSyncLiveView();
         }
@@ -1474,9 +1708,11 @@ if (dashboardOverviewPrepStationsInput) {
     dashboardOverviewPrepStationsInput.addEventListener("change", () => {
         dashboardSavePrepStations(dashboardOverviewPrepStationsInput.value);
         dashboardApplyScreenLayout();
-        if ((dashboardMode === "overview" || dashboardMode === "screen") && dashboardCurrentData) {
+        if ((dashboardMode === "overview" || dashboardMode === "screen" || dashboardMode === "matrix") && dashboardCurrentData) {
             if (dashboardMode === "screen") {
                 renderProductionScreen(dashboardCurrentData);
+            } else if (dashboardMode === "matrix") {
+                renderProductionMatrix(dashboardCurrentData);
             } else {
                 renderProductionOverview(dashboardCurrentData);
             }
@@ -1543,8 +1779,12 @@ if (dashboardOverviewDensityInput) {
             // Ignore storage errors in kiosk-like environments.
         }
 
-        if (dashboardMode === "overview" && dashboardCurrentData) {
-            renderProductionOverview(dashboardCurrentData);
+        if ((dashboardMode === "overview" || dashboardMode === "matrix") && dashboardCurrentData) {
+            if (dashboardMode === "matrix") {
+                renderProductionMatrix(dashboardCurrentData);
+            } else {
+                renderProductionOverview(dashboardCurrentData);
+            }
         }
     });
 }
@@ -1566,7 +1806,7 @@ for (const button of dashboardModeButtons) {
         dashboardApplyMode(button.dataset.dashboardMode || "single");
         clearDashboardView();
         dashboardSetStatus("idle", "Gotowe");
-        if ((dashboardMode === "overview" || dashboardMode === "screen") && dashboardConnectionForm?.vendoUserLogin?.value?.trim() && dashboardConnectionForm?.vendoUserPassword?.value) {
+        if ((dashboardMode === "overview" || dashboardMode === "screen" || dashboardMode === "matrix") && dashboardConnectionForm?.vendoUserLogin?.value?.trim() && dashboardConnectionForm?.vendoUserPassword?.value) {
             await runDashboard();
         }
     });

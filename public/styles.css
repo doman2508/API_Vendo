@@ -1109,13 +1109,182 @@ body.screen-mode #production-overview-section > .warehouse-panel-header {
     font-size: 24px;
 }
 
+.matrix-groups {
+    display: grid;
+    gap: 12px;
+}
+
+.matrix-table {
+    display: grid;
+    gap: 8px;
+}
+
+.matrix-header {
+    display: grid;
+    grid-template-columns: minmax(260px, 1fr) minmax(260px, 0.95fr) minmax(420px, 1.35fr);
+    gap: 8px;
+    align-items: stretch;
+}
+
+.matrix-header-cell {
+    padding: 6px 12px 2px;
+    color: var(--accent-strong);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.matrix-rows {
+    display: grid;
+    gap: 8px;
+}
+
+.matrix-row {
+    display: grid;
+    grid-template-columns: minmax(260px, 1fr) minmax(260px, 0.95fr) minmax(420px, 1.35fr);
+    gap: 8px;
+    align-items: stretch;
+    padding: 10px;
+    border-radius: 18px;
+    border: 1px solid rgba(47, 38, 29, 0.08);
+    background: rgba(255, 255, 255, 0.9);
+}
+
+.matrix-row-order,
+.matrix-row-phase {
+    border-radius: 14px;
+    border: 1px solid rgba(47, 38, 29, 0.08);
+    background: rgba(255, 255, 255, 0.82);
+    padding: 10px 12px;
+    display: grid;
+    gap: 6px;
+}
+
+.matrix-row-phase-active {
+    border-color: rgba(12, 122, 106, 0.22);
+    background: rgba(12, 122, 106, 0.06);
+}
+
+.matrix-row-phase-empty {
+    opacity: 0.56;
+    background: rgba(255, 255, 255, 0.55);
+    border-style: dashed;
+}
+
+.matrix-row-badges {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.matrix-row-line {
+    display: grid;
+    gap: 8px 12px;
+    align-items: end;
+}
+
+.matrix-row-order .matrix-row-line {
+    grid-template-columns: minmax(110px, 0.7fr) minmax(170px, 1.1fr) minmax(90px, 0.5fr) minmax(240px, 1.7fr) minmax(150px, 0.9fr);
+}
+
+.matrix-row-line-prep {
+    grid-template-columns: minmax(170px, 1fr) repeat(4, minmax(78px, auto));
+}
+
+.matrix-row-line-production {
+    grid-template-columns: minmax(240px, 1.2fr) repeat(5, minmax(82px, auto));
+}
+
+.matrix-row-phase-meta {
+    display: grid;
+    align-content: center;
+}
+
+.matrix-row-phase-meta-production {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.matrix-row-meta-inline {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.matrix-row-meta-inline span {
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.1;
+}
+
+.matrix-row-meta-inline strong {
+    font-size: 14px;
+    line-height: 1.08;
+}
+
+.matrix-row-item {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.matrix-row-item-wide {
+    min-width: 0;
+}
+
+.matrix-row-item span {
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.1;
+}
+
+.matrix-row-item strong {
+    font-size: 15px;
+    line-height: 1.08;
+    overflow-wrap: anywhere;
+}
+
+.matrix-row-phase-empty .matrix-row-item strong {
+    font-size: 13px;
+}
+
+.matrix-row-order .matrix-row-item:nth-child(2) strong,
+.matrix-row-order .matrix-row-item:nth-child(4) strong {
+    font-size: 16px;
+}
+
+.matrix-row-line-production .matrix-row-item strong,
+.matrix-row-line-prep .matrix-row-item strong {
+    font-size: 14px;
+}
+
+.matrix-row-phase-meta .phase-badge,
+.matrix-row-phase-meta .phase-badge.good,
+.matrix-row-phase-meta .phase-badge.warning,
+.matrix-row-phase-meta .phase-badge.danger,
+.matrix-row-phase-meta .phase-badge.neutral {
+    padding: 6px 10px;
+    font-size: 12px;
+}
+
 @media (max-width: 900px) {
     .phase-grid {
         grid-template-columns: 1fr;
     }
 
     .overview-card-production-grid,
-    .overview-card-prep-grid {
+    .overview-card-prep-grid,
+    .matrix-header,
+    .matrix-row,
+    .matrix-row-line,
+    .matrix-row-order .matrix-row-line,
+    .matrix-row-line-prep,
+    .matrix-row-line-production {
         grid-template-columns: 1fr;
     }
 }
@@ -1156,6 +1325,240 @@ body.screen-mode #production-overview-section > .warehouse-panel-header {
     cursor: pointer;
     color: var(--accent-strong);
     font-weight: 700;
+}
+
+.mes-control-panel {
+    display: grid;
+    gap: 10px;
+}
+
+.mes-events-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.mes-events-table th,
+.mes-events-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(47, 38, 29, 0.08);
+    text-align: left;
+    vertical-align: top;
+}
+
+.mes-events-table th {
+    color: var(--accent-strong);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.mes-events-table code {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.mes-events-table small {
+    display: block;
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.mes-batch-row {
+    cursor: pointer;
+}
+
+.mes-batch-row:hover {
+    background: rgba(8, 121, 99, 0.06);
+}
+
+.mes-batch-row.selected {
+    background: rgba(8, 121, 99, 0.12);
+    box-shadow: inset 4px 0 0 var(--accent-strong);
+}
+
+.mes-operator-page {
+    background:
+        radial-gradient(circle at 12% 8%, rgba(12, 122, 106, 0.14), transparent 28%),
+        linear-gradient(135deg, #f7f2ea 0%, #eef5f0 100%);
+}
+
+.mes-operator-shell {
+    width: min(100vw - 24px, 780px);
+    margin: 12px auto;
+    display: grid;
+    gap: 12px;
+}
+
+.mes-operator-topbar,
+.mes-scan-panel,
+.mes-active-batch,
+.mes-operator-actions {
+    border: 1px solid rgba(47, 38, 29, 0.08);
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 18px 40px rgba(47, 38, 29, 0.08);
+}
+
+.mes-operator-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px 18px;
+}
+
+.mes-operator-topbar h1 {
+    margin: 2px 0 0;
+    font-size: clamp(28px, 8vw, 46px);
+}
+
+.mes-scan-panel {
+    padding: 16px;
+}
+
+.mes-scan-panel form {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(130px, 0.7fr) auto;
+    gap: 12px;
+    align-items: end;
+}
+
+.mes-scan-panel input {
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    padding: 14px 16px;
+}
+
+.mes-scan-panel button,
+.mes-operator-actions button,
+.mes-operator-actions .button {
+    min-height: 58px;
+    padding-inline: 22px;
+    font-size: 18px;
+}
+
+.mes-active-batch {
+    padding: 16px;
+}
+
+.mes-empty-state {
+    display: grid;
+    gap: 8px;
+    min-height: 220px;
+    place-items: center;
+    text-align: center;
+}
+
+.mes-empty-state span,
+.mes-empty-state small {
+    color: var(--muted);
+}
+
+.mes-empty-state strong {
+    font-size: clamp(30px, 8vw, 52px);
+}
+
+.mes-batch-card {
+    display: grid;
+    gap: 18px;
+}
+
+.mes-batch-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    gap: 12px;
+}
+
+.mes-batch-header h2 {
+    margin: 2px 0 0;
+    font-size: clamp(42px, 12vw, 72px);
+    line-height: 0.95;
+}
+
+.mes-batch-product {
+    margin-top: 10px;
+    display: grid;
+    gap: 4px;
+    max-width: 760px;
+}
+
+.mes-batch-product strong {
+    font-size: clamp(18px, 4vw, 28px);
+    line-height: 1.1;
+}
+
+.mes-batch-product span {
+    color: var(--muted);
+    font-size: 15px;
+}
+
+.mes-batch-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.mes-batch-grid div {
+    border-radius: 16px;
+    border: 1px solid rgba(47, 38, 29, 0.08);
+    background: rgba(244, 239, 232, 0.5);
+    padding: 14px;
+    display: grid;
+    gap: 6px;
+}
+
+.mes-batch-grid span {
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.mes-batch-grid strong {
+    font-size: clamp(22px, 6vw, 34px);
+    line-height: 1;
+}
+
+.mes-operator-actions {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+    padding: 14px;
+}
+
+.danger-button {
+    border: 0;
+    border-radius: 999px;
+    background: #9f2f2f;
+    color: #fff;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.danger-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
+.mes-message-success {
+    color: var(--accent-strong);
+}
+
+.mes-message-warning {
+    color: #9a6a12;
+}
+
+.mes-message-error {
+    color: #9f2f2f;
+}
+
+@media (max-width: 680px) {
+    .mes-scan-panel form,
+    .mes-operator-actions,
+    .mes-batch-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 pre {
