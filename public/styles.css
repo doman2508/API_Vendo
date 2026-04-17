@@ -1415,30 +1415,26 @@ body.screen-mode #production-overview-section > .warehouse-panel-header {
 }
 
 .mes-operator-topbar {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    padding: 14px 16px;
+    gap: 10px;
+    padding: 10px 14px;
 }
 
 .mes-operator-topbar h1 {
-    margin: 2px 0 0;
-    font-size: clamp(24px, 7vw, 40px);
-}
-
-.mes-device-hint {
-    margin: 6px 0 0;
-    color: var(--muted);
-    font-size: 13px;
-    font-weight: 600;
+    margin: 0;
+    font-size: clamp(22px, 5.4vw, 30px);
+    line-height: 0.96;
+    white-space: nowrap;
 }
 
 .mes-scan-panel {
     position: sticky;
     top: 8px;
     z-index: 12;
-    padding: 14px;
+    padding: 12px 14px;
     backdrop-filter: blur(10px);
 }
 
@@ -1456,26 +1452,66 @@ body.screen-mode #production-overview-section > .warehouse-panel-header {
 
 .mes-scan-panel label span {
     color: var(--muted);
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
 }
 
 .mes-scan-panel input {
-    min-height: 72px;
-    font-size: 32px;
+    min-height: 64px;
+    font-size: 28px;
     font-weight: 800;
     letter-spacing: 0.04em;
-    padding: 18px 18px;
+    padding: 14px 16px;
 }
 
 .mes-scan-panel button,
 .mes-operator-actions button,
 .mes-operator-actions .button {
-    min-height: 64px;
-    padding-inline: 22px;
-    font-size: 18px;
+    min-height: 58px;
+    padding-inline: 20px;
+    font-size: 17px;
+}
+
+.mes-operator-shell.has-active-batch .mes-scan-panel {
+    padding: 10px 12px;
+}
+
+.mes-operator-shell.has-active-batch .mes-scan-panel form {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+}
+
+.mes-operator-shell.has-active-batch .mes-scan-panel label span {
+    display: none;
+}
+
+.mes-operator-shell.has-active-batch .mes-scan-panel input {
+    min-height: 54px;
+    padding: 10px 14px;
+    font-size: 22px;
+}
+
+.mes-operator-shell.has-active-batch .mes-scan-panel button {
+    min-height: 54px;
+    min-width: 134px;
+    font-size: 15px;
+}
+
+.mes-operator-shell.has-active-batch .mes-scan-panel .note {
+    margin-top: 8px;
+    font-size: 13px;
+}
+
+.mes-operator-shell.requires-pcs-per-panel .mes-scan-panel {
+    border-color: rgba(159, 47, 47, 0.18);
+    box-shadow: 0 16px 34px rgba(159, 47, 47, 0.08);
+}
+
+.mes-operator-shell.requires-pcs-per-panel .mes-scan-panel input,
+.mes-operator-shell.requires-pcs-per-panel .mes-scan-panel button {
+    opacity: 0.6;
 }
 
 .mes-active-batch {
@@ -1537,19 +1573,39 @@ body.screen-mode #production-overview-section > .warehouse-panel-header {
 .mes-operator-meta-strip {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 6px;
 }
 
 .mes-operator-chip {
     display: inline-flex;
     align-items: center;
-    padding: 8px 12px;
+    padding: 7px 10px;
     border-radius: 999px;
     background: rgba(8, 121, 99, 0.08);
     border: 1px solid rgba(8, 121, 99, 0.16);
     color: var(--accent-strong);
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 700;
+}
+
+.mes-operator-alert {
+    display: grid;
+    gap: 4px;
+    padding: 12px 14px;
+    border-radius: 16px;
+    border: 1px solid rgba(159, 47, 47, 0.18);
+    background: rgba(159, 47, 47, 0.06);
+}
+
+.mes-operator-alert strong {
+    color: #9f2f2f;
+    font-size: 16px;
+    line-height: 1.1;
+}
+
+.mes-operator-alert span {
+    color: #734646;
+    font-size: 13px;
 }
 
 .mes-operator-hero-stats {
@@ -1616,7 +1672,7 @@ body.screen-mode #production-overview-section > .warehouse-panel-header {
 .mes-pcs-form {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 12px;
+    gap: 10px;
     align-items: end;
 }
 
@@ -1633,14 +1689,14 @@ body.screen-mode #production-overview-section > .warehouse-panel-header {
 .mes-pcs-form input {
     min-height: 62px;
     padding: 14px 16px;
-    font-size: 28px;
+    font-size: 26px;
     font-weight: 800;
     letter-spacing: 0.04em;
 }
 
 .mes-pcs-form button {
     min-height: 62px;
-    padding-inline: 22px;
+    padding-inline: 18px;
     font-size: 17px;
 }
 
@@ -1650,9 +1706,9 @@ body.screen-mode #production-overview-section > .warehouse-panel-header {
 
 .mes-operator-actions {
     display: grid;
-    grid-template-columns: 1fr auto;
+    grid-template-columns: 1fr;
     gap: 12px;
-    padding: 14px;
+    padding: 10px;
     position: sticky;
     bottom: calc(8px + env(safe-area-inset-bottom));
     z-index: 12;
@@ -1707,7 +1763,7 @@ body.screen-mode #production-overview-section > .warehouse-panel-header {
 
     .mes-operator-topbar {
         align-items: start;
-        padding: 12px 14px;
+        padding: 8px 12px;
     }
 
     .mes-operator-topbar .phase-badge {
@@ -1718,7 +1774,7 @@ body.screen-mode #production-overview-section > .warehouse-panel-header {
 
     .mes-scan-panel {
         top: 6px;
-        padding: 12px;
+        padding: 10px 12px;
     }
 
     .mes-scan-panel button,
@@ -1758,8 +1814,8 @@ body.screen-mode #production-overview-section > .warehouse-panel-header {
     }
 
     .mes-operator-actions {
-        grid-template-columns: 1fr 1fr;
-        gap: 10px;
+        grid-template-columns: 1fr;
+        gap: 8px;
         padding: 10px;
         bottom: calc(6px + env(safe-area-inset-bottom));
     }

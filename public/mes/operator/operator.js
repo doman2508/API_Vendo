@@ -1,6 +1,8 @@
 const operatorDeviceId = "reflow_1";
+const operatorShell = document.querySelector(".mes-operator-shell");
 const scanForm = document.getElementById("operator-scan-form");
 const scanInput = document.getElementById("operator-scan-input");
+const scanSubmitButton = scanForm?.querySelector('button[type="submit"]') || null;
 const messageBox = document.getElementById("operator-message");
 const activeBatchPanel = document.getElementById("operator-active-batch");
 const endBatchButton = document.getElementById("operator-end-batch");
@@ -66,9 +68,27 @@ function formatPanelCount(value) {
 
 async function fetchJson(url, options = {}) {
     const response = await fetch(url, options);
-    const data = await response.json();
+    const rawText = await response.text();
+    let data = null;
+
+    if (rawText) {
+        try {
+            data = JSON.parse(rawText);
+        } catch (_error) {
+            data = null;
+        }
+    }
+
     if (!response.ok) {
-        throw new Error(data.error || "Operacja MES nie powiodla sie.");
+        throw new Error(
+            data?.error
+            || rawText
+            || `Operacja MES nie powiodla sie (HTTP ${response.status}).`
+        );
+    }
+
+    if (!data) {
+        throw new Error("Serwer MES zwrocil nieprawidlowy format odpowiedzi.");
     }
 
     return data;
@@ -77,6 +97,37 @@ async function fetchJson(url, options = {}) {
 function setMessage(text, type = "info") {
     messageBox.textContent = text;
     messageBox.className = `note mes-message-${type}`;
+}
+
+function focusPcsPerPanelInput() {
+    const input = document.getElementById("operator-pcs-per-panel");
+    if (!input) {
+        return;
+    }
+
+    input.focus();
+    input.select();
+}
+
+function syncOperatorLayout(summary) {
+    const batch = summary?.activeBatch || null;
+    const pcsRequired = Boolean(batch && !batch.pcsPerPanel);
+
+    operatorShell?.classList.toggle("has-active-batch", Boolean(batch));
+    operatorShell?.classList.toggle("requires-pcs-per-panel", pcsRequired);
+
+    if (scanInput) {
+        scanInput.disabled = pcsRequired;
+        scanInput.placeholder = pcsRequired
+            ? "Najpierw wpisz PCB na panel"
+            : batch
+                ? "Zeskanuj kolejne KKW"
+                : "np. 258/25";
+    }
+
+    if (scanSubmitButton) {
+        scanSubmitButton.disabled = pcsRequired;
+    }
 }
 
 function getPcsPerPanelStatus(batch) {
@@ -116,6 +167,7 @@ function renderActiveBatch(summary) {
     currentSummary = summary || null;
     const batch = summary?.activeBatch || null;
     const status = summary?.status || "-";
+    syncOperatorLayout(summary);
 
     if (!batch) {
         activeBatchPanel.innerHTML = `
@@ -143,6 +195,14 @@ function renderActiveBatch(summary) {
         ? `Wartosc zapisze sie dla tej partii i produktu ${escapeHtml(batch.productCode)}.`
         : "Brak kodu produktu. Zapiszemy wartosc tylko dla tej partii.";
     const productMeta = [batch.productCode, batch.productName].filter(Boolean).join(" | ");
+    const pcsMissingNotice = !batch.pcsPerPanel
+        ? `
+            <div class="mes-operator-alert">
+                <strong>Ustaw PCB na panel teraz.</strong>
+                <span>Bez tej wartosci MES policzy tylko panele, nie pojedyncze PCB.</span>
+            </div>
+        `
+        : "";
 
     endBatchButton.disabled = false;
     activeBatchPanel.innerHTML = `
@@ -164,6 +224,7 @@ function renderActiveBatch(summary) {
                 <span class="mes-operator-chip">${escapeHtml(`Plan: ${plannedQuantityLabel}`)}</span>
                 <span class="mes-operator-chip">${escapeHtml(`PCB/panel: ${pcsPerPanelLabel}`)}</span>
             </div>
+            ${pcsMissingNotice}
             <div class="mes-operator-hero-stats">
                 <div class="mes-operator-hero-card">
                     <span>Wykonano PCB</span>
@@ -200,10 +261,6 @@ function renderActiveBatch(summary) {
                     <span>Ta partia panele</span>
                     <strong>${formatPanelCount(batch.batchPanelCount ?? batch.batchPulseCount)}</strong>
                 </div>
-                <div>
-                    <span>Ostatni impuls</span>
-                    <strong>${escapeHtml(formatDateTime(summary?.lastPulse?.ts))}</strong>
-                </div>
             </div>
             <form id="operator-pcs-form" class="mes-pcs-form">
                 <label>
@@ -233,8 +290,12 @@ async function loadOperatorState() {
     renderActiveBatch(data.summary);
     refreshState.textContent = `Aktualizacja: ${formatDateTime(data.summary?.now)}`;
 
-    if (data.plannedQuantityLookup?.warning) {
+    if (data.summary?.activeBatch && !data.summary.activeBatch.pcsPerPanel) {
+        setMessage("Ustaw PCB na panel, aby policzyc pojedyncze PCB dla tej partii.", "warning");
+    } else if (data.plannedQuantityLookup?.warning) {
         setMessage(data.plannedQuantityLookup.warning, "warning");
+    } else if (!data.summary?.activeBatch) {
+        setMessage("Zeskanuj KKW. Po starcie od razu mozesz dopisac PCB na panel.", "info");
     }
 }
 
@@ -272,8 +333,15 @@ async function startBatch(scanValue) {
     }
 
     scanInput.value = "";
-    scanInput.focus();
     await loadOperatorState();
+
+    if (!data.batch?.pcsPerPanel) {
+        window.alert("Dla tej partii brakuje ustawienia PCB na panel. Wpisz je teraz.");
+        focusPcsPerPanelInput();
+        return;
+    }
+
+    scanInput.focus();
 }
 
 async function savePcsPerPanel(batchId, value) {
@@ -349,7 +417,9 @@ if (endBatchButton) {
 }
 
 window.addEventListener("focus", () => {
-    scanInput?.focus();
+    if (document.activeElement?.id !== "operator-pcs-per-panel") {
+        scanInput?.focus();
+    }
 });
 
 document.addEventListener("click", (event) => {
