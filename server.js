@@ -23,6 +23,7 @@ const {
     listOvenPulses,
     startOvenBatch,
     updateOvenBatchDetails,
+    upsertOvenBatchPcsPerPanel,
 } = require("./lib/mes-sqlite");
 
 const PORT = process.env.PORT || 3000;
@@ -42,6 +43,10 @@ const execFileAsync = promisify(execFile);
 let cachedLocalServerConfig = null;
 const productionOverviewCache = new Map();
 const kkwOverviewContextCache = new Map();
+const vendoOperationalHeadersCache = new Map();
+const vendoOperationalHeaderSummaryCache = new Map();
+const vendoDemandTotalsCache = new Map();
+const vendoTechnologyLookupCache = new Map();
 const zapotrzebowanieSourceCache = new Map();
 const zapotrzebowanieDetailCache = new Map();
 const wmsInventoryCache = new Map();
@@ -223,6 +228,24 @@ function sendText(res, statusCode, payload) {
     res.end(payload);
 }
 
+function resolveVendoUserCredentials(body = {}) {
+    const serverConfig = getServerConfig();
+    const bodyLogin = String(body?.vendoUserLogin || "").trim();
+    const bodyPassword = String(body?.vendoUserPassword || "");
+
+    return {
+        vendoUserLogin: bodyLogin || serverConfig.vendoUserLogin,
+        vendoUserPassword: bodyPassword || serverConfig.vendoUserPassword,
+    };
+}
+
+function redactSensitiveText(value) {
+    return String(value || "")
+        .replace(/(-SqlPassword\s+)(?:"[^"]*"|'[^']*'|\S+)/gi, "$1********")
+        .replace(/(Password\s*=\s*)[^;]+/gi, "$1********")
+        .replace(/(Haslo\s*:\s*)(?:"[^"]*"|'[^']*'|\S+)/gi, "$1********");
+}
+
 async function readJsonBody(req) {
     const chunks = [];
     for await (const chunk of req) {
@@ -244,11 +267,21 @@ async function runPowerShellJsonScript(scriptPath, parameters, { timeoutMs = 5 *
         args.push(String(value ?? ""));
     }
 
-    const { stdout } = await execFileAsync(POWERSHELL_PATH, args, {
-        timeout: timeoutMs,
-        maxBuffer,
-        windowsHide: true,
-    });
+    let stdout = "";
+    try {
+        const result = await execFileAsync(POWERSHELL_PATH, args, {
+            timeout: timeoutMs,
+            maxBuffer,
+            windowsHide: true,
+        });
+        stdout = result.stdout;
+    } catch (error) {
+        const stderr = String(error?.stderr || "").trim();
+        const stdoutText = String(error?.stdout || "").trim();
+        const fallback = String(error?.message || "Nieznany blad PowerShell.").trim();
+        const details = stderr || stdoutText || fallback;
+        throw new Error(`Skrypt ${path.basename(scriptPath)} zakonczyl sie bledem: ${redactSensitiveText(details)}`);
+    }
 
     const trimmed = String(stdout || "").trim();
     if (!trimmed) {
@@ -512,9 +545,7 @@ function normalizeKkwNumber(value) {
 }
 
 function normalizeUserFieldName(value) {
-    return String(value || "")
-        .trim()
-        .toLowerCase();
+    return normalizeText(value);
 }
 
 function pickUserFieldValue(record, fieldNames) {
@@ -525,7 +556,13 @@ function pickUserFieldValue(record, fieldNames) {
 
     const expectedNames = new Set((fieldNames || []).map(normalizeUserFieldName).filter(Boolean));
     for (const item of items) {
-        const fieldName = normalizeUserFieldName(item?.NazwaWewnetrzna);
+        const fieldName = normalizeUserFieldName(
+            item?.NazwaWewnetrzna
+            || item?.Nazwa
+            || item?.NazwaZewnetrzna
+            || item?.Kod
+            || item?.ParametrNazwa
+        );
         if (!fieldName || !expectedNames.has(fieldName)) {
             continue;
         }
@@ -537,6 +574,103 @@ function pickUserFieldValue(record, fieldNames) {
     }
 
     return null;
+}
+
+function pickUserFieldValueById(record, fieldIds) {
+    const items = Array.isArray(record?.PolaUzytkownika) ? record.PolaUzytkownika : [];
+    if (!items.length) {
+        return null;
+    }
+
+    const expectedIds = new Set(
+        (fieldIds || [])
+            .map((value) => Number(value))
+            .filter((value) => Number.isInteger(value) && value > 0)
+    );
+    if (!expectedIds.size) {
+        return null;
+    }
+
+    for (const item of items) {
+        const fieldId = Number(item?.ID);
+        if (!expectedIds.has(fieldId)) {
+            continue;
+        }
+
+        const value = String(item?.Wartosc || "").trim();
+        if (value) {
+            return value;
+        }
+    }
+
+    return null;
+}
+
+function normalizeMaterialOwnershipValue(value) {
+    const rawValue = String(value || "").trim();
+    const normalized = normalizeText(rawValue);
+    if (!normalized) return "";
+    if (normalized === "37" || normalized === "1") return "POWIERZONE";
+    if (normalized === "38" || normalized === "2") return "MSX";
+    if (normalized.includes("powier")) return "POWIERZONE";
+    if (normalized.includes("msx")) return "MSX";
+    return rawValue.toUpperCase();
+}
+
+function getMaterialOwnershipFromRecord(record) {
+    const directValue = [
+        record?.tel_value156,
+        record?.TEL_VALUE156,
+        record?.Materialy,
+        record?.["Materiały"],
+    ].find((value) => String(value || "").trim());
+
+    const userFieldValue = pickUserFieldValue(record, ["materialy", "materiały", "tel_value156"]);
+    const userFieldValueById = pickUserFieldValueById(record, [384228]);
+    return normalizeMaterialOwnershipValue(directValue || userFieldValue || userFieldValueById);
+}
+
+function resolveMaterialOwnershipFromRecord(record) {
+    const directValue = [
+        record?.pz_value156,
+        record?.PZ_VALUE156,
+        record?.tel_value156,
+        record?.TEL_VALUE156,
+        record?.Materialy,
+        record?.["Materiały"],
+    ].find((value) => String(value || "").trim());
+
+    const userFieldValue = pickUserFieldValue(record, ["materialy", "materiały", "pz_value156", "tel_value156"]);
+    const userFieldValueById = pickUserFieldValueById(record, [384228]);
+    return normalizeMaterialOwnershipValue(directValue || userFieldValue || userFieldValueById);
+}
+
+function normalizeMaterialOwnershipFilter(value) {
+    const normalized = normalizeText(value);
+    if (normalized === "all" || normalized === "wszystkie") return "ALL";
+    if (normalized === "powierzone") return "POWIERZONE";
+    if (normalized === "msx") return "MSX";
+    if (normalized === "empty" || normalized === "puste") return "EMPTY";
+    return "MSX_OR_EMPTY";
+}
+
+function matchesMaterialOwnershipFilter(value, filter) {
+    const normalizedValue = normalizeMaterialOwnershipValue(value);
+    const normalizedFilter = normalizeMaterialOwnershipFilter(filter);
+
+    if (normalizedFilter === "ALL") return true;
+    if (normalizedFilter === "POWIERZONE") return normalizedValue === "POWIERZONE";
+    if (normalizedFilter === "MSX") return normalizedValue === "MSX";
+    if (normalizedFilter === "EMPTY") return !normalizedValue;
+    return normalizedValue === "MSX" || !normalizedValue;
+}
+
+function isBlockedOperationalClient(value) {
+    return normalizeText(value).includes("medcom");
+}
+
+function isAllowedOperationalSeries(value) {
+    return normalizeText(value) === "msx";
 }
 
 function buildVendoInventoryCacheKey(connection, code, includeExpected = true) {
@@ -907,6 +1041,11 @@ function buildProductionOrdersLookupByIdsModel({ ids, pageSize }) {
                 ParametrNazwa: "pz_value84",
                 ParametrWartosc: "1",
             },
+            {
+                ZwracanePole: "PolaUzytkownika",
+                ParametrNazwa: "pz_value156",
+                ParametrWartosc: "1",
+            },
         ],
     };
 }
@@ -923,12 +1062,18 @@ function buildPlanningPositionsLookupByIdsModel({ ids, pageSize }) {
         ZwracanePola: [
             "ID",
             "ZlecenieID",
+            "Opis",
             "PolaUzytkownika",
         ],
         ZwracanePolaParametry: [
             {
                 ZwracanePole: "PolaUzytkownika",
                 ParametrNazwa: "pz_value84",
+                ParametrWartosc: "1",
+            },
+            {
+                ZwracanePole: "PolaUzytkownika",
+                ParametrNazwa: "pz_value156",
                 ParametrWartosc: "1",
             },
         ],
@@ -956,6 +1101,11 @@ function buildPlanningOrdersLookupByIdsModel({ ids, pageSize }) {
                 ParametrNazwa: "pz_value84",
                 ParametrWartosc: "1",
             },
+            {
+                ZwracanePole: "PolaUzytkownika",
+                ParametrNazwa: "pz_value156",
+                ParametrWartosc: "1",
+            },
         ],
     };
 }
@@ -975,6 +1125,7 @@ function buildVendoPlanPositionModel({ planPositionId }) {
             "TowarID",
             "Kod",
             "Nazwa",
+            "Opis",
             "Ilosc",
             "IloscNaKKW",
             "IloscWykonana",
@@ -988,6 +1139,11 @@ function buildVendoPlanPositionModel({ planPositionId }) {
             {
                 ZwracanePole: "PolaUzytkownika",
                 ParametrNazwa: "pz_value84",
+                ParametrWartosc: "1",
+            },
+            {
+                ZwracanePole: "PolaUzytkownika",
+                ParametrNazwa: "pz_value156",
                 ParametrWartosc: "1",
             },
         ],
@@ -1008,6 +1164,7 @@ function buildVendoPlanPositionsOverviewModel({ search, pageSize }) {
             "TowarID",
             "Kod",
             "Nazwa",
+            "Opis",
             "Ilosc",
             "IloscNaKKW",
             "IloscWykonana",
@@ -1047,6 +1204,7 @@ function buildVendoPlanningOrderModel({ orderId }) {
         ZwracanePola: [
             "ID",
             "ZlecenieNumer",
+            "Seria",
             "Klient1Nazwa",
             "DataUtworzenia",
             "DataTerminZakonczenia",
@@ -1077,6 +1235,7 @@ function buildVendoPlanningOrdersOverviewModel({ orderIds, pageSize }) {
         ZwracanePola: [
             "ID",
             "ZlecenieNumer",
+            "Seria",
             "Klient1Nazwa",
             "DataUtworzenia",
             "DataTerminZakonczenia",
@@ -1173,7 +1332,13 @@ function buildTechnologyLookupModel({ productCode, pageSize }) {
     };
 }
 
-function buildTechnologyMaterialsModel({ technologyId, pageSize }) {
+function buildTechnologyMaterialsModel({ technologyId, technologyIds, pageSize }) {
+    const normalizedTechnologyIds = [
+        ...(Array.isArray(technologyIds) ? technologyIds : [technologyId]),
+    ]
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0);
+
     return {
         Cursor: true,
         CursorCzyZamknac: false,
@@ -1181,7 +1346,7 @@ function buildTechnologyMaterialsModel({ technologyId, pageSize }) {
             Indeks: 0,
             LiczbaRekordow: Number.isFinite(pageSize) ? pageSize : 500,
         },
-        TechnologiaID: [Number(technologyId)],
+        TechnologiaID: normalizedTechnologyIds,
         ZwracanePola: [
             "ID",
             "Typ",
@@ -1227,7 +1392,7 @@ function buildObjectStatusesHistoryModel({ objectIds, dataType, pageSize }) {
         ObiektyID: (objectIds || [])
             .map((value) => Number(value))
             .filter((value) => Number.isInteger(value) && value > 0),
-        TylkoAktualne: true,
+        TylkoAktualne: false,
     };
 }
 
@@ -1289,6 +1454,24 @@ function getForeignNumberFromRecord(record) {
         ?? record?.pz_value84
         ?? ""
     ).trim() || null;
+}
+
+function getPlanningPositionNote(record) {
+    const note = String(
+        record?.Uwagi
+        ?? record?.uwagi
+        ?? record?.Opis
+        ?? record?.opis
+        ?? record?.Komentarz
+        ?? record?.komentarz
+        ?? ""
+    ).trim();
+
+    if (!note || note === "0") {
+        return null;
+    }
+
+    return note;
 }
 
 function getVendoRecords(response) {
@@ -1471,6 +1654,497 @@ function buildVendoOverviewSummary(headers, { generatedAt = null } = {}) {
     return summary;
 }
 
+function buildVendoOperationalHeadersCacheKey(connection, {
+    search = "",
+    pageSize = 100,
+    maxPages = 2,
+    includeClosed = false,
+    includeNoScope = true,
+    materialOwnershipFilter = "MSX_OR_EMPTY",
+} = {}) {
+    return [
+        connection?.baseUrl || "",
+        connection?.vendoUserLogin || "",
+        normalizeText(search),
+        Number(pageSize) || 100,
+        Number(maxPages) || 2,
+        includeClosed ? "closed" : "open",
+        includeNoScope ? "scope-all" : "scope-demand",
+        normalizeMaterialOwnershipFilter(materialOwnershipFilter),
+    ].join("::");
+}
+
+function buildVendoDemandTotalsCacheKey(connection, {
+    pageSize = 100,
+    maxPages = 2,
+    materialOwnershipFilter = "MSX_OR_EMPTY",
+} = {}) {
+    return [
+        connection?.baseUrl || "",
+        connection?.vendoUserLogin || "",
+        "totals",
+        Number(pageSize) || 100,
+        Number(maxPages) || 2,
+        normalizeMaterialOwnershipFilter(materialOwnershipFilter),
+    ].join("::");
+}
+
+function buildVendoOperationalHeaderSummaryCacheKey(connection, {
+    search = "",
+    pageSize = 100,
+    maxPages = 2,
+    includeClosed = false,
+    includeNoScope = true,
+    materialOwnershipFilter = "MSX_OR_EMPTY",
+    includeVendo = true,
+    overviewGeneratedAt = "",
+} = {}) {
+    return [
+        buildVendoOperationalHeadersCacheKey(connection, {
+            search,
+            pageSize,
+            maxPages,
+            includeClosed,
+            includeNoScope,
+            materialOwnershipFilter,
+        }),
+        includeVendo ? "vendo-stock" : "wms-only",
+        String(overviewGeneratedAt || ""),
+        "header-summary",
+    ].join("::");
+}
+
+function buildVendoTechnologyLookupCacheKey(connection, position) {
+    return [
+        connection?.baseUrl || "",
+        Number(position?.TowarID) || 0,
+        String(position?.Kod || "").trim(),
+    ].join("::");
+}
+
+function sortVendoOperationalHeaderContexts(left, right) {
+    const leftHeader = left?.header || left || {};
+    const rightHeader = right?.header || right || {};
+    const leftCreatedAt = Date.parse(leftHeader.sourceCreatedAt || leftHeader.importedAt || "") || 0;
+    const rightCreatedAt = Date.parse(rightHeader.sourceCreatedAt || rightHeader.importedAt || "") || 0;
+    if (leftCreatedAt !== rightCreatedAt) return leftCreatedAt - rightCreatedAt;
+    return (Number(leftHeader.id) || 0) - (Number(rightHeader.id) || 0);
+}
+
+function buildVendoOperationalHeaderContext({
+    position,
+    positionDetails,
+    planningOrder,
+    objectStatuses,
+    statusDictionary,
+    kkwRecords,
+    generatedAt,
+}) {
+    const planPositionId = Number(position?.ID);
+    const positionWithFields = positionDetails ? { ...position, ...positionDetails } : position;
+    const planningOrderId = Number(position?.ZlecenieID) || null;
+    const statusScope = getVendoStatusScope(objectStatuses, statusDictionary);
+    const isClosed = isVendoPlanPositionHardClosed(position, planningOrder);
+    const stage = getVendoStageFromScope(statusScope, isClosed);
+    const kkwNumbers = (kkwRecords || []).map((item) => String(item?.Numer || "").trim()).filter(Boolean);
+    const clientName = String(planningOrder?.Klient1Nazwa || "").trim() || null;
+    const planningSeries = String(planningOrder?.Seria || "").trim() || null;
+    const materialOwnership = resolveMaterialOwnershipFromRecord(positionWithFields);
+    const vendoNote = getPlanningPositionNote(positionWithFields);
+    const operationalNote = statusScope.hasDemandScope ? "" : "SMD/THT wykluczone z zapotrzebowania";
+    const headerNotes = [vendoNote, operationalNote].filter(Boolean).join(" | ") || null;
+
+    return {
+        header: {
+            id: planPositionId,
+            sourceSystem: "vendo",
+            sourceAccessId: null,
+            sourcePlanPositionId: planPositionId,
+            sourcePlanOrderId: planningOrderId,
+            sourceOrderId: null,
+            sourceKkwId: Number(kkwRecords?.[0]?.ID) || null,
+            kkwNumber: kkwNumbers.join(", ") || null,
+            zlpNumber: String(planningOrder?.ZlecenieNumer || "").trim() || null,
+            planningSeries,
+            nrObcy: getForeignNumberFromRecord(positionWithFields) || getForeignNumberFromRecord(planningOrder),
+            productIndex: String(positionWithFields?.Kod || "").trim() || null,
+            productName: String(positionWithFields?.Nazwa || "").trim() || "",
+            clientName,
+            materialOwnership: materialOwnership || null,
+            materialOwnershipLabel: materialOwnership || "PUSTE",
+            orderQty: getPositiveNumber(positionWithFields?.Ilosc),
+            termDate: positionWithFields?.DataRealizacji || planningOrder?.DataTerminZakonczenia || null,
+            smdDone: statusScope.excludeSmd,
+            thtDone: statusScope.excludeTht,
+            isClosed,
+            packetFlag: Boolean(positionWithFields?.PrzeniesienieDoObrobki),
+            zakStatus: null,
+            notes: headerNotes,
+            createdBy: null,
+            sourceCreatedAt: planningOrder?.DataUtworzenia || null,
+            importedAt: generatedAt,
+            bomCount: null,
+            openBomCount: null,
+            shortageBomCount: null,
+            shortageQty: null,
+            stageKey: stage.key,
+            stageLabel: stage.label,
+            statusNames: statusScope.names,
+            statusFlags: {
+                smd: statusScope.excludeSmd,
+                tht: statusScope.excludeTht,
+                excludeSmd: statusScope.excludeSmd,
+                excludeTht: statusScope.excludeTht,
+                includeSmd: statusScope.includeSmd,
+                includeTht: statusScope.includeTht,
+                app: statusScope.hasApp,
+            },
+            summaryPending: statusScope.hasDemandScope,
+            hasKkw: Boolean(kkwRecords?.length),
+            realizationState: String(positionWithFields?.StanRealizacji || "").trim() || null,
+            orderRealizationState: String(planningOrder?.StanRealizacji || "").trim() || null,
+            includeInDemand: !isClosed && statusScope.hasDemandScope,
+        },
+        position,
+        positionWithFields,
+        planningOrder,
+        objectStatuses: objectStatuses || [],
+        statusScope,
+        kkwRecords: kkwRecords || [],
+        isClosed,
+        stage,
+    };
+}
+
+async function getVendoOperationalHeadersContext({
+    connection,
+    accessToken,
+    search = "",
+    pageSize = 100,
+    maxPages = 2,
+    includeClosed = false,
+    includeNoScope = true,
+    materialOwnershipFilter = "MSX_OR_EMPTY",
+    forceRefresh = false,
+} = {}) {
+    const normalizedMaterialOwnershipFilter = normalizeMaterialOwnershipFilter(materialOwnershipFilter);
+    const cacheKey = buildVendoOperationalHeadersCacheKey(connection, {
+        search,
+        pageSize,
+        maxPages,
+        includeClosed,
+        includeNoScope,
+        materialOwnershipFilter: normalizedMaterialOwnershipFilter,
+    });
+    const cached = forceRefresh ? null : getCacheEntry(vendoOperationalHeadersCache, cacheKey, 60 * 1000);
+    if (cached) {
+        return cached;
+    }
+
+    const generatedAt = new Date().toISOString();
+    const warnings = [];
+    const positions = await fetchAllCursorRecords(
+        connection,
+        accessToken,
+        "/Produkcja/ZleceniePlanistyczne/PozycjeLista",
+        buildVendoPlanPositionsOverviewModel({
+            search,
+            pageSize,
+        }),
+        { pageSize, maxPages }
+    );
+
+    const planningOrderIds = [...new Set(positions
+        .map((item) => Number(item?.ZlecenieID))
+        .filter((value) => Number.isInteger(value) && value > 0))];
+    let planningOrderById = new Map();
+    if (planningOrderIds.length) {
+        const planningOrders = await fetchAllCursorRecords(
+            connection,
+            accessToken,
+            "/Produkcja/ZleceniePlanistyczne/Lista",
+            buildVendoPlanningOrdersOverviewModel({
+                orderIds: planningOrderIds,
+                pageSize: Math.max(planningOrderIds.length * 2, 50),
+            }),
+            { pageSize: Math.max(planningOrderIds.length * 2, 50), maxPages: 5 }
+        );
+        planningOrderById = new Map(
+            planningOrders
+                .filter((item) => Number.isInteger(Number(item?.ID)))
+                .map((item) => [Number(item.ID), item])
+        );
+    }
+
+    let statusDictionary = [];
+    try {
+        const statusDictionaryResponse = await vendoPost(connection.baseUrl, "/Statusy/Statusy/StatusyDlaTypuDanych", {
+            Token: accessToken,
+            Model: buildStatusDictionaryModel({ dataType: "PlanZlecenia" }),
+        });
+        statusDictionary = getVendoListResult(statusDictionaryResponse);
+    } catch (error) {
+        warnings.push(`Nie udalo sie pobrac slownika statusow Vendo: ${error.message}`);
+    }
+
+    const positionIds = positions
+        .map((item) => Number(item?.ID))
+        .filter((value) => Number.isInteger(value) && value > 0);
+    let planningPositionById = new Map();
+    if (positionIds.length) {
+        try {
+            const planningPositionRecords = await resolvePlanningPositionsByIds(
+                connection,
+                accessToken,
+                positionIds,
+                { allowMissing: true }
+            );
+            planningPositionById = new Map(
+                planningPositionRecords
+                    .filter((item) => Number.isInteger(Number(item?.ID)))
+                    .map((item) => [Number(item.ID), item])
+            );
+        } catch (error) {
+            warnings.push(`Nie udalo sie dociagnac wartosci dowolnych pozycji ZLP: ${error.message}`);
+        }
+    }
+
+    const statusesByPositionId = new Map();
+    if (positionIds.length) {
+        try {
+            const statusRecords = await fetchAllCursorRecords(
+                connection,
+                accessToken,
+                "/Statusy/Statusy/StatusyObiektu",
+                buildObjectStatusesHistoryModel({
+                    objectIds: positionIds,
+                    dataType: "PlanZlecenia",
+                    pageSize: Math.max(positionIds.length * 4, 50),
+                }),
+                { pageSize: Math.max(positionIds.length * 4, 50), maxPages: 10 }
+            );
+
+            for (const record of statusRecords) {
+                const positionId = Number(record?.ObiektID);
+                if (!Number.isInteger(positionId) || positionId <= 0) continue;
+                const bucket = statusesByPositionId.get(positionId) || [];
+                bucket.push(record);
+                statusesByPositionId.set(positionId, bucket);
+            }
+        } catch (error) {
+            warnings.push(`Nie udalo sie pobrac aktualnych statusow pozycji ZLP: ${error.message}`);
+        }
+    }
+
+    const kkwByPositionId = new Map();
+    if (positionIds.length) {
+        try {
+            const kkwRecords = await fetchAllCursorRecords(
+                connection,
+                accessToken,
+                "/Produkcja/KKW/Lista",
+                buildKkwByPlanPositionsModel({
+                    planPositionIds: positionIds,
+                    pageSize: Math.max(positionIds.length * 3, 50),
+                }),
+                { pageSize: Math.max(positionIds.length * 3, 50), maxPages: 10 }
+            );
+
+            for (const record of kkwRecords) {
+                const positionId = Number(record?.PozycjaZleceniaID);
+                if (!Number.isInteger(positionId) || positionId <= 0) continue;
+                const bucket = kkwByPositionId.get(positionId) || [];
+                bucket.push(record);
+                kkwByPositionId.set(positionId, bucket);
+            }
+        } catch (error) {
+            warnings.push(`Nie udalo sie pobrac KKW dla listy pozycji ZLP: ${error.message}`);
+        }
+    }
+
+    const headerContexts = positions
+        .map((position) => buildVendoOperationalHeaderContext({
+            position,
+            positionDetails: planningPositionById.get(Number(position?.ID)) || null,
+            planningOrder: planningOrderById.get(Number(position?.ZlecenieID) || 0) || null,
+            objectStatuses: statusesByPositionId.get(Number(position?.ID) || 0) || [],
+            statusDictionary,
+            kkwRecords: kkwByPositionId.get(Number(position?.ID) || 0) || [],
+            generatedAt,
+        }))
+        .filter((context) => {
+            const header = context?.header || {};
+            if (!isAllowedOperationalSeries(header.planningSeries)) return false;
+            if (isBlockedOperationalClient(header.clientName)) return false;
+            if (!matchesMaterialOwnershipFilter(header.materialOwnership, normalizedMaterialOwnershipFilter)) return false;
+            if (!includeClosed && header.isClosed) return false;
+            if (!includeNoScope && !header.includeInDemand) return false;
+            return true;
+        })
+        .sort(sortVendoOperationalHeaderContexts);
+
+    const payload = {
+        generatedAt,
+        warnings,
+        headers: headerContexts.map((item) => item.header),
+        headerContexts,
+        fetchedPositions: positions.length,
+        returnedHeaders: headerContexts.length,
+        includeClosed,
+        includeNoScope,
+        materialOwnershipFilter: normalizedMaterialOwnershipFilter,
+        pageSize,
+        maxPages,
+    };
+
+    return setCacheEntry(vendoOperationalHeadersCache, cacheKey, payload);
+}
+
+async function resolveTechnologyForPosition(connection, accessToken, position) {
+    const cacheKey = buildVendoTechnologyLookupCacheKey(connection, position);
+    const cached = getCacheEntry(vendoTechnologyLookupCache, cacheKey, 10 * 60 * 1000);
+    if (cached !== null) {
+        return cached;
+    }
+
+    const technologyResponse = await vendoPost(connection.baseUrl, "/Produkcja/Technologie/Lista", {
+        Token: accessToken,
+        Model: buildTechnologyLookupModel({ productCode: position?.Kod, pageSize: 50 }),
+    });
+    const technology = pickBestTechnologyRecord(getVendoRecords(technologyResponse), position) || null;
+    return setCacheEntry(vendoTechnologyLookupCache, cacheKey, technology);
+}
+
+function groupRowsByNumericKey(rows, keyName) {
+    const rowsByKey = new Map();
+
+    for (const row of rows || []) {
+        const key = Number(row?.[keyName]);
+        if (!Number.isInteger(key) || key <= 0) continue;
+        const bucket = rowsByKey.get(key) || [];
+        bucket.push(row);
+        rowsByKey.set(key, bucket);
+    }
+
+    return rowsByKey;
+}
+
+async function fetchKkwMaterialRowsByIds(connection, accessToken, kkwIds, { pageSize = 500, maxPages = 20 } = {}) {
+    const normalizedKkwIds = [...new Set((kkwIds || [])
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0))];
+    if (!normalizedKkwIds.length) {
+        return [];
+    }
+
+    const resolvedPageSize = Math.max(Number(pageSize) || 500, 500);
+
+    try {
+        const rows = await fetchAllCursorRecords(
+            connection,
+            accessToken,
+            "/Produkcja/KKW/MaterialowkaLista",
+            buildKkwMaterialsModel({
+                kkwIds: normalizedKkwIds,
+                pageSize: resolvedPageSize,
+            }),
+            { pageSize: resolvedPageSize, maxPages }
+        );
+
+        const normalizedRows = rows.map((row) => ({
+            ...row,
+            KKWID: Number(row?.KKWID) || null,
+        }));
+        if (normalizedKkwIds.length > 1 && normalizedRows.some((row) => !Number(row?.KKWID))) {
+            throw new Error("Brakuje KKWID w odpowiedzi zbiorczej.");
+        }
+
+        return normalizedRows;
+    } catch (error) {
+        if (normalizedKkwIds.length === 1) {
+            throw error;
+        }
+
+        const batches = await mapWithConcurrency(normalizedKkwIds, 4, async (kkwId) => {
+            const rows = await fetchAllCursorRecords(
+                connection,
+                accessToken,
+                "/Produkcja/KKW/MaterialowkaLista",
+                buildKkwMaterialsModel({
+                    kkwIds: [kkwId],
+                    pageSize: resolvedPageSize,
+                }),
+                { pageSize: resolvedPageSize, maxPages }
+            );
+
+            return rows.map((row) => ({
+                ...row,
+                KKWID: Number(row?.KKWID) || kkwId,
+            }));
+        });
+
+        return batches.flat();
+    }
+}
+
+async function fetchTechnologyMaterialRowsByIds(connection, accessToken, technologyIds, { pageSize = 500, maxPages = 20 } = {}) {
+    const normalizedTechnologyIds = [...new Set((technologyIds || [])
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0))];
+    if (!normalizedTechnologyIds.length) {
+        return [];
+    }
+
+    const resolvedPageSize = Math.max(Number(pageSize) || 500, 500);
+
+    try {
+        const rows = await fetchAllCursorRecords(
+            connection,
+            accessToken,
+            "/Produkcja/Technologie/MaterialowkaLista",
+            buildTechnologyMaterialsModel({
+                technologyIds: normalizedTechnologyIds,
+                pageSize: resolvedPageSize,
+            }),
+            { pageSize: resolvedPageSize, maxPages }
+        );
+
+        const normalizedRows = rows.map((row) => ({
+            ...row,
+            TechnologiaID: Number(row?.TechnologiaID) || null,
+        }));
+        if (normalizedTechnologyIds.length > 1 && normalizedRows.some((row) => !Number(row?.TechnologiaID))) {
+            throw new Error("Brakuje TechnologiaID w odpowiedzi zbiorczej.");
+        }
+
+        return normalizedRows;
+    } catch (error) {
+        if (normalizedTechnologyIds.length === 1) {
+            throw error;
+        }
+
+        const batches = await mapWithConcurrency(normalizedTechnologyIds, 4, async (technologyId) => {
+            const rows = await fetchAllCursorRecords(
+                connection,
+                accessToken,
+                "/Produkcja/Technologie/MaterialowkaLista",
+                buildTechnologyMaterialsModel({
+                    technologyIds: [technologyId],
+                    pageSize: resolvedPageSize,
+                }),
+                { pageSize: resolvedPageSize, maxPages }
+            );
+
+            return rows.map((row) => ({
+                ...row,
+                TechnologiaID: Number(row?.TechnologiaID) || technologyId,
+            }));
+        });
+
+        return batches.flat();
+    }
+}
+
 function pickBestTechnologyRecord(records, position) {
     const productCode = String(position?.Kod || "").trim();
     const productId = Number(position?.TowarID) || 0;
@@ -1553,6 +2227,164 @@ function normalizeVendoBomItems(materialRows, { sourceType, orderQty }) {
         });
 }
 
+async function getVendoOperationalDemandTotals({
+    connection,
+    accessToken,
+    materialOwnershipFilter = "MSX_OR_EMPTY",
+    pageSize = 100,
+    maxPages = 2,
+    warnings = [],
+} = {}) {
+    const cacheKey = buildVendoDemandTotalsCacheKey(connection, {
+        pageSize,
+        maxPages,
+        materialOwnershipFilter,
+    });
+    const cached = getCacheEntry(vendoDemandTotalsCache, cacheKey, 2 * 60 * 1000);
+    if (cached) {
+        return cached;
+    }
+
+    const overviewContext = await getVendoOperationalHeadersContext({
+        connection,
+        accessToken,
+        pageSize,
+        maxPages,
+        includeClosed: false,
+        includeNoScope: true,
+        materialOwnershipFilter,
+    });
+
+    if (Array.isArray(overviewContext?.warnings) && overviewContext.warnings.length) {
+        warnings.push(...overviewContext.warnings);
+    }
+
+    const activeHeaderContexts = (overviewContext?.headerContexts || [])
+        .filter((context) => context?.header?.includeInDemand);
+    const totalsByCode = new Map();
+    if (!activeHeaderContexts.length) {
+        return setCacheEntry(vendoDemandTotalsCache, cacheKey, totalsByCode);
+    }
+
+    const uniqueKkwIds = [...new Set(activeHeaderContexts
+        .flatMap((context) => (context?.kkwRecords || [])
+            .map((record) => Number(record?.ID))
+            .filter((value) => Number.isInteger(value) && value > 0)))];
+    let kkwMaterialRowsById = new Map();
+    if (uniqueKkwIds.length) {
+        try {
+            kkwMaterialRowsById = groupRowsByNumericKey(
+                await fetchKkwMaterialRowsByIds(connection, accessToken, uniqueKkwIds, {
+                    pageSize: 500,
+                    maxPages: 20,
+                }),
+                "KKWID"
+            );
+        } catch (error) {
+            warnings.push(`Nie udalo sie pobrac materialowki KKW do totali: ${error.message}`);
+        }
+    }
+
+    const technologyCandidates = new Map();
+    for (const context of activeHeaderContexts) {
+        const kkwIds = (context?.kkwRecords || [])
+            .map((record) => Number(record?.ID))
+            .filter((value) => Number.isInteger(value) && value > 0);
+        const kkwRows = kkwIds.flatMap((kkwId) => kkwMaterialRowsById.get(kkwId) || []);
+        const hasKkwConsumptionRows = kkwRows.some((row) => normalizeText(row?.Typ) === "rozchod");
+        if (hasKkwConsumptionRows) {
+            continue;
+        }
+
+        const position = context?.positionWithFields || context?.position || {};
+        const technologyKey = buildVendoTechnologyLookupCacheKey(connection, position);
+        if (!technologyCandidates.has(technologyKey)) {
+            technologyCandidates.set(technologyKey, position);
+        }
+    }
+
+    const technologyByKey = new Map();
+    if (technologyCandidates.size) {
+        const technologyEntries = await mapWithConcurrency(
+            [...technologyCandidates.entries()],
+            4,
+            async ([technologyKey, position]) => {
+                try {
+                    return [technologyKey, await resolveTechnologyForPosition(connection, accessToken, position)];
+                } catch (error) {
+                    warnings.push(`Nie udalo sie znalezc technologii dla ${String(position?.Kod || position?.ID || "-")}: ${error.message}`);
+                    return [technologyKey, null];
+                }
+            }
+        );
+
+        for (const [technologyKey, technology] of technologyEntries) {
+            technologyByKey.set(technologyKey, technology);
+        }
+    }
+
+    const uniqueTechnologyIds = [...new Set([...technologyByKey.values()]
+        .map((technology) => Number(technology?.ID))
+        .filter((value) => Number.isInteger(value) && value > 0))];
+    let technologyMaterialRowsById = new Map();
+    if (uniqueTechnologyIds.length) {
+        try {
+            technologyMaterialRowsById = groupRowsByNumericKey(
+                await fetchTechnologyMaterialRowsByIds(connection, accessToken, uniqueTechnologyIds, {
+                    pageSize: 500,
+                    maxPages: 20,
+                }),
+                "TechnologiaID"
+            );
+        } catch (error) {
+            warnings.push(`Nie udalo sie pobrac materialowki technologii do totali: ${error.message}`);
+        }
+    }
+
+    for (const context of activeHeaderContexts) {
+        const position = context?.positionWithFields || context?.position || {};
+        const orderQty = getPositiveNumber(position?.Ilosc);
+        const kkwIds = (context?.kkwRecords || [])
+            .map((record) => Number(record?.ID))
+            .filter((value) => Number.isInteger(value) && value > 0);
+        const kkwRows = kkwIds.flatMap((kkwId) => (kkwMaterialRowsById.get(kkwId) || []).map((row) => ({
+            ...row,
+            KKWID: Number(row?.KKWID) || kkwId,
+        })));
+        const hasKkwConsumptionRows = kkwRows.some((row) => normalizeText(row?.Typ) === "rozchod");
+
+        let sourceType = "technology";
+        let materialRows = [];
+        if (hasKkwConsumptionRows) {
+            sourceType = "kkw";
+            materialRows = kkwRows;
+        } else {
+            const technology = technologyByKey.get(buildVendoTechnologyLookupCacheKey(connection, position)) || null;
+            materialRows = technology ? (technologyMaterialRowsById.get(Number(technology?.ID)) || []) : [];
+        }
+
+        if (!materialRows.length) {
+            continue;
+        }
+
+        const bomItems = filterBomItemsByVendoScope(
+            normalizeVendoBomItems(materialRows, {
+                sourceType,
+                orderQty,
+            }),
+            context?.statusScope
+        );
+
+        for (const item of bomItems) {
+            const code = String(item?.componentCode || "").trim();
+            if (!code) continue;
+            totalsByCode.set(code, (Number(totalsByCode.get(code)) || 0) + getPositiveNumber(item?.requiredQty));
+        }
+    }
+
+    return setCacheEntry(vendoDemandTotalsCache, cacheKey, totalsByCode);
+}
+
 async function enrichBomItemsWithLiveInventory({ bomItems, connection, accessToken, includeVendo, warnings }) {
     const codes = [...new Set((bomItems || [])
         .map((item) => String(item?.componentCode || "").trim())
@@ -1579,6 +2411,16 @@ async function enrichBomItemsWithLiveInventory({ bomItems, connection, accessTok
         });
     }
 
+    return applyLiveInventoryToBomItems(bomItems, {
+        wmsInventoryByCode,
+        vendoInventoryByCode,
+    });
+}
+
+function applyLiveInventoryToBomItems(bomItems, {
+    wmsInventoryByCode = new Map(),
+    vendoInventoryByCode = new Map(),
+} = {}) {
     const availableByCode = new Map();
     return (bomItems || []).map((item) => {
         const code = String(item?.componentCode || "").trim();
@@ -1606,8 +2448,221 @@ async function enrichBomItemsWithLiveInventory({ bomItems, connection, accessTok
     });
 }
 
-function buildVendoBomSummary(bomItems) {
-    return (bomItems || []).reduce((result, item) => {
+async function computeVendoOperationalHeaderSummaries({
+    connection,
+    accessToken,
+    overviewContext,
+    includeVendo = true,
+    warnings = [],
+    forceRefresh = false,
+} = {}) {
+    const cacheKey = buildVendoOperationalHeaderSummaryCacheKey(connection, {
+        search: overviewContext?.search,
+        pageSize: overviewContext?.pageSize,
+        maxPages: overviewContext?.maxPages,
+        includeClosed: overviewContext?.includeClosed,
+        includeNoScope: overviewContext?.includeNoScope,
+        materialOwnershipFilter: overviewContext?.materialOwnershipFilter,
+        includeVendo,
+        overviewGeneratedAt: overviewContext?.generatedAt,
+    });
+    const cached = forceRefresh ? null : getCacheEntry(vendoOperationalHeaderSummaryCache, cacheKey, 2 * 60 * 1000);
+    if (cached) {
+        if (Array.isArray(cached?.warnings) && Array.isArray(warnings)) {
+            warnings.push(...cached.warnings);
+        }
+        return cached?.headers || [];
+    }
+
+    const headerContexts = Array.isArray(overviewContext?.headerContexts) ? overviewContext.headerContexts : [];
+    if (!headerContexts.length) {
+        return setCacheEntry(vendoOperationalHeaderSummaryCache, cacheKey, {
+            headers: [],
+            warnings: [],
+        }).headers;
+    }
+
+    const summaryWarnings = [];
+    const uniqueKkwIds = [...new Set(headerContexts
+        .flatMap((context) => (context?.kkwRecords || [])
+            .map((record) => Number(record?.ID))
+            .filter((value) => Number.isInteger(value) && value > 0)))];
+    let kkwMaterialRowsById = new Map();
+    if (uniqueKkwIds.length) {
+        try {
+            kkwMaterialRowsById = groupRowsByNumericKey(
+                await fetchKkwMaterialRowsByIds(connection, accessToken, uniqueKkwIds, {
+                    pageSize: 500,
+                    maxPages: 20,
+                }),
+                "KKWID"
+            );
+        } catch (error) {
+            summaryWarnings.push(`Nie udalo sie pobrac materialowki KKW do podsumowania: ${error.message}`);
+        }
+    }
+
+    const technologyCandidates = new Map();
+    for (const context of headerContexts) {
+        const kkwIds = (context?.kkwRecords || [])
+            .map((record) => Number(record?.ID))
+            .filter((value) => Number.isInteger(value) && value > 0);
+        const kkwRows = kkwIds.flatMap((kkwId) => kkwMaterialRowsById.get(kkwId) || []);
+        const hasKkwConsumptionRows = kkwRows.some((row) => normalizeText(row?.Typ) === "rozchod");
+        if (hasKkwConsumptionRows) {
+            continue;
+        }
+
+        const position = context?.positionWithFields || context?.position || {};
+        const technologyKey = buildVendoTechnologyLookupCacheKey(connection, position);
+        if (!technologyCandidates.has(technologyKey)) {
+            technologyCandidates.set(technologyKey, position);
+        }
+    }
+
+    const technologyByKey = new Map();
+    if (technologyCandidates.size) {
+        const technologyEntries = await mapWithConcurrency(
+            [...technologyCandidates.entries()],
+            4,
+            async ([technologyKey, position]) => {
+                try {
+                    return [technologyKey, await resolveTechnologyForPosition(connection, accessToken, position)];
+                } catch (error) {
+                    summaryWarnings.push(`Nie udalo sie znalezc technologii dla ${String(position?.Kod || position?.ID || "-")}: ${error.message}`);
+                    return [technologyKey, null];
+                }
+            }
+        );
+
+        for (const [technologyKey, technology] of technologyEntries) {
+            technologyByKey.set(technologyKey, technology);
+        }
+    }
+
+    const uniqueTechnologyIds = [...new Set([...technologyByKey.values()]
+        .map((technology) => Number(technology?.ID))
+        .filter((value) => Number.isInteger(value) && value > 0))];
+    let technologyMaterialRowsById = new Map();
+    if (uniqueTechnologyIds.length) {
+        try {
+            technologyMaterialRowsById = groupRowsByNumericKey(
+                await fetchTechnologyMaterialRowsByIds(connection, accessToken, uniqueTechnologyIds, {
+                    pageSize: 500,
+                    maxPages: 20,
+                }),
+                "TechnologiaID"
+            );
+        } catch (error) {
+            summaryWarnings.push(`Nie udalo sie pobrac materialowki technologii do podsumowania: ${error.message}`);
+        }
+    }
+
+    const bomContextByHeaderId = new Map();
+    const inventoryCodes = new Set();
+    for (const context of headerContexts) {
+        const headerId = Number(context?.header?.id);
+        if (!Number.isInteger(headerId) || headerId <= 0) {
+            continue;
+        }
+
+        const position = context?.positionWithFields || context?.position || {};
+        const orderQty = getPositiveNumber(position?.Ilosc);
+        const kkwIds = (context?.kkwRecords || [])
+            .map((record) => Number(record?.ID))
+            .filter((value) => Number.isInteger(value) && value > 0);
+        const kkwRows = kkwIds.flatMap((kkwId) => (kkwMaterialRowsById.get(kkwId) || []).map((row) => ({
+            ...row,
+            KKWID: Number(row?.KKWID) || kkwId,
+        })));
+        const hasKkwConsumptionRows = kkwRows.some((row) => normalizeText(row?.Typ) === "rozchod");
+
+        let sourceType = "technology";
+        let materialRows = [];
+        if (hasKkwConsumptionRows) {
+            sourceType = "kkw";
+            materialRows = kkwRows;
+        } else {
+            const technology = technologyByKey.get(buildVendoTechnologyLookupCacheKey(connection, position)) || null;
+            materialRows = technology ? (technologyMaterialRowsById.get(Number(technology?.ID)) || []) : [];
+        }
+
+        const normalizedBomItems = normalizeVendoBomItems(materialRows, {
+            sourceType,
+            orderQty,
+        });
+        const scopedBomItems = filterBomItemsByVendoScope(normalizedBomItems, context?.statusScope);
+        scopedBomItems.forEach((item) => {
+            const code = String(item?.componentCode || "").trim();
+            if (code) inventoryCodes.add(code);
+        });
+
+        bomContextByHeaderId.set(headerId, {
+            normalizedBomItems,
+            scopedBomItems,
+        });
+    }
+
+    let wmsInventoryByCode = new Map();
+    let vendoInventoryByCode = new Map();
+    const codes = [...inventoryCodes];
+    const wmsMissing = requireWmsSqlConfig();
+    if (wmsMissing.length) {
+        summaryWarnings.push(`Brakuje konfiguracji WMS: ${[...new Set(wmsMissing)].join(", ")}.`);
+    } else if (codes.length) {
+        try {
+            wmsInventoryByCode = await getWmsInventoryForCodes(codes);
+        } catch (error) {
+            summaryWarnings.push(`Nie udalo sie pobrac stanow WMS do podsumowania: ${error.message}`);
+        }
+    }
+
+    if (includeVendo && codes.length) {
+        vendoInventoryByCode = await fetchVendoInventoryMap(connection, accessToken, codes, {
+            includeExpected: false,
+            concurrency: 8,
+            warnings: summaryWarnings,
+        });
+    }
+
+    const headers = headerContexts.map((context) => {
+        const headerId = Number(context?.header?.id);
+        const bomContext = bomContextByHeaderId.get(headerId) || {
+            normalizedBomItems: [],
+            scopedBomItems: [],
+        };
+        const bomItems = applyLiveInventoryToBomItems(bomContext.scopedBomItems, {
+            wmsInventoryByCode,
+            vendoInventoryByCode,
+        });
+        const summary = buildVendoBomSummary(bomItems, {
+            totalBomItems: bomContext.normalizedBomItems.length,
+            openBomItems: bomContext.scopedBomItems.length,
+        });
+
+        return {
+            ...context.header,
+            bomCount: summary.totalBomItems,
+            openBomCount: summary.openBomItems,
+            shortageBomCount: summary.shortageBomItems,
+            shortageQty: summary.shortageQty,
+            summaryPending: false,
+        };
+    });
+
+    const payload = {
+        headers,
+        warnings: [...new Set(summaryWarnings.filter(Boolean))],
+    };
+    const cachedPayload = setCacheEntry(vendoOperationalHeaderSummaryCache, cacheKey, payload);
+    if (Array.isArray(cachedPayload?.warnings) && Array.isArray(warnings)) {
+        warnings.push(...cachedPayload.warnings);
+    }
+    return cachedPayload.headers || [];
+}
+
+function buildVendoBomSummary(bomItems, { totalBomItems = null, openBomItems = null } = {}) {
+    const summary = (bomItems || []).reduce((result, item) => {
         const typeName = String(item?.typeName || "").trim().toUpperCase();
         const toOrder = getPositiveNumber(item?.toOrder);
 
@@ -1637,6 +2692,16 @@ function buildVendoBomSummary(bomItems) {
         smdItems: 0,
         thtItems: 0,
     });
+
+    if (Number.isFinite(totalBomItems)) {
+        summary.totalBomItems = Math.max(Number(totalBomItems) || 0, 0);
+    }
+
+    if (Number.isFinite(openBomItems)) {
+        summary.openBomItems = Math.max(Number(openBomItems) || 0, 0);
+    }
+
+    return summary;
 }
 
 function getDocumentForeignNumberPriority(record) {
@@ -1885,7 +2950,13 @@ function buildKkwCostEstimateModel({ kkwId, operationsBy }) {
     };
 }
 
-function buildKkwMaterialsModel({ kkwId, pageSize }) {
+function buildKkwMaterialsModel({ kkwId, kkwIds, pageSize }) {
+    const normalizedKkwIds = [
+        ...(Array.isArray(kkwIds) ? kkwIds : [kkwId]),
+    ]
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0);
+
     return {
         Cursor: true,
         CursorCzyZamknac: false,
@@ -1893,9 +2964,10 @@ function buildKkwMaterialsModel({ kkwId, pageSize }) {
             Indeks: 0,
             LiczbaRekordow: Number.isFinite(pageSize) ? pageSize : 200,
         },
-        KKWID: [Number(kkwId)],
+        KKWID: normalizedKkwIds,
         ZwracanePola: [
             "ID",
+            "KKWID",
             "Typ",
             "SkladnikID",
             "OperacjaNazwa",
@@ -3068,6 +4140,7 @@ async function handleApiMesOvenBatchStart(req, res) {
         const body = await readJsonBody(req);
         const storageConfig = getMesStorageConfig();
         const rawPlannedQuantity = body.planned_quantity || body.plannedQuantity || null;
+        const rawPcsPerPanel = body.pcs_per_panel ?? body.pcsPerPanel ?? null;
         let plannedQuantity = rawPlannedQuantity;
         let plannedQuantityLookup = null;
 
@@ -3090,6 +4163,8 @@ async function handleApiMesOvenBatchStart(req, res) {
             orderNumber: plannedQuantityLookup?.kkw?.orderNumber,
             productCode: plannedQuantityLookup?.kkw?.productCode,
             productName: plannedQuantityLookup?.kkw?.productName,
+            pcsPerPanel: rawPcsPerPanel,
+            pcsPerPanelSource: rawPcsPerPanel ? body.pcs_per_panel_source || body.pcsPerPanelSource || body.source || "operator" : "",
             operator: body.operator || body.operatorName || "",
             source: body.source || "scan",
         });
@@ -3138,6 +4213,34 @@ async function handleApiMesOvenBatchActive(req, res) {
     } catch (error) {
         sendJson(res, 500, {
             error: error.message || "Nie udalo sie odczytac aktywnej partii MES.",
+        });
+    }
+}
+
+async function handleApiMesOvenBatchPcsPerPanel(req, res) {
+    try {
+        const body = await readJsonBody(req);
+        const storageConfig = getMesStorageConfig();
+        const rawSaveForProduct = body.save_for_product ?? body.saveForProduct;
+        const saveForProduct = rawSaveForProduct === undefined
+            ? true
+            : !["false", "0", "no", "off"].includes(String(rawSaveForProduct).trim().toLowerCase());
+        const result = upsertOvenBatchPcsPerPanel(storageConfig.dbPath, {
+            batchId: body.batch_id || body.batchId || null,
+            deviceId: body.device_id || body.deviceId || "reflow_1",
+            pcsPerPanel: body.pcs_per_panel ?? body.pcsPerPanel ?? null,
+            operator: body.operator || body.operatorName || "",
+            source: body.source || "operator_panel",
+            saveForProduct,
+        });
+
+        sendJson(res, 200, {
+            status: "ok",
+            ...result,
+        });
+    } catch (error) {
+        sendJson(res, 500, {
+            error: error.message || "Nie udalo sie zapisac PCB na panel.",
         });
     }
 }
@@ -3237,213 +4340,62 @@ async function handleApiZapotrzebowanieVendoOverview(req, res) {
 
         const pageSize = Math.min(Math.max(Number(body?.pageSize) || 100, 10), 200);
         const maxPages = Math.min(Math.max(Number(body?.maxPages) || 2, 1), 5);
-        const includeClosed = body?.includeClosed === true;
-        const includeNoScope = body?.includeNoScope !== false;
-        const generatedAt = new Date().toISOString();
-        const serverConfig = getServerConfig();
-        const connection = {
-            baseUrl: serverConfig.apiUrl,
-            apiLogin: serverConfig.apiLogin,
+          const includeClosed = body?.includeClosed === true;
+          const includeNoScope = body?.includeNoScope !== false;
+          const materialOwnershipFilter = normalizeMaterialOwnershipFilter(body?.materialOwnershipFilter);
+          const forceRefresh = body?.forceRefresh === true;
+          const serverConfig = getServerConfig();
+          const connection = {
+              baseUrl: serverConfig.apiUrl,
+              apiLogin: serverConfig.apiLogin,
             apiPassword: serverConfig.apiPassword,
             vendoUserLogin,
             vendoUserPassword,
         };
         const accessToken = await getAccessToken(connection);
-        const warnings = [];
+          const overviewContext = await getVendoOperationalHeadersContext({
+              connection,
+              accessToken,
+              search: body?.search,
+              pageSize,
+              maxPages,
+              includeClosed,
+              includeNoScope,
+              materialOwnershipFilter,
+              forceRefresh,
+          });
+          const warnings = [...new Set((overviewContext.warnings || []).filter(Boolean))];
+          const headers = await computeVendoOperationalHeaderSummaries({
+              connection,
+              accessToken,
+              overviewContext,
+              includeVendo: body?.includeVendo !== false,
+              warnings,
+              forceRefresh,
+          });
 
-        const positions = await fetchAllCursorRecords(
-            connection,
-            accessToken,
-            "/Produkcja/ZleceniePlanistyczne/PozycjeLista",
-            buildVendoPlanPositionsOverviewModel({
-                search: body?.search,
-                pageSize,
-            }),
-            { pageSize, maxPages }
-        );
-
-        const planningOrderIds = [...new Set(positions
-            .map((item) => Number(item?.ZlecenieID))
-            .filter((value) => Number.isInteger(value) && value > 0))];
-        let planningOrderById = new Map();
-        if (planningOrderIds.length) {
-            const planningOrders = await fetchAllCursorRecords(
-                connection,
-                accessToken,
-                "/Produkcja/ZleceniePlanistyczne/Lista",
-                buildVendoPlanningOrdersOverviewModel({
-                    orderIds: planningOrderIds,
-                    pageSize: Math.max(planningOrderIds.length * 2, 50),
-                }),
-                { pageSize: Math.max(planningOrderIds.length * 2, 50), maxPages: 5 }
-            );
-            planningOrderById = new Map(
-                planningOrders
-                    .filter((item) => Number.isInteger(Number(item?.ID)))
-                    .map((item) => [Number(item.ID), item])
-            );
-        }
-
-        let statusDictionary = [];
-        try {
-            const statusDictionaryResponse = await vendoPost(connection.baseUrl, "/Statusy/Statusy/StatusyDlaTypuDanych", {
-                Token: accessToken,
-                Model: buildStatusDictionaryModel({ dataType: "PlanZlecenia" }),
-            });
-            statusDictionary = getVendoListResult(statusDictionaryResponse);
-        } catch (error) {
-            warnings.push(`Nie udalo sie pobrac slownika statusow Vendo: ${error.message}`);
-        }
-
-        const positionIds = positions
-            .map((item) => Number(item?.ID))
-            .filter((value) => Number.isInteger(value) && value > 0);
-        const statusesByPositionId = new Map();
-        if (positionIds.length) {
-            try {
-                const statusRecords = await fetchAllCursorRecords(
-                    connection,
-                    accessToken,
-                    "/Statusy/Statusy/StatusyObiektu",
-                    buildObjectStatusesHistoryModel({
-                        objectIds: positionIds,
-                        dataType: "PlanZlecenia",
-                        pageSize: Math.max(positionIds.length * 4, 50),
-                    }),
-                    { pageSize: Math.max(positionIds.length * 4, 50), maxPages: 10 }
-                );
-
-                for (const record of statusRecords) {
-                    const positionId = Number(record?.ObiektID);
-                    if (!Number.isInteger(positionId) || positionId <= 0) continue;
-                    const bucket = statusesByPositionId.get(positionId) || [];
-                    bucket.push(record);
-                    statusesByPositionId.set(positionId, bucket);
-                }
-            } catch (error) {
-                warnings.push(`Nie udalo sie pobrac aktualnych statusow pozycji ZLP: ${error.message}`);
-            }
-        }
-
-        const kkwByPositionId = new Map();
-        if (positionIds.length) {
-            try {
-                const kkwRecords = await fetchAllCursorRecords(
-                    connection,
-                    accessToken,
-                    "/Produkcja/KKW/Lista",
-                    buildKkwByPlanPositionsModel({
-                        planPositionIds: positionIds,
-                        pageSize: Math.max(positionIds.length * 3, 50),
-                    }),
-                    { pageSize: Math.max(positionIds.length * 3, 50), maxPages: 10 }
-                );
-
-                for (const record of kkwRecords) {
-                    const positionId = Number(record?.PozycjaZleceniaID);
-                    if (!Number.isInteger(positionId) || positionId <= 0) continue;
-                    const bucket = kkwByPositionId.get(positionId) || [];
-                    bucket.push(record);
-                    kkwByPositionId.set(positionId, bucket);
-                }
-            } catch (error) {
-                warnings.push(`Nie udalo sie pobrac KKW dla listy pozycji ZLP: ${error.message}`);
-            }
-        }
-
-        const headers = positions
-            .map((position) => {
-                const planPositionId = Number(position?.ID);
-                const planningOrderId = Number(position?.ZlecenieID) || null;
-                const planningOrder = planningOrderById.get(planningOrderId) || null;
-                const objectStatuses = statusesByPositionId.get(planPositionId) || [];
-                const statusScope = getVendoStatusScope(objectStatuses, statusDictionary);
-                const isClosed = isVendoPlanPositionHardClosed(position, planningOrder);
-                const stage = getVendoStageFromScope(statusScope, isClosed);
-                const kkwRecords = kkwByPositionId.get(planPositionId) || [];
-                const kkwNumbers = kkwRecords.map((item) => String(item?.Numer || "").trim()).filter(Boolean);
-
-                return {
-                    id: planPositionId,
-                    sourceSystem: "vendo",
-                    sourceAccessId: null,
-                    sourcePlanPositionId: planPositionId,
-                    sourcePlanOrderId: planningOrderId,
-                    sourceOrderId: null,
-                    sourceKkwId: Number(kkwRecords?.[0]?.ID) || null,
-                    kkwNumber: kkwNumbers.join(", ") || null,
-                    zlpNumber: String(planningOrder?.ZlecenieNumer || "").trim() || null,
-                    nrObcy: getForeignNumberFromRecord(position) || getForeignNumberFromRecord(planningOrder),
-                    productIndex: String(position?.Kod || "").trim() || null,
-                    productName: String(position?.Nazwa || "").trim() || "",
-                    clientName: String(planningOrder?.Klient1Nazwa || "").trim() || null,
-                    orderQty: getPositiveNumber(position?.Ilosc),
-                    termDate: position?.DataRealizacji || planningOrder?.DataTerminZakonczenia || null,
-                    smdDone: statusScope.excludeSmd,
-                    thtDone: statusScope.excludeTht,
-                    isClosed,
-                    packetFlag: Boolean(position?.PrzeniesienieDoObrobki),
-                    zakStatus: null,
-                    notes: statusScope.hasDemandScope ? null : "SMD/THT wykluczone z zapotrzebowania",
-                    createdBy: null,
-                    sourceCreatedAt: planningOrder?.DataUtworzenia || null,
-                    importedAt: generatedAt,
-                    bomCount: null,
-                    openBomCount: null,
-                    shortageBomCount: null,
-                    shortageQty: null,
-                    stageKey: stage.key,
-                    stageLabel: stage.label,
-                    statusNames: statusScope.names,
-                    statusFlags: {
-                        smd: statusScope.excludeSmd,
-                        tht: statusScope.excludeTht,
-                        excludeSmd: statusScope.excludeSmd,
-                        excludeTht: statusScope.excludeTht,
-                        includeSmd: statusScope.includeSmd,
-                        includeTht: statusScope.includeTht,
-                        app: statusScope.hasApp,
-                    },
-                    summaryPending: statusScope.hasDemandScope,
-                    hasKkw: Boolean(kkwRecords.length),
-                    realizationState: String(position?.StanRealizacji || "").trim() || null,
-                    orderRealizationState: String(planningOrder?.StanRealizacji || "").trim() || null,
-                    includeInDemand: !isClosed && statusScope.hasDemandScope,
-                };
-            })
-            .filter((header) => {
-                if (!includeClosed && header.isClosed) return false;
-                if (!includeNoScope && !header.includeInDemand) return false;
-                return true;
-            })
-            .sort((left, right) => {
-                const leftCreatedAt = Date.parse(left.sourceCreatedAt || left.importedAt || "") || 0;
-                const rightCreatedAt = Date.parse(right.sourceCreatedAt || right.importedAt || "") || 0;
-                if (leftCreatedAt !== rightCreatedAt) return leftCreatedAt - rightCreatedAt;
-                return (Number(left.id) || 0) - (Number(right.id) || 0);
-            });
-
-        sendJson(res, 200, {
-            storage: {
-                dbPath: getZapotrzebowanieStorageConfig().dbPath,
-                mode: "notes-cache",
+          sendJson(res, 200, {
+              storage: {
+                  dbPath: getZapotrzebowanieStorageConfig().dbPath,
+                  mode: "notes-cache",
             },
-            summary: buildVendoOverviewSummary(headers, { generatedAt }),
+            summary: buildVendoOverviewSummary(headers, { generatedAt: overviewContext.generatedAt }),
             headers,
-            meta: {
-                generatedAt,
-                view: "operations",
-                source: "vendo",
-                summaryMode: "lazy-details",
-                fetchedPositions: positions.length,
-                returnedHeaders: headers.length,
-                includeClosed,
-                includeNoScope,
-                pageSize,
-                maxPages,
-                warnings,
-            },
-        });
+              meta: {
+                  generatedAt: overviewContext.generatedAt,
+                  view: "operations",
+                  source: "vendo",
+                  summaryMode: "precomputed",
+                  fetchedPositions: overviewContext.fetchedPositions,
+                  returnedHeaders: overviewContext.returnedHeaders,
+                  includeClosed: overviewContext.includeClosed,
+                  includeNoScope: overviewContext.includeNoScope,
+                  materialOwnershipFilter: overviewContext.materialOwnershipFilter,
+                  pageSize: overviewContext.pageSize,
+                  maxPages: overviewContext.maxPages,
+                  warnings: [...new Set(warnings.filter(Boolean))],
+              },
+          });
     } catch (error) {
         sendJson(res, 500, {
             error: error.message || "Nie udalo sie pobrac dashboardu z Vendo.",
@@ -3576,7 +4528,7 @@ async function handleApiZapotrzebowanieHeaderDetails(req, res) {
                 generatedAt: new Date().toISOString(),
                 view: "operations-detail",
                 inventoryMode: "live-wms-vendo-stock",
-                warnings,
+                warnings: [...new Set(warnings.filter(Boolean))],
             },
         });
     } catch (error) {
@@ -3681,23 +4633,24 @@ async function handleApiZapotrzebowanieVendoHeaderDetails(req, res) {
         let bomSource = null;
         let materialRows = [];
         if (kkwRecords.length) {
-            for (const kkwRecord of kkwRecords) {
-                const kkwId = Number(kkwRecord?.ID);
-                if (!Number.isInteger(kkwId) || kkwId <= 0) continue;
+            const kkwIds = kkwRecords
+                .map((item) => Number(item?.ID))
+                .filter((value) => Number.isInteger(value) && value > 0);
+            const kkwNumberById = new Map(
+                kkwRecords
+                    .filter((item) => Number.isInteger(Number(item?.ID)))
+                    .map((item) => [Number(item.ID), String(item?.Numer || "").trim() || null])
+            );
 
-                const kkwMaterialRows = await fetchAllCursorRecords(
-                    connection,
-                    accessToken,
-                    "/Produkcja/KKW/MaterialowkaLista",
-                    buildKkwMaterialsModel({ kkwId, pageSize: 500 }),
-                    { pageSize: 500, maxPages: 20 }
-                );
-                materialRows.push(...kkwMaterialRows.map((row) => ({
-                    ...row,
-                    KKWID: kkwId,
-                    KKWNumer: row?.KKWNumer || kkwRecord?.Numer || null,
-                })));
-            }
+            const kkwMaterialRows = await fetchKkwMaterialRowsByIds(connection, accessToken, kkwIds, {
+                pageSize: 500,
+                maxPages: 20,
+            });
+            materialRows = kkwMaterialRows.map((row) => ({
+                ...row,
+                KKWID: Number(row?.KKWID) || null,
+                KKWNumer: row?.KKWNumer || kkwNumberById.get(Number(row?.KKWID)) || null,
+            }));
 
             const hasKkwConsumptionRows = materialRows.some((row) => normalizeText(row?.Typ) === "rozchod");
             if (hasKkwConsumptionRows) {
@@ -3715,12 +4668,7 @@ async function handleApiZapotrzebowanieVendoHeaderDetails(req, res) {
 
         let technology = null;
         if (!materialRows.length) {
-            const technologyResponse = await vendoPost(connection.baseUrl, "/Produkcja/Technologie/Lista", {
-                Token: accessToken,
-                Model: buildTechnologyLookupModel({ productCode: position?.Kod, pageSize: 50 }),
-            });
-            const technologyRecords = getVendoRecords(technologyResponse);
-            technology = pickBestTechnologyRecord(technologyRecords, position);
+            technology = await resolveTechnologyForPosition(connection, accessToken, position);
 
             if (!technology) {
                 return sendJson(res, 404, {
@@ -3736,7 +4684,7 @@ async function handleApiZapotrzebowanieVendoHeaderDetails(req, res) {
                 connection,
                 accessToken,
                 "/Produkcja/Technologie/MaterialowkaLista",
-                buildTechnologyMaterialsModel({ technologyId: technology.ID, pageSize: 500 }),
+                buildTechnologyMaterialsModel({ technologyIds: [technology.ID], pageSize: 500 }),
                 { pageSize: 500, maxPages: 20 }
             );
             bomSource = {
@@ -3754,10 +4702,11 @@ async function handleApiZapotrzebowanieVendoHeaderDetails(req, res) {
             statusScope,
             isVendoPlanPositionHardClosed(position, planningOrder)
         );
-        const rawBomItems = filterBomItemsByVendoScope(normalizeVendoBomItems(materialRows, {
+        const normalizedBomItems = normalizeVendoBomItems(materialRows, {
             sourceType: bomSource?.type || "unknown",
             orderQty,
-        }), statusScope);
+        });
+        const rawBomItems = filterBomItemsByVendoScope(normalizedBomItems, statusScope);
         let bomItems = await enrichBomItemsWithLiveInventory({
             bomItems: rawBomItems,
             connection,
@@ -3774,11 +4723,40 @@ async function handleApiZapotrzebowanieVendoHeaderDetails(req, res) {
                 noteUpdatedAt: savedNote?.updatedAt || null,
             };
         });
-        const summary = buildVendoBomSummary(bomItems);
+        try {
+            const totalDemandByCode = await getVendoOperationalDemandTotals({
+                connection,
+                accessToken,
+                materialOwnershipFilter: body?.materialOwnershipFilter || "MSX_OR_EMPTY",
+                pageSize: 100,
+                maxPages: 2,
+                warnings,
+            });
+            bomItems = bomItems.map((item) => {
+                const code = String(item?.componentCode || "").trim();
+                return {
+                    ...item,
+                    totalDemandQty: code ? (Number(totalDemandByCode.get(code)) || 0) : null,
+                };
+            });
+        } catch (error) {
+            warnings.push(`Nie udalo sie policzyc totali BOM: ${error.message}`);
+            bomItems = bomItems.map((item) => ({
+                ...item,
+                totalDemandQty: null,
+            }));
+        }
+        const summary = buildVendoBomSummary(bomItems, {
+            totalBomItems: normalizedBomItems.length,
+            openBomItems: rawBomItems.length,
+        });
         const selectedStatusNames = objectStatuses
             .map((item) => String(item?.Nazwa || item?.StatusNazwa || item?.Status || "").trim())
             .filter(Boolean);
         const productCode = String(position?.Kod || "").trim() || null;
+        const vendoNote = getPlanningPositionNote(position);
+        const operationalNote = statusScope.hasDemandScope ? "" : "SMD/THT wykluczone z zapotrzebowania";
+        const headerNotes = [vendoNote, operationalNote].filter(Boolean).join(" | ") || null;
 
         sendJson(res, 200, {
             header: {
@@ -3787,6 +4765,7 @@ async function handleApiZapotrzebowanieVendoHeaderDetails(req, res) {
                 planPositionId,
                 planningOrderId,
                 orderNumber: String(planningOrder?.ZlecenieNumer || "").trim() || null,
+                planningSeries: String(planningOrder?.Seria || "").trim() || null,
                 kkwNumber: bomSource?.type === "kkw" ? (bomSource.kkwNumbers || []).join(", ") || null : null,
                 foreignNumber: getForeignNumberFromRecord(position) || getForeignNumberFromRecord(planningOrder),
                 productId: Number(position?.TowarID) || null,
@@ -3794,6 +4773,9 @@ async function handleApiZapotrzebowanieVendoHeaderDetails(req, res) {
                 productCode,
                 productName: String(position?.Nazwa || "").trim() || null,
                 clientName: String(planningOrder?.Klient1Nazwa || "").trim() || null,
+                notes: headerNotes,
+                materialOwnership: resolveMaterialOwnershipFromRecord(position) || null,
+                materialOwnershipLabel: resolveMaterialOwnershipFromRecord(position) || "PUSTE",
                 stageKey: stage.key,
                 stageLabel: stage.label,
                 statusFlags: {
@@ -3833,7 +4815,7 @@ async function handleApiZapotrzebowanieVendoHeaderDetails(req, res) {
             meta: {
                 generatedAt: new Date().toISOString(),
                 view: "vendo-zlp-pilot",
-                warnings,
+                warnings: [...new Set(warnings.filter(Boolean))],
                 materialRows: materialRows.length,
             },
         });
@@ -5061,16 +6043,17 @@ async function handleApiProductionDashboard(req, res) {
         }
 
         const serverConfig = getServerConfig();
+        const vendoCredentials = resolveVendoUserCredentials(body);
         const connection = {
             baseUrl: serverConfig.apiUrl,
             apiLogin: serverConfig.apiLogin,
             apiPassword: serverConfig.apiPassword,
-            vendoUserLogin: String(body.vendoUserLogin || "").trim(),
-            vendoUserPassword: body.vendoUserPassword || "",
+            vendoUserLogin: vendoCredentials.vendoUserLogin,
+            vendoUserPassword: vendoCredentials.vendoUserPassword,
         };
 
         if (!connection.vendoUserLogin || !connection.vendoUserPassword) {
-            sendJson(res, 400, { error: "Podaj login i haslo Vendo." });
+            sendJson(res, 400, { error: "Brakuje loginu lub hasla Vendo w konfiguracji serwera." });
             return;
         }
 
@@ -5219,16 +6202,17 @@ async function handleApiProductionOverview(req, res) {
 
         const body = await readJsonBody(req);
         const serverConfig = getServerConfig();
+        const vendoCredentials = resolveVendoUserCredentials(body);
         const connection = {
             baseUrl: serverConfig.apiUrl,
             apiLogin: serverConfig.apiLogin,
             apiPassword: serverConfig.apiPassword,
-            vendoUserLogin: String(body.vendoUserLogin || "").trim(),
-            vendoUserPassword: body.vendoUserPassword || "",
+            vendoUserLogin: vendoCredentials.vendoUserLogin,
+            vendoUserPassword: vendoCredentials.vendoUserPassword,
         };
 
         if (!connection.vendoUserLogin || !connection.vendoUserPassword) {
-            sendJson(res, 400, { error: "Podaj login i haslo Vendo." });
+            sendJson(res, 400, { error: "Brakuje loginu lub hasla Vendo w konfiguracji serwera." });
             return;
         }
 
@@ -6133,6 +7117,11 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "GET" && req.url.startsWith("/api/mes/oven/batch/active")) {
         await handleApiMesOvenBatchActive(req, res);
+        return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/mes/oven/batch/pcs-per-panel") {
+        await handleApiMesOvenBatchPcsPerPanel(req, res);
         return;
     }
 

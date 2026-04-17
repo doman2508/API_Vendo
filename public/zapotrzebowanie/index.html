@@ -87,11 +87,21 @@
                                     <option value="READY">Do kontroli</option>
                                 </select>
                             </label>
+                            <label class="compact-field">
+                                <span>Materialy</span>
+                                <select id="header-material-filter">
+                                    <option value="MSX_OR_EMPTY">MSX + puste</option>
+                                    <option value="POWIERZONE">Powierzone</option>
+                                    <option value="ALL">Wszystkie</option>
+                                </select>
+                            </label>
                             <div class="results-toolbar-actions">
+                                <button type="button" id="refresh-headers" class="btn btn-secondary">Odswiez liste</button>
                                 <button type="button" id="reset-header-filters" class="btn btn-ghost">Resetuj filtry</button>
                             </div>
                             <div class="results-toolbar-meta">
                                 <span id="headers-count" class="results-count">Widoczne: 0 z 0</span>
+                                <span id="headers-refresh-status" class="results-meta-hint">Auto: 90 s</span>
                             </div>
                         </div>
 
@@ -132,6 +142,15 @@
                         </div>
                         <div id="header-detail-summary" class="detail-summary hidden"></div>
                         <div id="header-detail-error" class="error-box hidden"></div>
+                        <div class="results-toolbar operations-detail-toolbar">
+                            <label class="compact-field compact-field-search">
+                                <span>Wyszukaj pozycje BOM</span>
+                                <input id="header-detail-search" type="search" placeholder="Kod, komponent, rodzaj lub uwaga">
+                            </label>
+                            <div class="results-toolbar-meta">
+                                <span id="header-detail-count" class="results-count">Widoczne: 0 z 0</span>
+                            </div>
+                        </div>
                         <div class="table-wrap zapotrzebowanie-detail-wrap operations-detail-wrap">
                             <table>
                                 <thead>
@@ -141,22 +160,35 @@
                                         <th>Rodzaj</th>
                                         <th>Il/BOM</th>
                                         <th>Wym.</th>
+                                        <th>Zap. total</th>
                                         <th>WMS</th>
                                         <th>Vendo</th>
                                         <th>To ord.</th>
-                                        <th>SMD</th>
-                                        <th>THT</th>
                                         <th>Uwagi</th>
                                     </tr>
                                 </thead>
                                 <tbody id="header-detail-body">
                                     <tr>
-                                        <td colspan="11" class="empty-state">Szczegoly pojawia sie po kliknieciu indeksu w tabeli naglowkow.</td>
+                                        <td colspan="10" class="empty-state">Szczegoly pojawia sie po kliknieciu indeksu w tabeli naglowkow.</td>
                                     </tr>
                                 </tbody>
                             </table>
                         </div>
                     </section>
+
+                    <div id="header-note-viewer" class="note-viewer hidden" aria-hidden="true">
+                        <div class="note-viewer-backdrop" data-note-viewer-close></div>
+                        <div class="note-viewer-card" role="dialog" aria-modal="true" aria-labelledby="header-note-viewer-title">
+                            <div class="table-section-header detail-section-header note-viewer-header">
+                                <div>
+                                    <h3 id="header-note-viewer-title">Uwagi naglowka</h3>
+                                    <p id="header-note-viewer-meta">Pelna tresc uwagi z Vendo.</p>
+                                </div>
+                                <button type="button" id="header-note-viewer-close" class="btn btn-ghost note-viewer-close">Zamknij</button>
+                            </div>
+                            <div id="header-note-viewer-body" class="note-viewer-body"></div>
+                        </div>
+                    </div>
                 </section>
 
                 <section id="report-view" class="module-view hidden" data-module-view="report">
