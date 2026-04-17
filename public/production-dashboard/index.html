@@ -35,29 +35,6 @@
         </section>
 
         <section class="panel dashboard-config-panel">
-            <h2>Polaczenie</h2>
-            <form id="connection-form" class="form-grid">
-                <label>
-                    <span>Login Vendo</span>
-                    <input name="vendoUserLogin" type="text" required>
-                </label>
-                <label>
-                    <span>Haslo Vendo</span>
-                    <input name="vendoUserPassword" type="password" required>
-                </label>
-
-                <div class="actions">
-                    <button type="button" id="save-connection">Zapamietaj</button>
-                    <button type="button" id="clear-button" class="ghost">Wyczysc formularz</button>
-                </div>
-            </form>
-
-            <p class="note">
-                Ten modul zostaje jako osobne wejscie frontendowe i bedzie rozwijany niezaleznie od konsoli.
-            </p>
-        </section>
-
-        <section class="panel dashboard-config-panel">
             <div class="section-header">
                 <h2>Filtr Dashboardu</h2>
                 <span id="dashboard-status-badge" class="status idle">Gotowe</span>
@@ -65,9 +42,9 @@
 
             <div class="view-switcher" id="production-dashboard-mode-switcher">
                 <button type="button" class="switch-button active" data-dashboard-mode="single">Stanowisko</button>
-                <button type="button" class="switch-button" data-dashboard-mode="screen">Ekran produkcyjny</button>
                 <button type="button" class="switch-button" data-dashboard-mode="overview">Przeglad produkcji</button>
                 <button type="button" class="switch-button" data-dashboard-mode="matrix">Siatka</button>
+                <button type="button" class="switch-button switch-button-screen" data-dashboard-mode="screen">Ekran produkcyjny</button>
             </div>
 
             <form id="production-dashboard-form" class="subform-grid production-dashboard-detail">
@@ -94,6 +71,9 @@
 
             <p class="note production-dashboard-detail">
                 MVP sklada dane z aktywnej pracy pracownika, operacji KKW i stanowiska, zeby pokazac tempo pracy oraz przewidywany koniec.
+            </p>
+            <p class="note">
+                Dashboard korzysta z konfiguracji Vendo zapisanej po stronie serwera, zeby nie powielac logowania w widoku.
             </p>
             <p id="production-overview-note" class="note hidden">
                 Przeglad produkcji pobiera automatycznie wszystkie aktywne stanowiska i nie korzysta z filtrow operatora ani KKW.

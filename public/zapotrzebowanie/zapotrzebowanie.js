@@ -13,17 +13,28 @@ const operationsSummary = document.getElementById("operations-summary");
 const operationsError = document.getElementById("operations-error");
 const headersBody = document.getElementById("headers-body");
 const headersCount = document.getElementById("headers-count");
+const headersTableWrap = document.querySelector(".operations-table-wrap");
 const headerSearchInput = document.getElementById("header-search");
 const headerStatusFilter = document.getElementById("header-status-filter");
 const headerPhaseFilter = document.getElementById("header-phase-filter");
+const headerMaterialFilter = document.getElementById("header-material-filter");
+const refreshHeadersButton = document.getElementById("refresh-headers");
 const resetHeaderFiltersButton = document.getElementById("reset-header-filters");
+const headersRefreshStatus = document.getElementById("headers-refresh-status");
 const headerDetailSection = document.getElementById("header-detail-section");
 const headerDetailTitle = document.getElementById("header-detail-title");
 const headerDetailDescription = document.getElementById("header-detail-description");
 const headerDetailSummary = document.getElementById("header-detail-summary");
 const headerDetailError = document.getElementById("header-detail-error");
+const headerDetailSearchInput = document.getElementById("header-detail-search");
+const headerDetailCount = document.getElementById("header-detail-count");
 const headerDetailBody = document.getElementById("header-detail-body");
 const headerDetailCloseButton = document.getElementById("header-detail-close");
+const headerNoteViewer = document.getElementById("header-note-viewer");
+const headerNoteViewerTitle = document.getElementById("header-note-viewer-title");
+const headerNoteViewerMeta = document.getElementById("header-note-viewer-meta");
+const headerNoteViewerBody = document.getElementById("header-note-viewer-body");
+const headerNoteViewerCloseButton = document.getElementById("header-note-viewer-close");
 const vendoPilotForm = document.getElementById("vendo-pilot-form");
 const vendoPilotPositionInput = document.getElementById("vendo-pilot-position-id");
 const vendoPilotSubmitButton = document.getElementById("vendo-pilot-submit");
@@ -55,6 +66,8 @@ const STORAGE_KEY = "vendo-api-console";
 const numberFormatter = new Intl.NumberFormat("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 4 });
 const dateFormatter = new Intl.DateTimeFormat("pl-PL", { year: "numeric", month: "2-digit", day: "2-digit" });
 const dateTimeFormatter = new Intl.DateTimeFormat("pl-PL", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+const timeFormatter = new Intl.DateTimeFormat("pl-PL", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+const OPERATIONAL_AUTO_REFRESH_MS = 90 * 1000;
 
 let activeView = "operations";
 let operationalPayload = null;
@@ -65,9 +78,18 @@ let detailRequestToken = 0;
 let vendoPilotPayload = null;
 let lastReportPayload = null;
 let lastStoragePayload = null;
+let operationalRefreshPromise = null;
+let operationalAutoRefreshTimer = null;
+let lastOperationalRefreshAt = null;
+let bomNoteSaveInFlight = false;
 
 function formatNumber(value) {
     return numberFormatter.format(Number(value) || 0);
+}
+
+function formatOptionalNumber(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? numberFormatter.format(number) : "-";
 }
 
 function formatDate(value) {
@@ -82,12 +104,25 @@ function formatDateTime(value) {
     return Number.isNaN(date.getTime()) ? String(value) : dateTimeFormatter.format(date);
 }
 
+function formatTime(value) {
+    if (!value) return "-";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? String(value) : timeFormatter.format(date);
+}
+
 function normalizeText(value) {
     return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
 function escapeHtml(value) {
     return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function truncateText(value, maxLength = 28) {
+    const text = String(value || "").trim();
+    if (!text) return "";
+    if (text.length <= maxLength) return text;
+    return `${text.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
 }
 
 function setStatus(type, text) {
@@ -133,6 +168,8 @@ function saveConnection() {
         vendoUserPassword: connectionForm.vendoUserPassword.value,
     }));
     setStatus("success", "Zapisane");
+    updateOperationalRefreshStatus();
+    scheduleOperationalAutoRefresh();
 }
 
 function getConnectionPayload() {
@@ -199,6 +236,97 @@ function setActiveView(view) {
     moduleViews.forEach((section) => section.classList.toggle("hidden", section.dataset.moduleView !== view));
     viewPanels.forEach((section) => section.classList.toggle("hidden", section.dataset.viewPanel !== view));
     renderCurrentModuleMeta();
+    updateOperationalRefreshStatus();
+    scheduleOperationalAutoRefresh();
+}
+
+function isHeaderNoteViewerOpen() {
+    return Boolean(headerNoteViewer && !headerNoteViewer.classList.contains("hidden"));
+}
+
+function getOperationalAutoRefreshBlockReason() {
+    if (activeView !== "operations") return "Auto: poza panelem";
+    if (document.visibilityState !== "visible") return "Auto: karta ukryta";
+
+    const connection = getConnectionPayload();
+    if (!(connection.vendoUserLogin && connection.vendoUserPassword)) {
+        return "Auto: brak logowania Vendo";
+    }
+
+    if (bomNoteSaveInFlight) return "Auto: zapis uwagi";
+    if (isHeaderNoteViewerOpen()) return "Auto: podglad uwagi";
+    if (document.activeElement?.closest(".bom-note-editor")) return "Auto: edycja uwagi";
+
+    return "";
+}
+
+function updateOperationalRefreshStatus({ loading = false } = {}) {
+    if (!headersRefreshStatus) return;
+
+    const blockedReason = getOperationalAutoRefreshBlockReason();
+    const sourceLabel = operationalPayload?.meta?.source === "vendo"
+        ? "Vendo"
+        : (operationalPayload?.meta?.source === "sqlite" ? "SQLite" : "");
+    const parts = [];
+
+    if (loading) {
+        parts.push("Lista: odswiezam...");
+    } else if (blockedReason) {
+        parts.push(blockedReason);
+    } else {
+        parts.push(`Auto: co ${Math.round(OPERATIONAL_AUTO_REFRESH_MS / 1000)} s`);
+    }
+
+    if (lastOperationalRefreshAt) {
+        parts.push(`Ost.: ${formatTime(lastOperationalRefreshAt)}`);
+    }
+
+    if (sourceLabel) {
+        parts.push(sourceLabel);
+    }
+
+    headersRefreshStatus.textContent = parts.join(" | ");
+}
+
+function clearOperationalAutoRefreshTimer() {
+    if (operationalAutoRefreshTimer) {
+        clearTimeout(operationalAutoRefreshTimer);
+        operationalAutoRefreshTimer = null;
+    }
+}
+
+function scheduleOperationalAutoRefresh() {
+    clearOperationalAutoRefreshTimer();
+
+    if (activeView !== "operations") {
+        updateOperationalRefreshStatus();
+        return;
+    }
+
+    operationalAutoRefreshTimer = setTimeout(() => {
+        void runOperationalAutoRefresh();
+    }, OPERATIONAL_AUTO_REFRESH_MS);
+
+    updateOperationalRefreshStatus();
+}
+
+async function runOperationalAutoRefresh() {
+    const blockedReason = getOperationalAutoRefreshBlockReason();
+    if (blockedReason || operationalRefreshPromise) {
+        updateOperationalRefreshStatus();
+        scheduleOperationalAutoRefresh();
+        return;
+    }
+
+    try {
+        await loadOperationalOverview({
+            preserveSelection: true,
+            silentStatus: true,
+            forceRefresh: false,
+        });
+    } catch {
+        updateOperationalRefreshStatus();
+    }
 }
 
 function updateHeadersCount(visibleRows, totalRows) {
@@ -269,6 +397,7 @@ function renderVendoPilotSummary(payload) {
             ["ZLP", header.orderNumber || "-"],
             ["Pozycja ID", header.planPositionId || "-"],
             ["Indeks", header.productCode || header.productIndex || "-"],
+            ["Materialy", header.materialOwnershipLabel || header.materialOwnership || "PUSTE"],
             ["Status", header.stageLabel || header.realizationState || "-"],
             ["BOM z", source.label || source.type || "-"],
             ["Pozycje BOM", summary.totalBomItems ?? 0],
@@ -309,14 +438,16 @@ async function loadVendoPilot(event) {
     clearVendoPilotPanel();
     if (vendoPilotSubmitButton) vendoPilotSubmitButton.disabled = true;
     setStatus("loading", "Vendo ZLP");
+    if (headerDetailSearchInput) headerDetailSearchInput.value = "";
 
     if (headerDetailSection) headerDetailSection.classList.remove("hidden");
     if (headerDetailTitle) headerDetailTitle.textContent = "Pilot naglowka z Vendo";
     if (headerDetailDescription) headerDetailDescription.textContent = "Ladowanie pozycji ZLP, statusow i materialowki...";
+    if (headerDetailCount) headerDetailCount.textContent = "Widoczne: 0 z 0";
     if (headerDetailBody) {
         headerDetailBody.innerHTML = `
             <tr>
-                <td colspan="11" class="empty-state">Ladowanie BOM z Vendo...</td>
+                <td colspan="10" class="empty-state">Ladowanie BOM z Vendo...</td>
             </tr>
         `;
     }
@@ -325,6 +456,7 @@ async function loadVendoPilot(event) {
         const payload = await postJson("/api/zapotrzebowanie/vendo/header-details", {
             planPositionId,
             ...getConnectionPayload(),
+            materialOwnershipFilter: headerMaterialFilter?.value || "MSX_OR_EMPTY",
         });
 
         vendoPilotPayload = payload;
@@ -347,7 +479,7 @@ async function loadVendoPilot(event) {
         if (headerDetailBody) {
             headerDetailBody.innerHTML = `
                 <tr>
-                    <td colspan="11" class="empty-state">Brak BOM z pilota Vendo.</td>
+                    <td colspan="10" class="empty-state">Brak BOM z pilota Vendo.</td>
                 </tr>
             `;
         }
@@ -364,7 +496,7 @@ function getFilteredHeaders(headers) {
     const phaseFilter = headerPhaseFilter?.value || "ALL";
 
     return headers.filter((header) => {
-        if (statusFilter === "OPEN" && header.isClosed) return false;
+        if (statusFilter === "OPEN" && (header.isClosed || !header.includeInDemand)) return false;
         if (statusFilter === "CLOSED" && !header.isClosed) return false;
         if (statusFilter === "SHORTAGE" && (Number(header.shortageBomCount) || 0) <= 0) return false;
         if (phaseFilter !== "ALL" && header.stageKey !== phaseFilter) return false;
@@ -375,7 +507,9 @@ function getFilteredHeaders(headers) {
             header.productIndex,
             header.productName,
             header.clientName,
+            header.planningSeries,
             header.stageLabel,
+            header.materialOwnershipLabel,
             header.notes,
         ].join(" "));
         return searchable.includes(searchTerm);
@@ -399,6 +533,7 @@ function getFilteredHeaders(headers) {
 
 function clearOperationalDetailPanel({ hide = true, message = "Kliknij indeks produktu w tabeli naglowkow, aby zobaczyc pozycje BOM." } = {}) {
     selectedHeaderId = hide ? null : selectedHeaderId;
+    if (hide && headerDetailSearchInput) headerDetailSearchInput.value = "";
     if (headerDetailSection) headerDetailSection.classList.toggle("hidden", hide);
     if (headerDetailTitle) headerDetailTitle.textContent = "Pozycje naglowka";
     if (headerDetailDescription) headerDetailDescription.textContent = message;
@@ -413,11 +548,71 @@ function clearOperationalDetailPanel({ hide = true, message = "Kliknij indeks pr
     if (headerDetailBody) {
         headerDetailBody.innerHTML = `
             <tr>
-                <td colspan="11" class="empty-state">${escapeHtml(message)}</td>
+                <td colspan="10" class="empty-state">${escapeHtml(message)}</td>
             </tr>
         `;
     }
+    if (headerDetailCount) {
+        headerDetailCount.textContent = "Widoczne: 0 z 0";
+    }
     if (headerDetailCloseButton) headerDetailCloseButton.classList.toggle("hidden", hide);
+}
+
+function openHeaderNoteViewer(header) {
+    const noteText = String(header?.notes || "").trim();
+    if (!noteText || !headerNoteViewer) {
+        return;
+    }
+
+    if (headerNoteViewerTitle) {
+        headerNoteViewerTitle.textContent = `Uwagi naglowka ${header?.productIndex || header?.id || ""}`.trim();
+    }
+    if (headerNoteViewerMeta) {
+        headerNoteViewerMeta.textContent = [
+            header?.productName || "Pozycja z Vendo",
+            `Seria: ${header?.planningSeries || "-"}`,
+            `Klient: ${header?.clientName || "-"}`,
+            `KKW: ${header?.kkwNumber || "-"}`,
+        ].join(" | ");
+    }
+    if (headerNoteViewerBody) {
+        headerNoteViewerBody.textContent = noteText;
+    }
+
+    headerNoteViewer.classList.remove("hidden");
+    headerNoteViewer.setAttribute("aria-hidden", "false");
+    document.body.classList.add("modal-open");
+    updateOperationalRefreshStatus();
+}
+
+function closeHeaderNoteViewer() {
+    if (!headerNoteViewer) {
+        return;
+    }
+
+    headerNoteViewer.classList.add("hidden");
+    headerNoteViewer.setAttribute("aria-hidden", "true");
+    document.body.classList.remove("modal-open");
+    updateOperationalRefreshStatus();
+}
+
+function renderHeaderNoteCell(header) {
+    const noteText = String(header?.notes || "").trim();
+    if (!noteText) {
+        return "-";
+    }
+
+    return `
+        <button
+            type="button"
+            class="header-note-button"
+            data-header-note
+            data-header-id="${escapeHtml(header.id)}"
+            title="${escapeHtml(noteText)}"
+        >
+            ${escapeHtml(truncateText(noteText, 24))}
+        </button>
+    `;
 }
 
 function renderHeadersTable(rows, totalRows) {
@@ -428,6 +623,9 @@ function renderHeadersTable(rows, totalRows) {
                 <td colspan="12" class="empty-state">Brak naglowkow dla wybranych filtrow lub snapshot nie zostal jeszcze zaladowany.</td>
             </tr>
         `;
+        if (headersTableWrap) {
+            headersTableWrap.scrollTop = 0;
+        }
         return;
     }
 
@@ -446,11 +644,31 @@ function renderHeadersTable(rows, totalRows) {
             <td><span class="header-stage ${getStageTone(header.stageKey)}">${escapeHtml(header.stageLabel || "-")}</span></td>
             <td>${header.summaryPending ? "..." : escapeHtml(formatNumber(header.bomCount))}</td>
             <td>${header.summaryPending ? "..." : escapeHtml(formatNumber(header.openBomCount))}</td>
-            <td><span class="${Number(header.shortageBomCount) > 0 ? "access-to-order-shortage" : "access-to-order-covered"}">${header.summaryPending ? "..." : escapeHtml(`${formatNumber(header.shortageBomCount)} / ${formatNumber(header.shortageQty)}`)}</span></td>
-            <td class="header-note">${escapeHtml(header.notes || "-")}</td>
+            <td><span class="${Number(header.shortageBomCount) > 0 ? "access-to-order-shortage" : "access-to-order-covered"}">${header.summaryPending ? "..." : escapeHtml(`${formatNumber(header.shortageBomCount)} / ${formatNumber(header.openBomCount)}`)}</span></td>
+            <td class="header-note">${renderHeaderNoteCell(header)}</td>
             <td>${escapeHtml(formatDateTime(header.sourceCreatedAt || header.importedAt))}</td>
         </tr>
     `).join("");
+
+    syncHeadersTableViewport();
+}
+
+function syncHeadersTableViewport() {
+    if (!headersTableWrap) return;
+
+    requestAnimationFrame(() => {
+        const selectedTrigger = selectedHeaderId
+            ? headersBody.querySelector(`[data-header-id="${String(selectedHeaderId).replace(/"/g, '\\"')}"]`)
+            : null;
+        const selectedRow = selectedTrigger?.closest("tr");
+
+        if (selectedRow) {
+            selectedRow.scrollIntoView({ block: "nearest" });
+            return;
+        }
+
+        headersTableWrap.scrollTop = headersTableWrap.scrollHeight;
+    });
 }
 
 function renderOperationalHeaders() {
@@ -525,28 +743,79 @@ function renderHeaderDetailSummary(payload) {
     headerDetailSummary.classList.remove("hidden");
 }
 
-function renderHeaderDetailTable(items) {
+function sortBomItemsByToOrder(items) {
+    return [...(items || [])].sort((left, right) => {
+        const toOrderDelta = (Number(right?.toOrder) || 0) - (Number(left?.toOrder) || 0);
+        if (toOrderDelta !== 0) {
+            return toOrderDelta;
+        }
+
+        const requiredDelta = (Number(right?.requiredQty) || 0) - (Number(left?.requiredQty) || 0);
+        if (requiredDelta !== 0) {
+            return requiredDelta;
+        }
+
+        return String(left?.componentCode || left?.componentName || "")
+            .localeCompare(String(right?.componentCode || right?.componentName || ""), "pl");
+    });
+}
+
+function getFilteredHeaderBomItems(items) {
+    const searchTerm = normalizeText(headerDetailSearchInput?.value);
+    if (!searchTerm) {
+        return [...(items || [])];
+    }
+
+    return (items || []).filter((item) => {
+        const searchableText = [
+            item?.componentCode,
+            item?.componentName,
+            item?.typeName,
+            item?.note,
+            item?.note1,
+            item?.note2,
+            item?.note3,
+            item?.addText1,
+            item?.addText2,
+        ].join(" ");
+
+        return normalizeText(searchableText).includes(searchTerm);
+    });
+}
+
+function renderHeaderDetailCount(visibleCount, totalCount) {
+    if (!headerDetailCount) return;
+    headerDetailCount.textContent = `Widoczne: ${visibleCount} z ${totalCount}`;
+}
+
+function renderHeaderDetailTable(items, { totalCount = items.length } = {}) {
+    renderHeaderDetailCount(items.length, totalCount);
+
     if (!items.length) {
+        const emptyMessage = totalCount > 0
+            ? "Brak pozycji BOM po zastosowaniu filtra wyszukiwania."
+            : "Brak pozycji BOM dla wybranego naglowka.";
         headerDetailBody.innerHTML = `
             <tr>
-                <td colspan="11" class="empty-state">Brak pozycji BOM dla wybranego naglowka.</td>
+                <td colspan="10" class="empty-state">${emptyMessage}</td>
             </tr>
         `;
         return;
     }
 
-    headerDetailBody.innerHTML = items.map((item) => `
+    const sortedItems = sortBomItemsByToOrder(items);
+
+    headerDetailBody.innerHTML = sortedItems.map((item) => `
         <tr>
             <td>${escapeHtml(item.componentCode || "-")}</td>
             <td>${escapeHtml(item.componentName || "-")}</td>
             <td>${escapeHtml(item.typeName || "-")}</td>
             <td>${escapeHtml(formatNumber(item.componentQty))}</td>
             <td>${escapeHtml(formatNumber(item.requiredQty))}</td>
+            <td>${escapeHtml(formatOptionalNumber(item.totalDemandQty))}</td>
             <td>${escapeHtml(formatNumber(item.wmsStock))}</td>
             <td>${escapeHtml(formatNumber(item.vendoStock))}</td>
             <td class="${item.toOrder > 0 ? "access-to-order-shortage" : (item.toOrder < 0 ? "access-to-order-covered" : "access-to-order-zero")}">${escapeHtml(formatNumber(item.toOrder))}</td>
-            <td>${renderBoolBadge(item.smdDone)}</td>
-            <td>${renderBoolBadge(item.thtDone)}</td>
             <td class="bom-note">${renderBomNoteCell(item)}</td>
         </tr>
     `).join("");
@@ -555,6 +824,7 @@ function renderHeaderDetailTable(items) {
 function renderHeaderDetails(payload) {
     const header = payload?.header || {};
     const bomItems = Array.isArray(payload?.bomItems) ? payload.bomItems : [];
+    const filteredBomItems = getFilteredHeaderBomItems(bomItems);
     const warnings = Array.isArray(payload?.meta?.warnings) ? payload.meta.warnings.filter(Boolean) : [];
     if (headerDetailSection) headerDetailSection.classList.remove("hidden");
     if (headerDetailCloseButton) headerDetailCloseButton.classList.remove("hidden");
@@ -562,10 +832,12 @@ function renderHeaderDetails(payload) {
     if (headerDetailDescription) {
         const parts = [
             header.productName || "Wybrany naglowek",
+            `Seria: ${header.planningSeries || "-"}`,
             `Klient: ${header.clientName || "-"}`,
             `KKW: ${header.kkwNumber || "-"}`,
+            `Materialy: ${header.materialOwnershipLabel || header.materialOwnership || "PUSTE"}`,
             `Termin: ${formatDate(header.termDate)}`,
-            "WMS i Vendo w tej tabeli sa liczone live po naszej stronie.",
+            "WMS i Vendo sa liczone live, a Zap. total zbiera popyt z aktywnych naglowkow.",
         ];
         if (warnings.length) parts.push(`Uwaga: ${warnings.join(" ")}`);
         headerDetailDescription.textContent = parts.join(" | ");
@@ -575,74 +847,100 @@ function renderHeaderDetails(payload) {
         headerDetailError.textContent = "";
     }
     renderHeaderDetailSummary(payload);
-    renderHeaderDetailTable(bomItems);
+    renderHeaderDetailTable(filteredBomItems, { totalCount: bomItems.length });
 }
 
-async function loadOperationalOverview({ preserveSelection = true } = {}) {
-    operationsError.classList.add("hidden");
-    operationsError.textContent = "";
-    const connection = getConnectionPayload();
-    const canUseVendo = Boolean(connection.vendoUserLogin && connection.vendoUserPassword);
-    let fallbackMessage = "";
-    setStatus("loading", canUseVendo ? "Vendo" : "SQLite");
-
-    try {
-        let payload = null;
-        if (canUseVendo) {
-            try {
-                payload = await postJson("/api/zapotrzebowanie/vendo/overview", {
-                    ...connection,
-                    pageSize: 100,
-                    maxPages: 2,
-                    includeNoScope: true,
-                });
-            } catch (error) {
-                fallbackMessage = `Vendo chwilowo nie zwrocilo dashboardu (${error.message}). Pokazuje snapshot SQLite.`;
-            }
-        }
-
-        if (!payload) {
-            payload = await getJson("/api/zapotrzebowanie/operational/overview");
-            payload.meta = {
-                ...(payload.meta || {}),
-                source: "sqlite",
-            };
-        }
-
-        operationalPayload = payload;
-        operationalDetailPayload = null;
-        renderOperationalSummary(payload);
-        renderOperationalHeaders();
-        if (payload.storage?.counts || payload.storage?.meta) renderStorageMeta(payload.storage);
-
-        const hasSelection = preserveSelection && selectedHeaderId && Array.isArray(payload?.headers)
-            && payload.headers.some((item) => item.id === selectedHeaderId);
-
-        if (hasSelection) {
-            await loadHeaderDetails(selectedHeaderId, { silentStatus: true });
-        } else {
-            clearOperationalDetailPanel({ hide: true });
-        }
-
-        renderCurrentModuleMeta();
-        if (fallbackMessage) {
-            operationsError.textContent = fallbackMessage;
-            operationsError.classList.remove("hidden");
-        }
-        setStatus("success", payload?.meta?.source === "vendo" ? "Vendo" : "Dashboard");
-    } catch (error) {
-        operationsSummary.classList.add("hidden");
-        operationsSummary.innerHTML = "";
-        operationsError.textContent = error.message || "Nie udalo sie pobrac dashboardu operacyjnego.";
-        operationsError.classList.remove("hidden");
-        headersBody.innerHTML = `
-            <tr>
-                <td colspan="12" class="empty-state">Brak danych dashboardu operacyjnego.</td>
-            </tr>
-        `;
-        renderCurrentModuleMeta();
-        setStatus("error", "Blad");
+async function loadOperationalOverview({ preserveSelection = true, silentStatus = false, forceRefresh = false } = {}) {
+    if (operationalRefreshPromise) {
+        return operationalRefreshPromise;
     }
+
+    operationalRefreshPromise = (async () => {
+        operationsError.classList.add("hidden");
+        operationsError.textContent = "";
+        const connection = getConnectionPayload();
+        const canUseVendo = Boolean(connection.vendoUserLogin && connection.vendoUserPassword);
+        let fallbackMessage = "";
+        if (!silentStatus) {
+            setStatus("loading", canUseVendo ? "Vendo" : "SQLite");
+        }
+        if (refreshHeadersButton) refreshHeadersButton.disabled = true;
+        updateOperationalRefreshStatus({ loading: true });
+
+        try {
+            let payload = null;
+            if (canUseVendo) {
+                try {
+                    payload = await postJson("/api/zapotrzebowanie/vendo/overview", {
+                        ...connection,
+                        pageSize: 100,
+                        maxPages: 2,
+                        includeNoScope: true,
+                        materialOwnershipFilter: headerMaterialFilter?.value || "MSX_OR_EMPTY",
+                        forceRefresh,
+                    });
+                } catch (error) {
+                    fallbackMessage = `Vendo chwilowo nie zwrocilo dashboardu (${error.message}). Pokazuje snapshot SQLite.`;
+                }
+            }
+
+            if (!payload) {
+                payload = await getJson("/api/zapotrzebowanie/operational/overview");
+                payload.meta = {
+                    ...(payload.meta || {}),
+                    source: "sqlite",
+                };
+            }
+
+            operationalPayload = payload;
+            operationalDetailPayload = null;
+            lastOperationalRefreshAt = new Date().toISOString();
+            renderOperationalSummary(payload);
+            renderOperationalHeaders();
+            if (payload.storage?.counts || payload.storage?.meta) renderStorageMeta(payload.storage);
+
+            const hasSelection = preserveSelection && selectedHeaderId && Array.isArray(payload?.headers)
+                && payload.headers.some((item) => item.id === selectedHeaderId);
+
+            if (hasSelection) {
+                await loadHeaderDetails(selectedHeaderId, { silentStatus: true });
+            } else {
+                clearOperationalDetailPanel({ hide: true });
+            }
+
+            renderCurrentModuleMeta();
+            if (fallbackMessage) {
+                operationsError.textContent = fallbackMessage;
+                operationsError.classList.remove("hidden");
+            }
+            if (!silentStatus) {
+                setStatus("success", payload?.meta?.source === "vendo" ? "Vendo" : "Dashboard");
+            }
+            return payload;
+        } catch (error) {
+            operationsSummary.classList.add("hidden");
+            operationsSummary.innerHTML = "";
+            operationsError.textContent = error.message || "Nie udalo sie pobrac dashboardu operacyjnego.";
+            operationsError.classList.remove("hidden");
+            headersBody.innerHTML = `
+                <tr>
+                    <td colspan="12" class="empty-state">Brak danych dashboardu operacyjnego.</td>
+                </tr>
+            `;
+            renderCurrentModuleMeta();
+            if (!silentStatus) {
+                setStatus("error", "Blad");
+            }
+            throw error;
+        } finally {
+            if (refreshHeadersButton) refreshHeadersButton.disabled = false;
+            operationalRefreshPromise = null;
+            updateOperationalRefreshStatus();
+            scheduleOperationalAutoRefresh();
+        }
+    })();
+
+    return operationalRefreshPromise;
 }
 
 async function refreshStorageSnapshot() {
@@ -667,11 +965,13 @@ async function loadHeaderDetails(headerId, { silentStatus = false } = {}) {
     selectedHeaderId = Number(headerId);
     renderOperationalHeaders();
     if (!silentStatus) setStatus("loading", "Naglowek");
+    if (headerDetailSearchInput) headerDetailSearchInput.value = "";
 
     if (headerDetailSection) headerDetailSection.classList.remove("hidden");
     if (headerDetailCloseButton) headerDetailCloseButton.classList.remove("hidden");
     if (headerDetailTitle) headerDetailTitle.textContent = "Pozycje naglowka";
     if (headerDetailDescription) headerDetailDescription.textContent = "Ladowanie pozycji BOM dla wybranego naglowka...";
+    if (headerDetailCount) headerDetailCount.textContent = "Widoczne: 0 z 0";
     if (headerDetailSummary) {
         headerDetailSummary.classList.add("hidden");
         headerDetailSummary.innerHTML = "";
@@ -679,7 +979,7 @@ async function loadHeaderDetails(headerId, { silentStatus = false } = {}) {
     if (headerDetailBody) {
         headerDetailBody.innerHTML = `
             <tr>
-                <td colspan="11" class="empty-state">Ladowanie pozycji BOM...</td>
+                <td colspan="10" class="empty-state">Ladowanie pozycji BOM...</td>
             </tr>
         `;
     }
@@ -693,6 +993,7 @@ async function loadHeaderDetails(headerId, { silentStatus = false } = {}) {
             {
                 ...(isVendoSource ? { planPositionId: selectedHeaderId } : { headerId: selectedHeaderId }),
                 ...getConnectionPayload(),
+                materialOwnershipFilter: headerMaterialFilter?.value || "MSX_OR_EMPTY",
             }
         );
         operationalDetailPayload = payload;
@@ -710,7 +1011,7 @@ async function loadHeaderDetails(headerId, { silentStatus = false } = {}) {
         if (headerDetailBody) {
             headerDetailBody.innerHTML = `
                 <tr>
-                    <td colspan="11" class="empty-state">Brak pozycji dla wybranego naglowka.</td>
+                    <td colspan="10" class="empty-state">Brak pozycji dla wybranego naglowka.</td>
                 </tr>
             `;
         }
@@ -733,7 +1034,9 @@ async function saveBomNote(trigger) {
     }
 
     trigger.disabled = true;
+    bomNoteSaveInFlight = true;
     setStatus("loading", "Uwagi");
+    updateOperationalRefreshStatus();
 
     try {
         const payload = await postJson("/api/zapotrzebowanie/vendo/bom-note", {
@@ -766,14 +1069,29 @@ async function saveBomNote(trigger) {
         }
         setStatus("error", "Uwagi");
     } finally {
+        bomNoteSaveInFlight = false;
         trigger.disabled = false;
+        updateOperationalRefreshStatus();
     }
 }
 
-function resetHeaderFilters() {
+async function refreshOperationalHeaders() {
+    await loadOperationalOverview({
+        preserveSelection: true,
+        forceRefresh: true,
+    });
+}
+
+async function resetHeaderFilters() {
+    const shouldReload = Boolean(headerMaterialFilter && headerMaterialFilter.value !== "MSX_OR_EMPTY");
     if (headerSearchInput) headerSearchInput.value = "";
     if (headerStatusFilter) headerStatusFilter.value = "OPEN";
     if (headerPhaseFilter) headerPhaseFilter.value = "ALL";
+    if (headerMaterialFilter) headerMaterialFilter.value = "MSX_OR_EMPTY";
+    if (shouldReload) {
+        await loadOperationalOverview({ preserveSelection: false });
+        return;
+    }
     renderOperationalHeaders();
 }
 
@@ -1135,15 +1453,63 @@ if (refreshStorageButton) refreshStorageButton.addEventListener("click", refresh
 if (headerSearchInput) headerSearchInput.addEventListener("input", renderOperationalHeaders);
 if (headerStatusFilter) headerStatusFilter.addEventListener("change", renderOperationalHeaders);
 if (headerPhaseFilter) headerPhaseFilter.addEventListener("change", renderOperationalHeaders);
+if (headerMaterialFilter) headerMaterialFilter.addEventListener("change", () => loadOperationalOverview({ preserveSelection: true }));
+if (refreshHeadersButton) refreshHeadersButton.addEventListener("click", refreshOperationalHeaders);
+if (headerDetailSearchInput) {
+    headerDetailSearchInput.addEventListener("input", () => {
+        if (operationalDetailPayload) {
+            renderHeaderDetails(operationalDetailPayload);
+            return;
+        }
+
+        if (vendoPilotPayload) {
+            renderHeaderDetails(vendoPilotPayload);
+        }
+    });
+}
 if (resetHeaderFiltersButton) resetHeaderFiltersButton.addEventListener("click", resetHeaderFilters);
 if (vendoPilotForm) vendoPilotForm.addEventListener("submit", loadVendoPilot);
 
 if (headersBody) {
     headersBody.addEventListener("click", (event) => {
+        const noteTrigger = event.target.closest("[data-header-note]");
+        if (noteTrigger) {
+            const headers = Array.isArray(operationalPayload?.headers) ? operationalPayload.headers : [];
+            const headerId = Number(noteTrigger.dataset.headerId);
+            const targetHeader = headers.find((item) => Number(item?.id) === headerId);
+            if (targetHeader) {
+                openHeaderNoteViewer(targetHeader);
+            }
+            return;
+        }
+
         const trigger = event.target.closest("[data-header-id]");
         if (trigger) loadHeaderDetails(trigger.dataset.headerId);
     });
 }
+
+if (headerNoteViewerCloseButton) {
+    headerNoteViewerCloseButton.addEventListener("click", closeHeaderNoteViewer);
+}
+
+if (headerNoteViewer) {
+    headerNoteViewer.addEventListener("click", (event) => {
+        if (event.target.closest("[data-note-viewer-close]")) {
+            closeHeaderNoteViewer();
+        }
+    });
+}
+
+document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && headerNoteViewer && !headerNoteViewer.classList.contains("hidden")) {
+        closeHeaderNoteViewer();
+    }
+});
+
+document.addEventListener("visibilitychange", () => {
+    updateOperationalRefreshStatus();
+    scheduleOperationalAutoRefresh();
+});
 
 if (headerDetailCloseButton) {
     headerDetailCloseButton.addEventListener("click", () => {
@@ -1221,4 +1587,5 @@ renderStorageMeta(null);
 setActiveView("operations");
 renderCurrentModuleMeta();
 setStatus("idle", "Gotowe");
+updateOperationalRefreshStatus();
 loadOperationalOverview();

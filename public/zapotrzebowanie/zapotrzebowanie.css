@@ -48,6 +48,7 @@ body .app-shell {
 
 #operations-view .detail-summary,
 #operations-view .vendo-pilot-panel,
+#operations-view .operations-detail-toolbar,
 #operations-view .results-toolbar {
     box-sizing: border-box;
     width: calc(100% - 36px);
@@ -97,6 +98,7 @@ body .app-shell {
 .results-toolbar-meta {
     display: flex;
     align-items: center;
+    gap: 10px;
     margin-left: auto;
 }
 
@@ -104,6 +106,12 @@ body .app-shell {
     color: #475569;
     font-size: 12px;
     font-weight: 600;
+    white-space: nowrap;
+}
+
+.results-meta-hint {
+    color: #64748b;
+    font-size: 11px;
     white-space: nowrap;
 }
 
@@ -290,6 +298,35 @@ body .app-shell {
     min-width: 0;
 }
 
+.operations-detail-toolbar {
+    margin: 3px 0 6px;
+}
+
+.header-note-button {
+    display: inline-block;
+    width: 100%;
+    padding: 2px 6px;
+    border: 1px solid rgba(245, 158, 11, 0.28);
+    border-radius: 8px;
+    background: rgba(251, 191, 36, 0.14);
+    color: #9a3412;
+    font: inherit;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: background 120ms ease, border-color 120ms ease, color 120ms ease, transform 120ms ease;
+}
+
+.header-note-button:hover {
+    background: rgba(251, 191, 36, 0.2);
+    border-color: rgba(245, 158, 11, 0.4);
+    color: #7c2d12;
+    transform: translateY(-1px);
+}
+
 .operations-table-wrap table,
 .operations-detail-wrap table {
     font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
@@ -387,7 +424,7 @@ body .app-shell {
 }
 
 .operations-detail-wrap td:nth-child(2),
-.operations-detail-wrap td:nth-child(11) {
+.operations-detail-wrap td:nth-child(10) {
     white-space: normal;
     word-break: break-word;
 }
@@ -404,7 +441,7 @@ body .app-shell {
     min-width: 0;
 }
 
-.operations-detail-wrap td:nth-child(11) {
+.operations-detail-wrap td:nth-child(10) {
     min-width: 0;
 }
 
@@ -415,34 +452,22 @@ body .app-shell {
 
 .operations-detail-wrap th:nth-child(2),
 .operations-detail-wrap td:nth-child(2) {
-    width: 38%;
+    width: 34%;
 }
 
 .operations-detail-wrap th:nth-child(3),
 .operations-detail-wrap td:nth-child(3) {
-    width: 5%;
+    width: 7%;
 }
 
 .operations-detail-wrap th:nth-child(4),
 .operations-detail-wrap td:nth-child(4) {
-    width: 4%;
+    width: 5%;
 }
 
 .operations-detail-wrap th:nth-child(5),
 .operations-detail-wrap td:nth-child(5) {
-    width: 5%;
-}
-
-.operations-detail-wrap th:nth-child(6),
-.operations-detail-wrap td:nth-child(6) {
-    width: 4%;
-}
-
-.operations-detail-wrap th:nth-child(9),
-.operations-detail-wrap td:nth-child(9),
-.operations-detail-wrap th:nth-child(10),
-.operations-detail-wrap td:nth-child(10) {
-    width: 4%;
+    width: 7%;
 }
 
 .operations-detail-wrap th:nth-child(7),
@@ -455,14 +480,104 @@ body .app-shell {
     width: 5%;
 }
 
-.operations-detail-wrap th:nth-child(11),
-.operations-detail-wrap td:nth-child(11) {
-    width: 13%;
+.operations-detail-wrap th:nth-child(6),
+.operations-detail-wrap td:nth-child(6) {
+    width: 8%;
+}
+
+.operations-detail-wrap th:nth-child(9),
+.operations-detail-wrap td:nth-child(9) {
+    width: 6%;
+}
+
+.operations-detail-wrap th:nth-child(10),
+.operations-detail-wrap td:nth-child(10) {
+    width: 18%;
 }
 
 #operations-view .header-note {
     white-space: nowrap;
     word-break: normal;
+}
+
+.note-viewer {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.note-viewer.hidden {
+    display: none;
+}
+
+.note-viewer-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.38);
+}
+
+.note-viewer-card {
+    position: relative;
+    width: min(720px, calc(100vw - 40px));
+    max-height: min(80vh, 720px);
+    overflow: hidden;
+    border-radius: 18px;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    background: #fff;
+    box-shadow: 0 22px 60px rgba(15, 23, 42, 0.18);
+}
+
+.note-viewer-header {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 18px 20px 10px;
+    min-height: 72px;
+}
+
+.note-viewer-header > div {
+    min-width: 0;
+    padding-right: 110px;
+}
+
+.note-viewer-header h3 {
+    margin: 0;
+    font-size: 24px;
+    line-height: 1.2;
+}
+
+.note-viewer-header p {
+    margin: 6px 0 0;
+    color: #64748b;
+    font-size: 13px;
+    line-height: 1.35;
+}
+
+.note-viewer-close {
+    position: absolute;
+    top: 16px;
+    right: 18px;
+}
+
+.note-viewer-body {
+    padding: 12px 20px 22px;
+    max-height: calc(min(80vh, 720px) - 112px);
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 14px;
+    line-height: 1.55;
+    color: #0f172a;
+}
+
+body.modal-open {
+    overflow: hidden;
 }
 
 #operations-view .header-stage,

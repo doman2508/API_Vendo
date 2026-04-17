@@ -24,6 +24,18 @@ function formatNumber(value, suffix = "") {
     return `${numberFormatter.format(numeric)}${suffix}`;
 }
 
+function formatPanelCount(value) {
+    return value === null || value === undefined
+        ? "-"
+        : formatNumber(value, " paneli");
+}
+
+function formatPcbCount(value) {
+    return value === null || value === undefined
+        ? "-"
+        : formatNumber(value, " szt.");
+}
+
 function escapeHtml(value) {
     return String(value || "")
         .replace(/&/g, "&amp;")
@@ -53,23 +65,6 @@ function formatDateTime(value) {
     });
 }
 
-function formatDuration(seconds) {
-    const numeric = Number(seconds);
-    if (!Number.isFinite(numeric)) {
-        return "-";
-    }
-
-    const hours = Math.floor(numeric / 3600);
-    const minutes = Math.floor((numeric % 3600) / 60);
-    const restSeconds = Math.floor(numeric % 60);
-
-    if (hours > 0) {
-        return `${hours}h ${String(minutes).padStart(2, "0")}m`;
-    }
-
-    return `${minutes}m ${String(restSeconds).padStart(2, "0")}s`;
-}
-
 async function fetchJson(url) {
     const response = await fetch(url);
     const data = await response.json();
@@ -97,19 +92,38 @@ function getBatchTitle(batch) {
     return product || batch.kkwNumber || "-";
 }
 
+function getPcsPerPanelLabel(batch) {
+    if (!batch?.pcsPerPanel) {
+        return "Brak ustawienia";
+    }
+
+    const baseLabel = `${formatNumber(batch.pcsPerPanel)} PCB`;
+    if (batch.pcsPerPanelSource === "product_setting") {
+        return `${baseLabel} | produkt`;
+    }
+
+    if (batch.pcsPerPanelSource === "operator_panel") {
+        return `${baseLabel} | operator`;
+    }
+
+    return baseLabel;
+}
+
 function renderSummary(payload) {
     const summary = payload?.summary || {};
     const activeBatch = summary.activeBatch || null;
     const activeTitle = activeBatch ? `${activeBatch.kkwNumber} | ${getBatchTitle(activeBatch)}` : "Brak aktywnej partii";
     const cards = [
         ["Aktywne KKW", activeTitle],
-        ["Wykonano KKW / plan", activeBatch ? `${formatNumber(activeBatch.pulseCount, " szt.")} / ${activeBatch.plannedQuantity ? formatNumber(activeBatch.plannedQuantity, " szt.") : "-"}` : "-"],
+        ["Wykonano PCB / plan", activeBatch ? `${formatPcbCount(activeBatch.pcbCount)} / ${activeBatch.plannedQuantity ? formatNumber(activeBatch.plannedQuantity, " szt.") : "-"}` : "-"],
+        ["Wykonano paneli KKW", activeBatch ? formatPanelCount(activeBatch.panelCount ?? activeBatch.pulseCount) : "-"],
+        ["PCB na panel", activeBatch ? getPcsPerPanelLabel(activeBatch) : "-"],
+        ["Ta partia PCB", activeBatch ? formatPcbCount(activeBatch.batchPcbCount) : "-"],
+        ["Ta partia panele", activeBatch ? formatPanelCount(activeBatch.batchPanelCount ?? activeBatch.batchPulseCount) : "-"],
         ["Realizacja", activeBatch?.progressPercent === null || activeBatch?.progressPercent === undefined ? "-" : formatNumber(activeBatch.progressPercent, "%")],
-        ["Ta partia", activeBatch ? formatNumber(activeBatch.batchPulseCount ?? activeBatch.pulseCount, " szt.") : "-"],
         ["Status pieca", summary.status || "-"],
         ["Ostatni impuls", formatDateTime(summary.lastPulse?.ts)],
-        ["Dzisiaj", formatNumber(summary.counts?.today || 0, " szt.")],
-        ["Device", summary.deviceId || "-"],
+        ["Dzisiaj (panele)", formatPanelCount(summary.counts?.today || 0)],
     ];
 
     mesSummary.innerHTML = cards.map(([label, value]) => `
@@ -124,7 +138,7 @@ function renderSummary(payload) {
 function renderBatches(payload) {
     const batches = Array.isArray(payload?.batches) ? payload.batches : [];
     if (!batches.length) {
-        mesBatchesBody.innerHTML = `<tr><td colspan="7">Brak partii dla wybranego filtra.</td></tr>`;
+        mesBatchesBody.innerHTML = `<tr><td colspan="8">Brak partii dla wybranego filtra.</td></tr>`;
         selectedBatchId = null;
         return null;
     }
@@ -141,15 +155,20 @@ function renderBatches(payload) {
         const isSelected = Number(batch.id) === Number(selectedBatchId);
         const planned = batch.plannedQuantity ? formatNumber(batch.plannedQuantity, " szt.") : "-";
         const status = batch.status === "active" ? "Aktywna" : "Zamknieta";
+        const productMeta = [
+            batch.productCode ? `Kod: ${batch.productCode}` : "",
+            `PCB/panel: ${batch.pcsPerPanel ? formatNumber(batch.pcsPerPanel) : "brak"}`,
+        ].filter(Boolean).join(" | ");
 
         return `
             <tr class="mes-batch-row ${isSelected ? "selected" : ""}" data-batch-id="${batch.id}">
                 <td><strong>${escapeHtml(batch.kkwNumber)}</strong><small>#${batch.id}</small></td>
-                <td>${escapeHtml(getBatchTitle(batch))}</td>
+                <td>${escapeHtml(getBatchTitle(batch))}${productMeta ? `<small>${escapeHtml(productMeta)}</small>` : ""}</td>
                 <td>${formatDateTime(batch.startedAt)}</td>
                 <td>${formatDateTime(batch.endedAt)}</td>
-                <td>${formatNumber(batch.batchPulseCount ?? batch.pulseCount, " szt.")}</td>
-                <td>${formatNumber(batch.pulseCount, " szt.")} / ${planned}</td>
+                <td>${formatPanelCount(batch.batchPanelCount ?? batch.batchPulseCount)}</td>
+                <td>${formatPcbCount(batch.batchPcbCount)}</td>
+                <td>${formatPcbCount(batch.pcbCount)} / ${escapeHtml(planned)}</td>
                 <td><span class="phase-badge ${batch.status === "active" ? "good" : "neutral"}">${status}</span></td>
             </tr>
         `;
@@ -170,7 +189,7 @@ function renderBatches(payload) {
 function renderEvents(payload) {
     const events = Array.isArray(payload?.events) ? payload.events : [];
     if (!events.length) {
-        mesEventsBody.innerHTML = `<tr><td colspan="5">Brak impulsow dla wybranej partii.</td></tr>`;
+        mesEventsBody.innerHTML = `<tr><td colspan="6">Brak impulsow dla wybranej partii.</td></tr>`;
         return;
     }
 
@@ -178,6 +197,7 @@ function renderEvents(payload) {
         <tr>
             <td>${event.id}</td>
             <td>${escapeHtml(event.deviceId || "-")}</td>
+            <td>${escapeHtml(event.sensorId || "-")}</td>
             <td>${event.batchId || "-"}</td>
             <td>${formatDateTime(event.ts)}</td>
             <td><code>${escapeHtml(event.payloadJson || "-")}</code></td>
@@ -210,7 +230,9 @@ async function loadMesData({ keepSelectedBatch = false } = {}) {
     const now = new Date();
     mesUpdatedAt.textContent = `Aktualizacja: ${formatDateTime(now.toISOString())}`;
     mesStatus.textContent = selected
-        ? `Pokazuje partie KKW ${selected.kkwNumber}.`
+        ? selected.pcsPerPanelMissing
+            ? `Pokazuje partie KKW ${selected.kkwNumber}. Brakuje ustawienia PCB na panel.`
+            : `Pokazuje partie KKW ${selected.kkwNumber}.`
         : "Brak partii dla wybranego filtra.";
 }
 

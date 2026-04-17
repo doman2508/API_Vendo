@@ -66,6 +66,30 @@ function Convert-DataTableToObjects {
     return $rows
 }
 
+function New-AccessOleDbConnection {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $DatabasePath
+    )
+
+    $providers = @("Microsoft.ACE.OLEDB.16.0", "Microsoft.ACE.OLEDB.12.0")
+    $errors = @()
+
+    foreach ($provider in $providers) {
+        $connection = New-Object System.Data.OleDb.OleDbConnection("Provider=$provider;Data Source=$DatabasePath;Persist Security Info=False;Mode=Read;")
+        try {
+            $connection.Open()
+            return $connection
+        } catch {
+            $errors += "${provider}: $($_.Exception.Message)"
+            $connection.Dispose()
+        }
+    }
+
+    $details = $errors -join " | "
+    throw [System.InvalidOperationException]::new("Nie udalo sie otworzyc bazy Access. Na tym komputerze brakuje zarejestrowanego providera ACE OLEDB 16.0/12.0 albo bitowosc providera nie pasuje do PowerShell/Node. Zainstaluj Microsoft Access Database Engine 2016 Redistributable x64 na serwerze albo uruchom aplikacje w zgodnej bitowosci. Szczegoly: $details")
+}
+
 function Get-AccessWhereClause {
     param(
         [Parameter(Mandatory = $true)]
@@ -125,8 +149,7 @@ GROUP BY z.Kod_komp, z.Komponent, z.Rodzaj
 ORDER BY Sum(z.Stan_wymagany) DESC, z.Kod_komp;
 "@
 
-    $connection = New-Object System.Data.OleDb.OleDbConnection("Provider=Microsoft.ACE.OLEDB.16.0;Data Source=$DatabasePath;Persist Security Info=False;Mode=Read;")
-    $connection.Open()
+    $connection = New-AccessOleDbConnection -DatabasePath $DatabasePath
 
     try {
         $adapter = New-Object System.Data.OleDb.OleDbDataAdapter($sql, $connection)

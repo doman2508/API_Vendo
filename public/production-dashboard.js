@@ -22,12 +22,10 @@ const dashboardOverviewDensityInput = document.getElementById("production-overvi
 const dashboardOverviewFilterButtons = Array.from(document.querySelectorAll("[data-overview-filter]"));
 const dashboardCollectionTitle = document.getElementById("production-collection-title");
 const dashboardCollectionCopy = document.getElementById("production-collection-copy");
-const dashboardDebug = document.getElementById("production-dashboard-debug");
-const dashboardRawOutput = document.getElementById("production-dashboard-raw-output");
-const dashboardConnectionForm = document.getElementById("connection-form");
-const dashboardClearButton = document.getElementById("clear-button");
-const dashboardToggleTvModeButton = document.getElementById("toggle-tv-mode");
-const dashboardToggleUltrawideModeButton = document.getElementById("toggle-ultrawide-mode");
+  const dashboardDebug = document.getElementById("production-dashboard-debug");
+  const dashboardRawOutput = document.getElementById("production-dashboard-raw-output");
+  const dashboardToggleTvModeButton = document.getElementById("toggle-tv-mode");
+  const dashboardToggleUltrawideModeButton = document.getElementById("toggle-ultrawide-mode");
 const dashboardScreenTopbar = document.getElementById("production-screen-topbar");
 const dashboardScreenTitle = document.getElementById("production-screen-title");
 const dashboardScreenMeta = document.getElementById("production-screen-meta");
@@ -194,6 +192,7 @@ function dashboardSetElementVisibility(element, visible) {
 
 function dashboardApplyMode(mode) {
     dashboardMode = ["overview", "screen", "matrix"].includes(mode) ? mode : "single";
+    document.body.dataset.dashboardView = dashboardMode;
 
     for (const button of dashboardModeButtons) {
         const isActive = button.dataset.dashboardMode === dashboardMode;
@@ -697,10 +696,7 @@ function dashboardStopClock() {
 }
 
 function dashboardCollectPayload() {
-    const basePayload = {
-        vendoUserLogin: dashboardConnectionForm?.vendoUserLogin?.value?.trim() || "",
-        vendoUserPassword: dashboardConnectionForm?.vendoUserPassword?.value || "",
-    };
+    const basePayload = {};
 
     if (dashboardMode === "overview" || dashboardMode === "screen" || dashboardMode === "matrix") {
         return basePayload;
@@ -784,7 +780,7 @@ function clearDashboardView() {
 }
 
 function renderDashboardSummary(data) {
-    if (dashboardMode === "screen") {
+    if (dashboardMode === "screen" || dashboardMode === "matrix") {
         dashboardSummary.classList.add("hidden");
         dashboardSummary.innerHTML = "";
         return;
@@ -1507,7 +1503,7 @@ function renderProductionMatrix(data) {
         .filter((department) => groupedRecords.has(department))
         .flatMap((department) => groupedRecords.get(department).slice().sort(dashboardCompareOverviewRecords));
 
-    dashboardOverviewGrid.className = "dashboard-overview-groups matrix-groups";
+    dashboardOverviewGrid.className = "dashboard-overview-groups matrix-groups matrix-scroll-host";
     dashboardOverviewGrid.innerHTML = `
         <section class="matrix-table">
             <div class="matrix-header">
@@ -1649,13 +1645,6 @@ if (dashboardForm) {
     dashboardForm.addEventListener("submit", async (event) => {
         event.preventDefault();
         await runDashboard();
-    });
-}
-
-if (dashboardClearButton) {
-    dashboardClearButton.addEventListener("click", () => {
-        clearDashboardView();
-        dashboardSetStatus("idle", "Gotowe");
     });
 }
 
@@ -1806,7 +1795,7 @@ for (const button of dashboardModeButtons) {
         dashboardApplyMode(button.dataset.dashboardMode || "single");
         clearDashboardView();
         dashboardSetStatus("idle", "Gotowe");
-        if ((dashboardMode === "overview" || dashboardMode === "screen" || dashboardMode === "matrix") && dashboardConnectionForm?.vendoUserLogin?.value?.trim() && dashboardConnectionForm?.vendoUserPassword?.value) {
+        if (dashboardMode === "overview" || dashboardMode === "screen" || dashboardMode === "matrix") {
             await runDashboard();
         }
     });

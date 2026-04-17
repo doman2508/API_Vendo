@@ -12,6 +12,7 @@
             <div>
                 <p class="eyebrow">MES operator</p>
                 <h1>Piec / Reflow</h1>
+                <p class="mes-device-hint">Tryb pod terminal 6" / skaner reczny</p>
             </div>
             <span id="operator-refresh-state" class="phase-badge neutral">-</span>
         </section>
@@ -19,12 +20,12 @@
         <section class="mes-scan-panel">
             <form id="operator-scan-form">
                 <label>
-                    <span>Zeskanuj KKW</span>
-                    <input id="operator-scan-input" name="scan" autocomplete="off" inputmode="text" placeholder="np. 258/25" autofocus>
+                    <span>Skan KKW</span>
+                    <input id="operator-scan-input" name="scan" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="text" enterkeyhint="go" placeholder="np. 258/25" autofocus>
                 </label>
                 <button type="submit">Start partii</button>
             </form>
-            <p id="operator-message" class="note">Zeskanuj kod z karty KKW. Planowana ilosc zostanie pobrana z Vendo.</p>
+            <p id="operator-message" class="note">Zeskanuj KKW. Po starcie od razu mozesz dopisac PCB na panel.</p>
         </section>
 
         <section id="operator-active-batch" class="mes-active-batch">
