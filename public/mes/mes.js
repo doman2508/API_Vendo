@@ -67,9 +67,27 @@ function formatDateTime(value) {
 
 async function fetchJson(url) {
     const response = await fetch(url);
-    const data = await response.json();
+    const rawText = await response.text();
+    let data = null;
+
+    if (rawText) {
+        try {
+            data = JSON.parse(rawText);
+        } catch (_error) {
+            data = null;
+        }
+    }
+
     if (!response.ok) {
-        throw new Error(data.error || "Nie udalo sie pobrac danych MES.");
+        throw new Error(
+            data?.error
+            || rawText
+            || `Nie udalo sie pobrac danych MES (HTTP ${response.status}).`
+        );
+    }
+
+    if (!data) {
+        throw new Error("Serwer MES zwrocil nieprawidlowy format odpowiedzi.");
     }
 
     return data;
