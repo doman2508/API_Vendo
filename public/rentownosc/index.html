@@ -8,22 +8,14 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/kosztykkw/kosztykkw.css">
+    <link rel="stylesheet" href="/core/shell.css">
     <style>
         .app-shell { max-width: 1800px; }
         .main-grid { grid-template-columns: 1fr 260px; }
     </style>
 </head>
-<body>
+<body data-app-module="rentownosc" data-app-layout="standard">
     <main class="app-shell">
-        <nav class="nav-bar">
-            <a class="tab" href="/console">Konsola API</a>
-            <a class="tab" href="/kosztykkw">Koszty KKW</a>
-            <a class="tab" href="/production-dashboard">Produkcja</a>
-            <a class="tab" href="/zapotrzebowanie">Zapotrzebowanie</a>
-            <a class="tab active" href="/rentownosc">Rentownosc</a>
-            <a class="tab" href="/piaskownica">Piaskownica</a>
-        </nav>
-
         <div class="context-bar">
             <span>Rentownosc faktur sprzedazy &mdash; koszty KKW vs cena FV</span>
             <span id="status-badge" class="status idle">Gotowe</span>
@@ -82,6 +74,8 @@
         </div>
     </main>
 
+    <script src="/core/modules.js"></script>
+    <script src="/core/shell.js"></script>
     <script src="/rentownosc-app.js"></script>
 </body>
 </html>

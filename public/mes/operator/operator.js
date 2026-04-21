@@ -66,6 +66,28 @@ function formatPanelCount(value) {
         : formatNumber(value, " paneli");
 }
 
+function formatDurationSeconds(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+        return "-";
+    }
+
+    const rounded = Math.max(0, Math.round(numeric));
+    const hours = Math.floor(rounded / 3600);
+    const minutes = Math.floor((rounded % 3600) / 60);
+    const seconds = rounded % 60;
+
+    if (hours > 0) {
+        return `${hours} h ${minutes} min`;
+    }
+
+    if (minutes > 0) {
+        return `${minutes} min ${seconds} s`;
+    }
+
+    return `${seconds} s`;
+}
+
 async function fetchJson(url, options = {}) {
     const response = await fetch(url, options);
     const rawText = await response.text();
@@ -163,9 +185,26 @@ function attachPcsPerPanelForm(batch) {
     });
 }
 
+function attachPendingAssignmentAction(summary) {
+    const button = document.getElementById("operator-assign-unassigned");
+    const batchId = Number(summary?.activeBatch?.id);
+    const pendingAssignment = summary?.pendingAssignment || null;
+
+    if (!button || !Number.isInteger(batchId) || batchId <= 0 || !pendingAssignment?.count) {
+        return;
+    }
+
+    button.addEventListener("click", () => {
+        void assignPendingUnassigned(batchId).catch((error) => {
+            setMessage(error.message || "Nie udalo sie przypisac nieprzypisanych impulsow.", "error");
+        });
+    });
+}
+
 function renderActiveBatch(summary) {
     currentSummary = summary || null;
     const batch = summary?.activeBatch || null;
+    const pendingAssignment = summary?.pendingAssignment || null;
     const status = summary?.status || "-";
     syncOperatorLayout(summary);
 
@@ -203,6 +242,18 @@ function renderActiveBatch(summary) {
             </div>
         `
         : "";
+    const pendingAssignmentNotice = pendingAssignment?.count
+        ? `
+            <div class="mes-operator-alert mes-operator-alert-pending">
+                <strong>Wykryto ${escapeHtml(formatNumber(pendingAssignment.count))} nieprzypisanych impulsow.</strong>
+                <span>To wyglada na plytki, ktore przeszly przez piec zanim operator uruchomil KKW.</span>
+                <span>Zakres: ${escapeHtml(formatDateTime(pendingAssignment.firstTs))} - ${escapeHtml(formatDateTime(pendingAssignment.lastTs))}</span>
+                <div class="mes-operator-alert-actions">
+                    <button id="operator-assign-unassigned" class="ghost" type="button">Przypisz do tej partii</button>
+                </div>
+            </div>
+        `
+        : "";
 
     endBatchButton.disabled = false;
     activeBatchPanel.innerHTML = `
@@ -225,19 +276,20 @@ function renderActiveBatch(summary) {
                 <span class="mes-operator-chip">${escapeHtml(`PCB/panel: ${pcsPerPanelLabel}`)}</span>
             </div>
             ${pcsMissingNotice}
-            <div class="mes-operator-hero-stats">
-                <div class="mes-operator-hero-card">
-                    <span>Wykonano PCB</span>
-                    <strong>${formatPcbCount(batch.pcbCount)}</strong>
-                </div>
-                <div class="mes-operator-hero-card secondary">
-                    <span>Wykonano paneli</span>
-                    <strong>${formatPanelCount(batch.panelCount ?? batch.pulseCount)}</strong>
-                </div>
-            </div>
-            <div class="mes-batch-grid">
-                <div>
-                    <span>PCB / plan</span>
+            ${pendingAssignmentNotice}
+              <div class="mes-operator-hero-stats">
+                  <div class="mes-operator-hero-card">
+                      <span>Wyszlo PCB</span>
+                      <strong>${formatPcbCount(batch.pcbCount)}</strong>
+                  </div>
+                  <div class="mes-operator-hero-card secondary">
+                      <span>W piecu teraz</span>
+                      <strong>${formatPanelCount(batch.inOvenCount)}</strong>
+                  </div>
+              </div>
+              <div class="mes-batch-grid">
+                  <div>
+                      <span>PCB / plan</span>
                     <strong>${formatPcbCount(batch.pcbCount)} / ${escapeHtml(plannedQuantityLabel)}</strong>
                 </div>
                 <div>
@@ -249,19 +301,35 @@ function renderActiveBatch(summary) {
                     <strong>${escapeHtml(pcsPerPanelLabel)}</strong>
                     <small>${escapeHtml(pcsStatus)}</small>
                 </div>
-                <div>
-                    <span>Pozostalo</span>
-                    <strong>${batch.remainingQuantity === null || batch.remainingQuantity === undefined ? "-" : formatNumber(batch.remainingQuantity, " szt.")}</strong>
-                </div>
-                <div>
-                    <span>Ta partia PCB</span>
-                    <strong>${formatPcbCount(batch.batchPcbCount)}</strong>
-                </div>
-                <div>
-                    <span>Ta partia panele</span>
-                    <strong>${formatPanelCount(batch.batchPanelCount ?? batch.batchPulseCount)}</strong>
-                </div>
-            </div>
+                  <div>
+                      <span>Pozostalo</span>
+                      <strong>${batch.remainingQuantity === null || batch.remainingQuantity === undefined ? "-" : formatNumber(batch.remainingQuantity, " szt.")}</strong>
+                  </div>
+                  <div>
+                      <span>Wejscia partii</span>
+                      <strong>${formatPanelCount(batch.batchInputCount)}</strong>
+                  </div>
+                  <div>
+                      <span>Wyjscia partii</span>
+                      <strong>${formatPanelCount(batch.batchOutputCount ?? batch.batchPanelCount ?? batch.batchPulseCount)}</strong>
+                  </div>
+                  <div>
+                      <span>Ta partia PCB</span>
+                      <strong>${formatPcbCount(batch.batchPcbCount)}</strong>
+                  </div>
+                  <div>
+                      <span>W piecu partii</span>
+                      <strong>${formatPanelCount(batch.batchInOvenCount)}</strong>
+                  </div>
+                  <div>
+                      <span>Sr. czas w piecu</span>
+                      <strong>${formatDurationSeconds(batch.batchAverageOvenTimeSeconds ?? batch.averageOvenTimeSeconds)}</strong>
+                  </div>
+                  <div>
+                      <span>Takt wyjscia</span>
+                      <strong>${formatDurationSeconds(summary?.averageExitTaktSeconds)}</strong>
+                  </div>
+              </div>
             <form id="operator-pcs-form" class="mes-pcs-form">
                 <label>
                     <span>Ustaw PCB na 1 panel</span>
@@ -283,6 +351,7 @@ function renderActiveBatch(summary) {
     `;
 
     attachPcsPerPanelForm(batch);
+    attachPendingAssignmentAction(summary);
 }
 
 async function loadOperatorState() {
@@ -290,10 +359,14 @@ async function loadOperatorState() {
     renderActiveBatch(data.summary);
     refreshState.textContent = `Aktualizacja: ${formatDateTime(data.summary?.now)}`;
 
-    if (data.summary?.activeBatch && !data.summary.activeBatch.pcsPerPanel) {
+    if (data.summary?.pendingAssignment?.count) {
+        setMessage(`Wykryto ${formatNumber(data.summary.pendingAssignment.count)} nieprzypisanych impulsow sprzed startu tej partii. Mozesz przypisac je z karty aktywnej partii.`, "warning");
+    } else if (data.summary?.activeBatch && !data.summary.activeBatch.pcsPerPanel) {
         setMessage("Ustaw PCB na panel, aby policzyc pojedyncze PCB dla tej partii.", "warning");
     } else if (data.plannedQuantityLookup?.warning) {
         setMessage(data.plannedQuantityLookup.warning, "warning");
+    } else if (data.summary?.activeBatch) {
+        setMessage(`Aktywna partia ${data.summary.activeBatch.kkwNumber}. MES liczy wejscia, wyjscia i czas w piecu.`, "success");
     } else if (!data.summary?.activeBatch) {
         setMessage("Zeskanuj KKW. Po starcie od razu mozesz dopisac PCB na panel.", "info");
     }
@@ -335,7 +408,20 @@ async function startBatch(scanValue) {
     scanInput.value = "";
     await loadOperatorState();
 
-    if (!data.batch?.pcsPerPanel) {
+    const pendingAssignment = currentSummary?.pendingAssignment || null;
+    if (pendingAssignment?.count) {
+        const confirmed = window.confirm(
+            `Wykryto ${formatNumber(pendingAssignment.count)} nieprzypisanych impulsow sprzed startu KKW ${data.batch.kkwNumber}. Przypisac je teraz do tej partii?`
+        );
+
+        if (confirmed) {
+            await assignPendingUnassigned(data.batch.id);
+        } else {
+            setMessage(`Wykryto ${formatNumber(pendingAssignment.count)} nieprzypisanych impulsow. Mozesz przypisac je z aktywnej partii albo w /mes.`, "warning");
+        }
+    }
+
+    if (!currentSummary?.activeBatch?.pcsPerPanel) {
         window.alert("Dla tej partii brakuje ustawienia PCB na panel. Wpisz je teraz.");
         focusPcsPerPanelInput();
         return;
@@ -376,6 +462,35 @@ async function savePcsPerPanel(batchId, value) {
     setMessage(`Zapisano ${pcsPerPanel} PCB na panel ${saveScope}.${warningSuffix}`, data.warning ? "warning" : "success");
     await loadOperatorState();
     scanInput?.focus();
+}
+
+async function assignPendingUnassigned(batchId, { silentMessage = false } = {}) {
+    const response = await fetchJson("/api/mes/oven/events/assign", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            batch_id: batchId,
+            suggested_unassigned: true,
+            device_id: operatorDeviceId,
+        }),
+    });
+
+    await loadOperatorState();
+
+    if (!silentMessage) {
+        const batch = response.batch || currentSummary?.activeBatch || null;
+        const skippedSuffix = response.skippedCount
+            ? ` Pomieto ${formatNumber(response.skippedCount)} impulsow.`
+            : "";
+        setMessage(
+            `Przypisano ${formatNumber(response.assigned || 0)} nieprzypisanych impulsow do KKW ${batch?.kkwNumber || batchId}.${skippedSuffix}`,
+            response.skippedCount ? "warning" : "success"
+        );
+    }
+
+    return response;
 }
 
 async function endBatch() {
