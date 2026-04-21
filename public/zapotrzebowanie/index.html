@@ -74,22 +74,22 @@
 
                         <div class="table-wrap zapotrzebowanie-table-wrap operations-table-wrap">
                             <table>
-                                <thead>
-                                    <tr>
-                                        <th>Termin</th>
-                                        <th>KKW</th>
-                                        <th>Indeks</th>
-                                        <th>Produkt</th>
-                                        <th>Klient</th>
-                                        <th>Ilosc</th>
-                                        <th>Etap</th>
-                                        <th>BOM</th>
-                                        <th>Otw.</th>
-                                        <th>Braki</th>
-                                        <th>Uwagi</th>
-                                        <th>Utw.</th>
-                                    </tr>
-                                </thead>
+                                    <thead>
+                                        <tr>
+                                            <th><button type="button" class="column-sort-button" data-header-sort="termDate">Termin <span class="sort-indicator" aria-hidden="true"></span></button></th>
+                                            <th><button type="button" class="column-sort-button" data-header-sort="kkwNumber">KKW <span class="sort-indicator" aria-hidden="true"></span></button></th>
+                                            <th><button type="button" class="column-sort-button" data-header-sort="productIndex">Indeks <span class="sort-indicator" aria-hidden="true"></span></button></th>
+                                            <th><button type="button" class="column-sort-button" data-header-sort="productName">Produkt <span class="sort-indicator" aria-hidden="true"></span></button></th>
+                                            <th><button type="button" class="column-sort-button" data-header-sort="clientName">Klient <span class="sort-indicator" aria-hidden="true"></span></button></th>
+                                            <th><button type="button" class="column-sort-button" data-header-sort="orderQty">Ilosc <span class="sort-indicator" aria-hidden="true"></span></button></th>
+                                            <th><button type="button" class="column-sort-button" data-header-sort="stageLabel">Etap <span class="sort-indicator" aria-hidden="true"></span></button></th>
+                                            <th><button type="button" class="column-sort-button" data-header-sort="bomCount">BOM <span class="sort-indicator" aria-hidden="true"></span></button></th>
+                                            <th><button type="button" class="column-sort-button" data-header-sort="openBomCount">Otw. <span class="sort-indicator" aria-hidden="true"></span></button></th>
+                                            <th><button type="button" class="column-sort-button" data-header-sort="shortageBomCount">Braki <span class="sort-indicator" aria-hidden="true"></span></button></th>
+                                            <th><button type="button" class="column-sort-button" data-header-sort="notes">Uwagi <span class="sort-indicator" aria-hidden="true"></span></button></th>
+                                            <th><button type="button" class="column-sort-button" data-header-sort="sourceCreatedAt">Utw. <span class="sort-indicator" aria-hidden="true"></span></button></th>
+                                        </tr>
+                                    </thead>
                                 <tbody id="headers-body">
                                     <tr>
                                         <td colspan="12" class="empty-state">Ladowanie dashboardu operacyjnego...</td>
@@ -103,7 +103,7 @@
                         <div class="table-section-header detail-section-header">
                             <div>
                                 <h3 id="header-detail-title">Pozycje naglowka</h3>
-                                <p id="header-detail-description">Kliknij indeks produktu w tabeli naglowkow, aby zobaczyc pozycje BOM i stan roboczy.</p>
+                                <p id="header-detail-description">Kliknij rekord w tabeli naglowkow, aby zobaczyc pozycje BOM i stan roboczy.</p>
                             </div>
                             <button type="button" id="header-detail-close" class="btn btn-ghost hidden">Zamknij szczegoly</button>
                         </div>
@@ -127,19 +127,19 @@
                                         <th>Rodzaj</th>
                                         <th>Il/BOM</th>
                                         <th>Wym.</th>
-                                        <th>Zap. total</th>
                                         <th>WMS</th>
                                         <th>Vendo</th>
                                         <th>ZW</th>
+                                        <th>Zap. total</th>
                                         <th>To ord.</th>
                                         <th>Uwagi</th>
                                     </tr>
                                 </thead>
-                                <tbody id="header-detail-body">
-                                    <tr>
-                                        <td colspan="11" class="empty-state">Szczegoly pojawia sie po kliknieciu indeksu w tabeli naglowkow.</td>
-                                    </tr>
-                                </tbody>
+                                    <tbody id="header-detail-body">
+                                        <tr>
+                                            <td colspan="11" class="empty-state">Szczegoly pojawia sie po kliknieciu rekordu w tabeli naglowkow.</td>
+                                        </tr>
+                                    </tbody>
                             </table>
                         </div>
                     </section>

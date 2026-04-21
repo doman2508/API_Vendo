@@ -1,6 +1,7 @@
 (async function initVendoShell(global) {
     const registry = global.VendoModules;
     const main = document.querySelector(".app-shell, .mes-operator-shell");
+    const SHELL_COLLAPSE_STORAGE_KEY = "vendo-shell-collapsed";
 
     if (!registry || !main) {
         return;
@@ -18,6 +19,8 @@
 
     const requestedLayout = document.body.dataset.appLayout || moduleDefinition.layout || "standard";
     document.body.dataset.appLayout = requestedLayout;
+    const shellCollapsed = loadShellCollapseState();
+    document.body.classList.toggle("vendo-shell-collapsed", shellCollapsed);
 
     if (main.querySelector(".vendo-shell")) {
         return;
@@ -51,6 +54,7 @@
 
     main.prepend(shell);
     wireLogout(shell);
+    wireShellToggle(shell);
     document.dispatchEvent(new CustomEvent("vendo-auth-ready", { detail: authState }));
 
     function buildPrimaryShell(activeModule, navigationModules, sessionState) {
@@ -58,6 +62,7 @@
         shellElement.className = `vendo-shell vendo-shell--${requestedLayout}`;
 
         const actions = [];
+        actions.push(`<button type="button" class="vendo-shell__action-button vendo-shell__toggle-button" data-shell-toggle aria-pressed="${shellCollapsed ? "true" : "false"}">${shellCollapsed ? "Rozwin header" : "Zwin header"}</button>`);
         if (activeModule.id !== "start") {
             actions.push(`<a class="vendo-shell__action-link" href="/console">Panel startowy</a>`);
         }
@@ -173,6 +178,51 @@
                     window.location.replace("/login");
                 }
             });
+        }
+    }
+
+    function wireShellToggle(root) {
+        const toggleButtons = root.querySelectorAll("[data-shell-toggle]");
+        if (!toggleButtons.length) {
+            return;
+        }
+
+        updateShellToggleButtons(toggleButtons, document.body.classList.contains("vendo-shell-collapsed"));
+
+        for (const button of toggleButtons) {
+            button.addEventListener("click", () => {
+                const nextState = !document.body.classList.contains("vendo-shell-collapsed");
+                document.body.classList.toggle("vendo-shell-collapsed", nextState);
+                persistShellCollapseState(nextState);
+                updateShellToggleButtons(toggleButtons, nextState);
+            });
+        }
+    }
+
+    function updateShellToggleButtons(buttons, collapsed) {
+        for (const button of buttons) {
+            button.textContent = collapsed ? "Rozwin header" : "Zwin header";
+            button.setAttribute("aria-pressed", String(collapsed));
+        }
+    }
+
+    function loadShellCollapseState() {
+        try {
+            return localStorage.getItem(SHELL_COLLAPSE_STORAGE_KEY) === "1";
+        } catch (_error) {
+            return false;
+        }
+    }
+
+    function persistShellCollapseState(collapsed) {
+        try {
+            if (collapsed) {
+                localStorage.setItem(SHELL_COLLAPSE_STORAGE_KEY, "1");
+            } else {
+                localStorage.removeItem(SHELL_COLLAPSE_STORAGE_KEY);
+            }
+        } catch (_error) {
+            // Ignore localStorage failures and keep the current session state only.
         }
     }
 
