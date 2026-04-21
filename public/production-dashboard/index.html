@@ -5,8 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Production Dashboard</title>
     <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/core/shell.css">
 </head>
-<body data-app-module="production-dashboard">
+<body data-app-module="production-dashboard" data-app-layout="dashboard">
     <main class="app-shell">
         <section class="hero">
             <p class="eyebrow">Wspolny backend Vendo</p>
@@ -17,7 +18,6 @@
             <div class="hero-actions">
                 <button type="button" id="toggle-tv-mode">TV mode</button>
                 <button type="button" id="toggle-ultrawide-mode" class="ghost">3440 x 1440</button>
-                <a class="ghost nav-link" href="/zapotrzebowanie">Zapotrzebowanie</a>
             </div>
         </section>
 
@@ -186,6 +186,8 @@
         </section>
     </main>
 
+    <script src="/core/modules.js"></script>
+    <script src="/core/shell.js"></script>
     <script src="/app.js"></script>
     <script src="/production-dashboard.js"></script>
 </body>

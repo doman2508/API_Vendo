@@ -1,6 +1,7 @@
 const connectionForm = document.getElementById("connection-form");
 const saveConnectionButton = document.getElementById("save-connection");
 const clearButton = document.getElementById("clear-button");
+const vendoConnectionStatus = document.getElementById("vendo-connection-status");
 const statusBadge = document.getElementById("status-badge");
 const moduleMeta = document.getElementById("module-meta");
 const storageMeta = document.getElementById("storage-meta");
@@ -35,6 +36,27 @@ const headerNoteViewerTitle = document.getElementById("header-note-viewer-title"
 const headerNoteViewerMeta = document.getElementById("header-note-viewer-meta");
 const headerNoteViewerBody = document.getElementById("header-note-viewer-body");
 const headerNoteViewerCloseButton = document.getElementById("header-note-viewer-close");
+const bomComponentViewer = document.getElementById("bom-component-viewer");
+const bomComponentViewerTitle = document.getElementById("bom-component-viewer-title");
+const bomComponentViewerMeta = document.getElementById("bom-component-viewer-meta");
+const bomComponentViewerSummary = document.getElementById("bom-component-viewer-summary");
+const bomComponentViewerError = document.getElementById("bom-component-viewer-error");
+const bomComponentViewerBody = document.getElementById("bom-component-viewer-body");
+const bomComponentViewerCloseButton = document.getElementById("bom-component-viewer-close");
+const bomZwViewer = document.getElementById("bom-zw-viewer");
+const bomZwViewerTitle = document.getElementById("bom-zw-viewer-title");
+const bomZwViewerMeta = document.getElementById("bom-zw-viewer-meta");
+const bomZwViewerSummary = document.getElementById("bom-zw-viewer-summary");
+const bomZwViewerError = document.getElementById("bom-zw-viewer-error");
+const bomZwViewerBody = document.getElementById("bom-zw-viewer-body");
+const bomZwViewerCloseButton = document.getElementById("bom-zw-viewer-close");
+const bomZwDocumentViewer = document.getElementById("bom-zw-document-viewer");
+const bomZwDocumentViewerTitle = document.getElementById("bom-zw-document-viewer-title");
+const bomZwDocumentViewerMeta = document.getElementById("bom-zw-document-viewer-meta");
+const bomZwDocumentViewerSummary = document.getElementById("bom-zw-document-viewer-summary");
+const bomZwDocumentViewerError = document.getElementById("bom-zw-document-viewer-error");
+const bomZwDocumentViewerBody = document.getElementById("bom-zw-document-viewer-body");
+const bomZwDocumentViewerCloseButton = document.getElementById("bom-zw-document-viewer-close");
 const vendoPilotForm = document.getElementById("vendo-pilot-form");
 const vendoPilotPositionInput = document.getElementById("vendo-pilot-position-id");
 const vendoPilotSubmitButton = document.getElementById("vendo-pilot-submit");
@@ -82,6 +104,9 @@ let operationalRefreshPromise = null;
 let operationalAutoRefreshTimer = null;
 let lastOperationalRefreshAt = null;
 let bomNoteSaveInFlight = false;
+let operationalBomComponentRequestToken = 0;
+let operationalBomZwRequestToken = 0;
+let operationalBomZwDocumentRequestToken = 0;
 
 function formatNumber(value) {
     return numberFormatter.format(Number(value) || 0);
@@ -159,6 +184,8 @@ function loadStoredValues() {
     } catch {
         localStorage.removeItem(STORAGE_KEY);
     }
+
+    updateConnectionStatusIndicator();
 }
 
 function saveConnection() {
@@ -167,6 +194,7 @@ function saveConnection() {
         vendoUserLogin: connectionForm.vendoUserLogin.value.trim(),
         vendoUserPassword: connectionForm.vendoUserPassword.value,
     }));
+    updateConnectionStatusIndicator();
     setStatus("success", "Zapisane");
     updateOperationalRefreshStatus();
     scheduleOperationalAutoRefresh();
@@ -231,6 +259,12 @@ function renderStorageMeta(storage) {
 }
 
 function setActiveView(view) {
+    if (view !== "operations") {
+        closeHeaderNoteViewer();
+        closeBomComponentViewer();
+        closeBomZwViewer();
+        closeBomZwDocumentViewer();
+    }
     activeView = view;
     viewSwitchButtons.forEach((button) => button.classList.toggle("active", button.dataset.viewSwitch === view));
     moduleViews.forEach((section) => section.classList.toggle("hidden", section.dataset.moduleView !== view));
@@ -244,6 +278,27 @@ function isHeaderNoteViewerOpen() {
     return Boolean(headerNoteViewer && !headerNoteViewer.classList.contains("hidden"));
 }
 
+function isBomComponentViewerOpen() {
+    return Boolean(bomComponentViewer && !bomComponentViewer.classList.contains("hidden"));
+}
+
+function isBomZwViewerOpen() {
+    return Boolean(bomZwViewer && !bomZwViewer.classList.contains("hidden"));
+}
+
+function isBomZwDocumentViewerOpen() {
+    return Boolean(bomZwDocumentViewer && !bomZwDocumentViewer.classList.contains("hidden"));
+}
+
+function syncModalOpenState() {
+    const hasOpenModal = isHeaderNoteViewerOpen()
+        || isBomComponentViewerOpen()
+        || isBomZwViewerOpen()
+        || isBomZwDocumentViewerOpen();
+    document.body.classList.toggle("modal-open", hasOpenModal);
+    updateOperationalRefreshStatus();
+}
+
 function getOperationalAutoRefreshBlockReason() {
     if (activeView !== "operations") return "Auto: poza panelem";
     if (document.visibilityState !== "visible") return "Auto: karta ukryta";
@@ -255,6 +310,9 @@ function getOperationalAutoRefreshBlockReason() {
 
     if (bomNoteSaveInFlight) return "Auto: zapis uwagi";
     if (isHeaderNoteViewerOpen()) return "Auto: podglad uwagi";
+    if (isBomComponentViewerOpen()) return "Auto: modal komponentu";
+    if (isBomZwViewerOpen()) return "Auto: modal ZW";
+    if (isBomZwDocumentViewerOpen()) return "Auto: pozycje ZW";
     if (document.activeElement?.closest(".bom-note-editor")) return "Auto: edycja uwagi";
 
     return "";
@@ -425,6 +483,9 @@ function renderVendoPilotSummary(payload) {
 
 async function loadVendoPilot(event) {
     event?.preventDefault();
+    if (activeView !== "operations") {
+        setActiveView("operations");
+    }
     const planPositionId = Number(vendoPilotPositionInput?.value);
     if (!Number.isInteger(planPositionId) || planPositionId <= 0) {
         if (vendoPilotError) {
@@ -436,6 +497,8 @@ async function loadVendoPilot(event) {
 
     saveConnection();
     clearVendoPilotPanel();
+    closeBomComponentViewer();
+    closeBomZwViewer();
     if (vendoPilotSubmitButton) vendoPilotSubmitButton.disabled = true;
     setStatus("loading", "Vendo ZLP");
     if (headerDetailSearchInput) headerDetailSearchInput.value = "";
@@ -447,7 +510,7 @@ async function loadVendoPilot(event) {
     if (headerDetailBody) {
         headerDetailBody.innerHTML = `
             <tr>
-                <td colspan="10" class="empty-state">Ladowanie BOM z Vendo...</td>
+                <td colspan="11" class="empty-state">Ladowanie BOM z Vendo...</td>
             </tr>
         `;
     }
@@ -479,7 +542,7 @@ async function loadVendoPilot(event) {
         if (headerDetailBody) {
             headerDetailBody.innerHTML = `
                 <tr>
-                    <td colspan="10" class="empty-state">Brak BOM z pilota Vendo.</td>
+                    <td colspan="11" class="empty-state">Brak BOM z pilota Vendo.</td>
                 </tr>
             `;
         }
@@ -532,6 +595,8 @@ function getFilteredHeaders(headers) {
 }
 
 function clearOperationalDetailPanel({ hide = true, message = "Kliknij indeks produktu w tabeli naglowkow, aby zobaczyc pozycje BOM." } = {}) {
+    closeBomComponentViewer();
+    closeBomZwViewer();
     selectedHeaderId = hide ? null : selectedHeaderId;
     if (hide && headerDetailSearchInput) headerDetailSearchInput.value = "";
     if (headerDetailSection) headerDetailSection.classList.toggle("hidden", hide);
@@ -548,7 +613,7 @@ function clearOperationalDetailPanel({ hide = true, message = "Kliknij indeks pr
     if (headerDetailBody) {
         headerDetailBody.innerHTML = `
             <tr>
-                <td colspan="10" class="empty-state">${escapeHtml(message)}</td>
+                <td colspan="11" class="empty-state">${escapeHtml(message)}</td>
             </tr>
         `;
     }
@@ -581,8 +646,7 @@ function openHeaderNoteViewer(header) {
 
     headerNoteViewer.classList.remove("hidden");
     headerNoteViewer.setAttribute("aria-hidden", "false");
-    document.body.classList.add("modal-open");
-    updateOperationalRefreshStatus();
+    syncModalOpenState();
 }
 
 function closeHeaderNoteViewer() {
@@ -592,8 +656,603 @@ function closeHeaderNoteViewer() {
 
     headerNoteViewer.classList.add("hidden");
     headerNoteViewer.setAttribute("aria-hidden", "true");
-    document.body.classList.remove("modal-open");
-    updateOperationalRefreshStatus();
+    syncModalOpenState();
+}
+
+function closeBomComponentViewer() {
+    operationalBomComponentRequestToken += 1;
+    if (!bomComponentViewer) {
+        return;
+    }
+
+    bomComponentViewer.classList.add("hidden");
+    bomComponentViewer.setAttribute("aria-hidden", "true");
+    if (bomComponentViewerSummary) {
+        bomComponentViewerSummary.classList.add("hidden");
+        bomComponentViewerSummary.innerHTML = "";
+    }
+    if (bomComponentViewerError) {
+        bomComponentViewerError.classList.add("hidden");
+        bomComponentViewerError.textContent = "";
+    }
+    if (bomComponentViewerBody) {
+        bomComponentViewerBody.innerHTML = `
+            <tr>
+                <td colspan="12" class="empty-state">Kliknij kod komponentu w pozycjach BOM, aby zobaczyc rozbicie.</td>
+            </tr>
+        `;
+    }
+    syncModalOpenState();
+}
+
+function closeBomZwViewer() {
+    operationalBomZwRequestToken += 1;
+    closeBomZwDocumentViewer();
+    if (!bomZwViewer) {
+        return;
+    }
+
+    bomZwViewer.classList.add("hidden");
+    bomZwViewer.setAttribute("aria-hidden", "true");
+    if (bomZwViewerSummary) {
+        bomZwViewerSummary.classList.add("hidden");
+        bomZwViewerSummary.innerHTML = "";
+    }
+    if (bomZwViewerError) {
+        bomZwViewerError.classList.add("hidden");
+        bomZwViewerError.textContent = "";
+    }
+    if (bomZwViewerBody) {
+        bomZwViewerBody.innerHTML = `
+            <tr>
+                <td colspan="8" class="empty-state">Kliknij wartosc w kolumnie ZW, aby zobaczyc szczegoly dokumentow.</td>
+            </tr>
+        `;
+    }
+    syncModalOpenState();
+}
+
+function closeBomZwDocumentViewer() {
+    operationalBomZwDocumentRequestToken += 1;
+    if (!bomZwDocumentViewer) {
+        return;
+    }
+
+    bomZwDocumentViewer.classList.add("hidden");
+    bomZwDocumentViewer.setAttribute("aria-hidden", "true");
+    if (bomZwDocumentViewerSummary) {
+        bomZwDocumentViewerSummary.classList.add("hidden");
+        bomZwDocumentViewerSummary.innerHTML = "";
+    }
+    if (bomZwDocumentViewerError) {
+        bomZwDocumentViewerError.classList.add("hidden");
+        bomZwDocumentViewerError.textContent = "";
+    }
+    if (bomZwDocumentViewerBody) {
+        bomZwDocumentViewerBody.innerHTML = `
+            <tr>
+                <td colspan="6" class="empty-state">Kliknij numer ZW, aby zobaczyc wszystkie pozycje dokumentu.</td>
+            </tr>
+        `;
+    }
+    syncModalOpenState();
+}
+
+function buildOperationalComponentOverviewRow(item, payload) {
+    return {
+        code: payload?.componentCode || item?.componentCode || "",
+        component: payload?.componentName || item?.componentName || "",
+        rodzaj: payload?.typeName || item?.typeName || "",
+        wmsStock: Number(payload?.inventory?.wmsStock) || 0,
+        vendoStock: Number(payload?.inventory?.vendoStock) || 0,
+        vendoExpected: Number(payload?.inventory?.vendoExpected) || 0,
+    };
+}
+
+function updateConnectionStatusIndicator() {
+    if (!vendoConnectionStatus) return;
+
+    const { vendoUserLogin, vendoUserPassword } = getConnectionPayload();
+    const hasLogin = Boolean(vendoUserLogin);
+    const hasPassword = Boolean(vendoUserPassword);
+
+    vendoConnectionStatus.classList.remove("is-connected", "is-partial", "is-disconnected");
+
+    if (hasLogin && hasPassword) {
+        vendoConnectionStatus.classList.add("is-connected");
+        vendoConnectionStatus.textContent = `Vendo: ${vendoUserLogin}`;
+        return;
+    }
+
+    if (hasLogin || hasPassword) {
+        vendoConnectionStatus.classList.add("is-partial");
+        vendoConnectionStatus.textContent = "Vendo: uzupelnij logowanie";
+        return;
+    }
+
+    vendoConnectionStatus.classList.add("is-disconnected");
+    vendoConnectionStatus.textContent = "Vendo: brak logowania";
+}
+
+function renderBomComponentViewerSummary(rows, overviewRow) {
+    if (!bomComponentViewerSummary) return;
+    const availableTotal = (Number(overviewRow?.wmsStock) || 0) + (Number(overviewRow?.vendoStock) || 0) + (Number(overviewRow?.vendoExpected) || 0);
+    const totalRequired = rows.reduce((sum, row) => sum + (Number(row?.requiredQty) || 0), 0);
+    const totalShortage = rows.reduce((sum, row) => sum + (Number(row?.shortageQty) || 0), 0);
+
+    bomComponentViewerSummary.innerHTML = buildSummaryPills([
+        ["Otwartych pozycji", rows.length],
+        ["Potrzeba razem", formatNumber(totalRequired)],
+        ["Dostepne lacznie", formatNumber(availableTotal)],
+        ["Laczny brak", formatNumber(totalShortage)],
+        ["WMS", formatNumber(overviewRow?.wmsStock)],
+        ["Vendo", formatNumber(overviewRow?.vendoStock)],
+    ]);
+    bomComponentViewerSummary.classList.remove("hidden");
+}
+
+function renderBomComponentViewerTable(rows) {
+    if (!bomComponentViewerBody) return;
+    if (!rows.length) {
+        bomComponentViewerBody.innerHTML = `
+            <tr>
+                <td colspan="12" class="empty-state">Brak otwartych pozycji dla wybranego komponentu.</td>
+            </tr>
+        `;
+        return;
+    }
+
+    bomComponentViewerBody.innerHTML = rows.map((row) => `
+        <tr>
+            <td>${escapeHtml(formatDate(row.termDate || row.kkwTermDate))}</td>
+            <td>${escapeHtml(row.kkwNumber || "-")}</td>
+            <td>${escapeHtml(row.orderNumber || "-")}</td>
+            <td>${escapeHtml(row.foreignNumber || "-")}</td>
+            <td>${escapeHtml(row.vendoProductCode || row.productIndex || "-")}</td>
+            <td>${escapeHtml(row.vendoProductName || row.productName || "-")}</td>
+            <td>${escapeHtml(row.clientName || "-")}</td>
+            <td>${escapeHtml(formatNumber(row.orderQty))}</td>
+            <td>${escapeHtml(formatNumber(row.requiredQty))}</td>
+            <td>${escapeHtml(formatNumber(row.availableBefore))}</td>
+            <td class="detail-shortage">${escapeHtml(formatNumber(row.shortageQty))}</td>
+            <td class="to-order ${row.balanceAfter < 0 ? "to-order-shortage" : (row.balanceAfter > 0 ? "to-order-covered" : "to-order-zero")}">${escapeHtml(formatNumber(row.balanceAfter))}</td>
+        </tr>
+    `).join("");
+}
+
+function renderBomComponentViewerContent(item, payload) {
+    const overviewRow = buildOperationalComponentOverviewRow(item, payload);
+    const rows = calculateDetailRows(Array.isArray(payload?.rows) ? payload.rows : [], overviewRow);
+    const warnings = Array.isArray(payload?.meta?.warnings) ? payload.meta.warnings.filter(Boolean) : [];
+
+    if (bomComponentViewerTitle) {
+        bomComponentViewerTitle.textContent = `Rozbicie komponentu ${overviewRow.code || ""}`.trim();
+    }
+    if (bomComponentViewerMeta) {
+        const parts = [
+            overviewRow.component || "Wybrany komponent",
+            `Rodzaj: ${overviewRow.rodzaj || "-"}`,
+            `Materialy: ${headerMaterialFilter?.selectedOptions?.[0]?.textContent || "MSX + puste"}`,
+            "Aktywne naglowki Vendo.",
+        ];
+        if (warnings.length) {
+            parts.push(`Uwaga: ${warnings.join(" ")}`);
+        }
+        bomComponentViewerMeta.textContent = parts.join(" | ");
+    }
+    if (bomComponentViewerError) {
+        bomComponentViewerError.classList.add("hidden");
+        bomComponentViewerError.textContent = "";
+    }
+
+    renderBomComponentViewerSummary(rows, overviewRow);
+    renderBomComponentViewerTable(rows);
+}
+
+async function loadBomComponentViewer(item) {
+    const componentCode = String(item?.componentCode || "").trim();
+    if (!componentCode || !bomComponentViewer) {
+        return;
+    }
+
+    const requestToken = operationalBomComponentRequestToken + 1;
+    operationalBomComponentRequestToken = requestToken;
+    const connection = getConnectionPayload();
+
+    bomComponentViewer.classList.remove("hidden");
+    bomComponentViewer.setAttribute("aria-hidden", "false");
+    if (bomComponentViewerTitle) {
+        bomComponentViewerTitle.textContent = `Rozbicie komponentu ${componentCode}`;
+    }
+    if (bomComponentViewerMeta) {
+        bomComponentViewerMeta.textContent = `Ladowanie rozbicia dla ${item?.componentName || componentCode}...`;
+    }
+    if (bomComponentViewerSummary) {
+        bomComponentViewerSummary.classList.add("hidden");
+        bomComponentViewerSummary.innerHTML = "";
+    }
+    if (bomComponentViewerError) {
+        bomComponentViewerError.classList.add("hidden");
+        bomComponentViewerError.textContent = "";
+    }
+    if (bomComponentViewerBody) {
+        bomComponentViewerBody.innerHTML = `
+            <tr>
+                <td colspan="12" class="empty-state">Ladowanie rozbicia komponentu...</td>
+            </tr>
+        `;
+    }
+    syncModalOpenState();
+
+    if (!(connection.vendoUserLogin && connection.vendoUserPassword)) {
+        if (bomComponentViewerError) {
+            bomComponentViewerError.textContent = "Brakuje loginu lub hasla Vendo. Zapisz logowanie, aby otworzyc modal komponentu.";
+            bomComponentViewerError.classList.remove("hidden");
+        }
+        if (bomComponentViewerBody) {
+            bomComponentViewerBody.innerHTML = `
+                <tr>
+                    <td colspan="12" class="empty-state">Brakuje logowania Vendo do pobrania rozbicia komponentu.</td>
+                </tr>
+            `;
+        }
+        setStatus("error", "Vendo");
+        return;
+    }
+
+    setStatus("loading", "Komponent");
+
+    try {
+        const payload = await postJson("/api/zapotrzebowanie/vendo/component-details", {
+            code: componentCode,
+            materialOwnershipFilter: headerMaterialFilter?.value || "MSX_OR_EMPTY",
+            ...connection,
+        });
+
+        if (requestToken !== operationalBomComponentRequestToken) return;
+        renderBomComponentViewerContent(item, payload);
+        renderCurrentModuleMeta();
+        setStatus("success", "Komponent");
+    } catch (error) {
+        if (requestToken !== operationalBomComponentRequestToken) return;
+        if (bomComponentViewerError) {
+            bomComponentViewerError.textContent = error.message || "Nie udalo sie pobrac rozbicia komponentu.";
+            bomComponentViewerError.classList.remove("hidden");
+        }
+        if (bomComponentViewerBody) {
+            bomComponentViewerBody.innerHTML = `
+                <tr>
+                    <td colspan="12" class="empty-state">Brak rozbicia dla wybranego komponentu.</td>
+                </tr>
+            `;
+        }
+        setStatus("error", "Komponent");
+    }
+}
+
+function renderBomZwViewerSummary(payload) {
+    if (!bomZwViewerSummary) return;
+
+    const rows = Array.isArray(payload?.rows) ? payload.rows : [];
+    const totalQty = Number(payload?.totalQty) || rows.reduce((sum, row) => sum + (Number(row?.qty) || 0), 0);
+    const uniqueSuppliers = new Set(rows.map((row) => String(row?.supplierName || "").trim()).filter(Boolean));
+    const unitCode = payload?.unitCode || rows.find((row) => String(row?.unitCode || "").trim())?.unitCode || "-";
+
+    bomZwViewerSummary.innerHTML = buildSummaryPills([
+        ["Dokumenty ZW", rows.length],
+        ["Suma ZW", formatNumber(totalQty)],
+        ["Dostawcy", uniqueSuppliers.size],
+        ["Jedn.", unitCode],
+    ]);
+    bomZwViewerSummary.classList.remove("hidden");
+}
+
+function renderBomZwViewerTable(rows) {
+    if (!bomZwViewerBody) return;
+    if (!rows.length) {
+        bomZwViewerBody.innerHTML = `
+            <tr>
+                <td colspan="8" class="empty-state">Brak oczekiwanych dokumentow ZW dla wybranego indeksu.</td>
+            </tr>
+        `;
+        return;
+    }
+
+    const sortedRows = [...rows].sort((left, right) => {
+        const leftExpected = Date.parse(left?.expectedDate || left?.date1 || "");
+        const rightExpected = Date.parse(right?.expectedDate || right?.date1 || "");
+        if (Number.isFinite(leftExpected) && Number.isFinite(rightExpected) && leftExpected !== rightExpected) {
+            return leftExpected - rightExpected;
+        }
+
+        const leftCreated = Date.parse(left?.createdAt || left?.date2 || "");
+        const rightCreated = Date.parse(right?.createdAt || right?.date2 || "");
+        if (Number.isFinite(leftCreated) && Number.isFinite(rightCreated) && leftCreated !== rightCreated) {
+            return rightCreated - leftCreated;
+        }
+
+        return String(left?.documentNumber || "").localeCompare(String(right?.documentNumber || ""), "pl");
+    });
+
+    bomZwViewerBody.innerHTML = sortedRows.map((row) => `
+        <tr>
+            <td>${escapeHtml(formatDate(row.createdAt))}</td>
+            <td>${escapeHtml(row.supplierName || "-")}</td>
+            <td>
+                ${Number(row.documentId) > 0
+                    ? `
+                        <button
+                            type="button"
+                            class="zw-link"
+                            data-zw-document-id="${escapeHtml(row.documentId)}"
+                            data-zw-document-number="${escapeHtml(row.documentNumber || "")}"
+                            title="Pokaz wszystkie pozycje tego ZW"
+                        >
+                            ${escapeHtml(row.documentNumber || "-")}
+                        </button>
+                    `
+                    : escapeHtml(row.documentNumber || "-")}
+            </td>
+            <td>${escapeHtml(formatOptionalNumber(row.qty))}</td>
+            <td>${escapeHtml(row.unitCode || "-")}</td>
+            <td>${escapeHtml(formatDate(row.expectedDate))}</td>
+            <td>${escapeHtml(row.notes || "-")}</td>
+            <td>${escapeHtml(formatDate(row.date1))}</td>
+        </tr>
+    `).join("");
+}
+
+function renderBomZwViewerContent(item, payload) {
+    const rows = Array.isArray(payload?.rows) ? payload.rows : [];
+    const warnings = Array.isArray(payload?.meta?.warnings) ? payload.meta.warnings.filter(Boolean) : [];
+    const componentCode = payload?.componentCode || item?.componentCode || "";
+    const componentName = payload?.componentName || item?.componentName || "Wybrany indeks";
+
+    if (bomZwViewerTitle) {
+        bomZwViewerTitle.textContent = `Szczegoly ZW ${componentCode}`.trim();
+    }
+    if (bomZwViewerMeta) {
+        const parts = [
+            componentName,
+            `Rodzaj: ${item?.typeName || "-"}`,
+            `Materialy: ${headerMaterialFilter?.selectedOptions?.[0]?.textContent || "MSX + puste"}`,
+            "Oczekiwane z dokumentow ZW w Vendo.",
+        ];
+        if (warnings.length) {
+            parts.push(`Uwaga: ${warnings.join(" ")}`);
+        }
+        bomZwViewerMeta.textContent = parts.join(" | ");
+    }
+    if (bomZwViewerError) {
+        bomZwViewerError.classList.add("hidden");
+        bomZwViewerError.textContent = "";
+    }
+
+    renderBomZwViewerSummary(payload);
+    renderBomZwViewerTable(rows);
+}
+
+function renderBomZwDocumentViewerSummary(payload) {
+    if (!bomZwDocumentViewerSummary) return;
+
+    const rows = Array.isArray(payload?.rows) ? payload.rows : [];
+    const totalQty = Number(payload?.totalQty) || rows.reduce((sum, row) => sum + (Number(row?.qty) || 0), 0);
+    const unitCodes = [...new Set(rows.map((row) => String(row?.unitCode || "").trim()).filter(Boolean))];
+
+    bomZwDocumentViewerSummary.innerHTML = buildSummaryPills([
+        ["Pozycje", rows.length],
+        ["Suma ilosci", formatNumber(totalQty)],
+        ["Jedn.", unitCodes.join(", ") || "-"],
+    ]);
+    bomZwDocumentViewerSummary.classList.remove("hidden");
+}
+
+function renderBomZwDocumentViewerTable(rows) {
+    if (!bomZwDocumentViewerBody) return;
+    if (!rows.length) {
+        bomZwDocumentViewerBody.innerHTML = `
+            <tr>
+                <td colspan="6" class="empty-state">Brak pozycji na wybranym dokumencie ZW.</td>
+            </tr>
+        `;
+        return;
+    }
+
+    bomZwDocumentViewerBody.innerHTML = rows.map((row) => `
+        <tr>
+            <td>${escapeHtml(row.productCode || "-")}</td>
+            <td>${escapeHtml(row.productName || "-")}</td>
+            <td>${escapeHtml(formatOptionalNumber(row.qty))}</td>
+            <td>${escapeHtml(row.unitCode || "-")}</td>
+            <td>${escapeHtml(formatDate(row.expectedDate))}</td>
+            <td>${escapeHtml(row.notes || "-")}</td>
+        </tr>
+    `).join("");
+}
+
+function renderBomZwDocumentViewerContent(payload) {
+    const warnings = Array.isArray(payload?.meta?.warnings) ? payload.meta.warnings.filter(Boolean) : [];
+
+    if (bomZwDocumentViewerTitle) {
+        bomZwDocumentViewerTitle.textContent = `Pozycje ${payload?.documentNumber || "ZW"}`.trim();
+    }
+    if (bomZwDocumentViewerMeta) {
+        const parts = [
+            `Dostawca: ${payload?.supplierName || "-"}`,
+            `Data dostawy: ${formatDate(payload?.deliveryDate)}`,
+            `Data wystawienia: ${formatDate(payload?.issueDate || payload?.createdAt)}`,
+        ];
+        if (warnings.length) {
+            parts.push(`Uwaga: ${warnings.join(" ")}`);
+        }
+        bomZwDocumentViewerMeta.textContent = parts.join(" | ");
+    }
+    if (bomZwDocumentViewerError) {
+        bomZwDocumentViewerError.classList.add("hidden");
+        bomZwDocumentViewerError.textContent = "";
+    }
+
+    renderBomZwDocumentViewerSummary(payload);
+    renderBomZwDocumentViewerTable(Array.isArray(payload?.rows) ? payload.rows : []);
+}
+
+async function loadBomZwDocumentViewer(documentId, documentNumber = "") {
+    const normalizedDocumentId = Number(documentId);
+    if (!Number.isInteger(normalizedDocumentId) || normalizedDocumentId <= 0 || !bomZwDocumentViewer) {
+        return;
+    }
+
+    const requestToken = operationalBomZwDocumentRequestToken + 1;
+    operationalBomZwDocumentRequestToken = requestToken;
+    const connection = getConnectionPayload();
+
+    bomZwDocumentViewer.classList.remove("hidden");
+    bomZwDocumentViewer.setAttribute("aria-hidden", "false");
+    if (bomZwDocumentViewerTitle) {
+        bomZwDocumentViewerTitle.textContent = `Pozycje ${documentNumber || "ZW"}`.trim();
+    }
+    if (bomZwDocumentViewerMeta) {
+        bomZwDocumentViewerMeta.textContent = `Ladowanie pozycji dokumentu ${documentNumber || normalizedDocumentId}...`;
+    }
+    if (bomZwDocumentViewerSummary) {
+        bomZwDocumentViewerSummary.classList.add("hidden");
+        bomZwDocumentViewerSummary.innerHTML = "";
+    }
+    if (bomZwDocumentViewerError) {
+        bomZwDocumentViewerError.classList.add("hidden");
+        bomZwDocumentViewerError.textContent = "";
+    }
+    if (bomZwDocumentViewerBody) {
+        bomZwDocumentViewerBody.innerHTML = `
+            <tr>
+                <td colspan="6" class="empty-state">Ladowanie pozycji dokumentu ZW...</td>
+            </tr>
+        `;
+    }
+    syncModalOpenState();
+
+    if (!(connection.vendoUserLogin && connection.vendoUserPassword)) {
+        if (bomZwDocumentViewerError) {
+            bomZwDocumentViewerError.textContent = "Brakuje loginu lub hasla Vendo. Zapisz logowanie, aby otworzyc pozycje ZW.";
+            bomZwDocumentViewerError.classList.remove("hidden");
+        }
+        if (bomZwDocumentViewerBody) {
+            bomZwDocumentViewerBody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="empty-state">Brakuje logowania Vendo do pobrania pozycji dokumentu ZW.</td>
+                </tr>
+            `;
+        }
+        return;
+    }
+
+    setStatus("loading", "ZW poz.");
+
+    try {
+        const payload = await postJson("/api/zapotrzebowanie/vendo/zw-document-details", {
+            documentId: normalizedDocumentId,
+            ...connection,
+        });
+
+        if (requestToken !== operationalBomZwDocumentRequestToken) return;
+        renderBomZwDocumentViewerContent(payload);
+        renderCurrentModuleMeta();
+        setStatus("success", "ZW poz.");
+    } catch (error) {
+        if (requestToken !== operationalBomZwDocumentRequestToken) return;
+        if (bomZwDocumentViewerError) {
+            bomZwDocumentViewerError.textContent = error.message || "Nie udalo sie pobrac pozycji dokumentu ZW.";
+            bomZwDocumentViewerError.classList.remove("hidden");
+        }
+        if (bomZwDocumentViewerBody) {
+            bomZwDocumentViewerBody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="empty-state">Brak pozycji dla wybranego dokumentu ZW.</td>
+                </tr>
+            `;
+        }
+        setStatus("error", "ZW poz.");
+    }
+}
+
+async function loadBomZwViewer(item) {
+    const componentCode = String(item?.componentCode || "").trim();
+    if (!componentCode || !bomZwViewer) {
+        return;
+    }
+
+    const requestToken = operationalBomZwRequestToken + 1;
+    operationalBomZwRequestToken = requestToken;
+    const connection = getConnectionPayload();
+
+    bomZwViewer.classList.remove("hidden");
+    bomZwViewer.setAttribute("aria-hidden", "false");
+    if (bomZwViewerTitle) {
+        bomZwViewerTitle.textContent = `Szczegoly ZW ${componentCode}`;
+    }
+    if (bomZwViewerMeta) {
+        bomZwViewerMeta.textContent = `Ladowanie dokumentow ZW dla ${item?.componentName || componentCode}...`;
+    }
+    if (bomZwViewerSummary) {
+        bomZwViewerSummary.classList.add("hidden");
+        bomZwViewerSummary.innerHTML = "";
+    }
+    if (bomZwViewerError) {
+        bomZwViewerError.classList.add("hidden");
+        bomZwViewerError.textContent = "";
+    }
+    if (bomZwViewerBody) {
+        bomZwViewerBody.innerHTML = `
+            <tr>
+                <td colspan="8" class="empty-state">Ladowanie szczegolow ZW...</td>
+            </tr>
+        `;
+    }
+    syncModalOpenState();
+
+    if (!(connection.vendoUserLogin && connection.vendoUserPassword)) {
+        if (bomZwViewerError) {
+            bomZwViewerError.textContent = "Brakuje loginu lub hasla Vendo. Zapisz logowanie, aby otworzyc modal ZW.";
+            bomZwViewerError.classList.remove("hidden");
+        }
+        if (bomZwViewerBody) {
+            bomZwViewerBody.innerHTML = `
+                <tr>
+                    <td colspan="8" class="empty-state">Brakuje logowania Vendo do pobrania dokumentow ZW.</td>
+                </tr>
+            `;
+        }
+        setStatus("error", "Vendo");
+        return;
+    }
+
+    setStatus("loading", "ZW");
+
+    try {
+        const payload = await postJson("/api/zapotrzebowanie/vendo/zw-details", {
+            code: componentCode,
+            ...connection,
+        });
+
+        if (requestToken !== operationalBomZwRequestToken) return;
+        renderBomZwViewerContent(item, payload);
+        renderCurrentModuleMeta();
+        setStatus("success", "ZW");
+    } catch (error) {
+        if (requestToken !== operationalBomZwRequestToken) return;
+        if (bomZwViewerError) {
+            bomZwViewerError.textContent = error.message || "Nie udalo sie pobrac szczegolow ZW.";
+            bomZwViewerError.classList.remove("hidden");
+        }
+        if (bomZwViewerBody) {
+            bomZwViewerBody.innerHTML = `
+                <tr>
+                    <td colspan="8" class="empty-state">Brak dokumentow ZW dla wybranego indeksu.</td>
+                </tr>
+            `;
+        }
+        setStatus("error", "ZW");
+    }
 }
 
 function renderHeaderNoteCell(header) {
@@ -630,13 +1289,11 @@ function renderHeadersTable(rows, totalRows) {
     }
 
     headersBody.innerHTML = rows.map((header) => `
-        <tr>
+        <tr class="operations-header-row${selectedHeaderId === header.id ? " is-selected" : ""}" data-header-row-id="${escapeHtml(header.id)}">
             <td>${escapeHtml(formatDate(header.termDate))}</td>
             <td>${escapeHtml(header.kkwNumber || "-")}</td>
             <td>
-                <button type="button" class="index-link${selectedHeaderId === header.id ? " active" : ""}" data-header-id="${escapeHtml(header.id)}">
-                    ${escapeHtml(header.productIndex || "-")}
-                </button>
+                <span class="index-link${selectedHeaderId === header.id ? " active" : ""}">${escapeHtml(header.productIndex || "-")}</span>
             </td>
             <td>${escapeHtml(header.productName || "-")}</td>
             <td>${escapeHtml(header.clientName || "-")}</td>
@@ -658,9 +1315,9 @@ function syncHeadersTableViewport() {
 
     requestAnimationFrame(() => {
         const selectedTrigger = selectedHeaderId
-            ? headersBody.querySelector(`[data-header-id="${String(selectedHeaderId).replace(/"/g, '\\"')}"]`)
+            ? headersBody.querySelector(`[data-header-row-id="${String(selectedHeaderId).replace(/"/g, '\\"')}"]`)
             : null;
-        const selectedRow = selectedTrigger?.closest("tr");
+        const selectedRow = selectedTrigger?.closest("tr") || selectedTrigger;
 
         if (selectedRow) {
             selectedRow.scrollIntoView({ block: "nearest" });
@@ -711,13 +1368,30 @@ function canEditBomNote(item) {
         && String(item?.sourceType || "").trim();
 }
 
+function updateBomNoteEditorState(editor) {
+    if (!editor) return;
+    const input = editor.querySelector("input");
+    const hasNote = Boolean(String(input?.value || "").trim());
+    editor.classList.toggle("has-note", hasNote);
+}
+
 function renderBomNoteCell(item) {
+    const resolvedNote = String(resolveBomNote(item) || "").trim();
     if (!canEditBomNote(item)) {
-        return escapeHtml(resolveBomNote(item));
+        if (!resolvedNote || resolvedNote === "-") {
+            return "-";
+        }
+
+        return `
+            <span class="header-note-button bom-note-badge" title="${escapeHtml(resolvedNote)}">
+                ${escapeHtml(truncateText(resolvedNote, 24))}
+            </span>
+        `;
     }
 
+    const currentNote = String(item.note || "").trim();
     return `
-        <div class="bom-note-editor"
+        <div class="bom-note-editor${currentNote ? " has-note" : ""}"
             data-source-type="${escapeHtml(item.sourceType)}"
             data-source-material-id="${escapeHtml(item.sourceMaterialId)}"
             data-component-code="${escapeHtml(item.componentCode || "")}">
@@ -797,7 +1471,7 @@ function renderHeaderDetailTable(items, { totalCount = items.length } = {}) {
             : "Brak pozycji BOM dla wybranego naglowka.";
         headerDetailBody.innerHTML = `
             <tr>
-                <td colspan="10" class="empty-state">${emptyMessage}</td>
+                <td colspan="11" class="empty-state">${emptyMessage}</td>
             </tr>
         `;
         return;
@@ -807,7 +1481,16 @@ function renderHeaderDetailTable(items, { totalCount = items.length } = {}) {
 
     headerDetailBody.innerHTML = sortedItems.map((item) => `
         <tr>
-            <td>${escapeHtml(item.componentCode || "-")}</td>
+            <td>
+                <button
+                    type="button"
+                    class="index-link bom-component-link"
+                    data-bom-code="${escapeHtml(item.componentCode || "")}"
+                    title="Pokaz rozbicie komponentu"
+                >
+                    ${escapeHtml(item.componentCode || "-")}
+                </button>
+            </td>
             <td>${escapeHtml(item.componentName || "-")}</td>
             <td>${escapeHtml(item.typeName || "-")}</td>
             <td>${escapeHtml(formatNumber(item.componentQty))}</td>
@@ -815,6 +1498,20 @@ function renderHeaderDetailTable(items, { totalCount = items.length } = {}) {
             <td>${escapeHtml(formatOptionalNumber(item.totalDemandQty))}</td>
             <td>${escapeHtml(formatNumber(item.wmsStock))}</td>
             <td>${escapeHtml(formatNumber(item.vendoStock))}</td>
+            <td>
+                ${Number(item.zwQty) > 0
+                    ? `
+                        <button
+                            type="button"
+                            class="zw-link"
+                            data-bom-zw-code="${escapeHtml(item.componentCode || "")}"
+                            title="Pokaz szczegoly ZW"
+                        >
+                            ${escapeHtml(formatNumber(item.zwQty))}
+                        </button>
+                    `
+                    : escapeHtml(formatNumber(item.zwQty))}
+            </td>
             <td class="${item.toOrder > 0 ? "access-to-order-shortage" : (item.toOrder < 0 ? "access-to-order-covered" : "access-to-order-zero")}">${escapeHtml(formatNumber(item.toOrder))}</td>
             <td class="bom-note">${renderBomNoteCell(item)}</td>
         </tr>
@@ -837,7 +1534,7 @@ function renderHeaderDetails(payload) {
             `KKW: ${header.kkwNumber || "-"}`,
             `Materialy: ${header.materialOwnershipLabel || header.materialOwnership || "PUSTE"}`,
             `Termin: ${formatDate(header.termDate)}`,
-            "WMS i Vendo sa liczone live, a Zap. total zbiera popyt z aktywnych naglowkow.",
+            "WMS, Vendo i ZW sa liczone live, a Zap. total zbiera popyt z aktywnych naglowkow.",
         ];
         if (warnings.length) parts.push(`Uwaga: ${warnings.join(" ")}`);
         headerDetailDescription.textContent = parts.join(" | ");
@@ -962,6 +1659,8 @@ async function refreshStorageSnapshot() {
 }
 
 async function loadHeaderDetails(headerId, { silentStatus = false } = {}) {
+    closeBomComponentViewer();
+    closeBomZwViewer();
     selectedHeaderId = Number(headerId);
     renderOperationalHeaders();
     if (!silentStatus) setStatus("loading", "Naglowek");
@@ -979,7 +1678,7 @@ async function loadHeaderDetails(headerId, { silentStatus = false } = {}) {
     if (headerDetailBody) {
         headerDetailBody.innerHTML = `
             <tr>
-                <td colspan="10" class="empty-state">Ladowanie pozycji BOM...</td>
+                <td colspan="11" class="empty-state">Ladowanie pozycji BOM...</td>
             </tr>
         `;
     }
@@ -1011,7 +1710,7 @@ async function loadHeaderDetails(headerId, { silentStatus = false } = {}) {
         if (headerDetailBody) {
             headerDetailBody.innerHTML = `
                 <tr>
-                    <td colspan="10" class="empty-state">Brak pozycji dla wybranego naglowka.</td>
+                    <td colspan="11" class="empty-state">Brak pozycji dla wybranego naglowka.</td>
                 </tr>
             `;
         }
@@ -1037,6 +1736,7 @@ async function saveBomNote(trigger) {
     bomNoteSaveInFlight = true;
     setStatus("loading", "Uwagi");
     updateOperationalRefreshStatus();
+    updateBomNoteEditorState(editor);
 
     try {
         const payload = await postJson("/api/zapotrzebowanie/vendo/bom-note", {
@@ -1061,6 +1761,7 @@ async function saveBomNote(trigger) {
                 return item;
             });
         }
+        updateBomNoteEditorState(editor);
         setStatus("success", "Uwagi");
     } catch (error) {
         if (headerDetailError) {
@@ -1143,9 +1844,12 @@ function clearResults() {
 function clearConnection() {
     connectionForm?.reset();
     localStorage.removeItem(STORAGE_KEY);
+    updateConnectionStatusIndicator();
     clearResults();
     renderCurrentModuleMeta();
     setStatus("idle", "Gotowe");
+    updateOperationalRefreshStatus();
+    scheduleOperationalAutoRefresh();
 }
 
 function renderReportSummary(payload) {
@@ -1449,6 +2153,12 @@ async function loadComponentDetails(code, rodzaj) {
 
 if (saveConnectionButton) saveConnectionButton.addEventListener("click", saveConnection);
 if (clearButton) clearButton.addEventListener("click", clearConnection);
+if (connectionForm) {
+    connectionForm.addEventListener("input", () => {
+        updateConnectionStatusIndicator();
+        updateOperationalRefreshStatus();
+    });
+}
 if (refreshStorageButton) refreshStorageButton.addEventListener("click", refreshStorageSnapshot);
 if (headerSearchInput) headerSearchInput.addEventListener("input", renderOperationalHeaders);
 if (headerStatusFilter) headerStatusFilter.addEventListener("change", renderOperationalHeaders);
@@ -1483,8 +2193,8 @@ if (headersBody) {
             return;
         }
 
-        const trigger = event.target.closest("[data-header-id]");
-        if (trigger) loadHeaderDetails(trigger.dataset.headerId);
+        const rowTrigger = event.target.closest("[data-header-row-id]");
+        if (rowTrigger) loadHeaderDetails(rowTrigger.dataset.headerRowId);
     });
 }
 
@@ -1503,6 +2213,21 @@ if (headerNoteViewer) {
 document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && headerNoteViewer && !headerNoteViewer.classList.contains("hidden")) {
         closeHeaderNoteViewer();
+        return;
+    }
+
+    if (event.key === "Escape" && bomZwDocumentViewer && !bomZwDocumentViewer.classList.contains("hidden")) {
+        closeBomZwDocumentViewer();
+        return;
+    }
+
+    if (event.key === "Escape" && bomZwViewer && !bomZwViewer.classList.contains("hidden")) {
+        closeBomZwViewer();
+        return;
+    }
+
+    if (event.key === "Escape" && bomComponentViewer && !bomComponentViewer.classList.contains("hidden")) {
+        closeBomComponentViewer();
     }
 });
 
@@ -1521,7 +2246,83 @@ if (headerDetailCloseButton) {
 if (headerDetailBody) {
     headerDetailBody.addEventListener("click", (event) => {
         const noteButton = event.target.closest(".save-bom-note");
-        if (noteButton) saveBomNote(noteButton);
+        if (noteButton) {
+            saveBomNote(noteButton);
+            return;
+        }
+
+        const zwTrigger = event.target.closest("[data-bom-zw-code]");
+        if (zwTrigger) {
+            const targetPayload = operationalDetailPayload || vendoPilotPayload;
+            const bomItems = Array.isArray(targetPayload?.bomItems) ? targetPayload.bomItems : [];
+            const targetItem = bomItems.find((item) => String(item?.componentCode || "").trim() === String(zwTrigger.dataset.bomZwCode || "").trim());
+            if (targetItem) {
+                void loadBomZwViewer(targetItem);
+            }
+            return;
+        }
+
+        const componentTrigger = event.target.closest("[data-bom-code]");
+        if (componentTrigger) {
+            const targetPayload = operationalDetailPayload || vendoPilotPayload;
+            const bomItems = Array.isArray(targetPayload?.bomItems) ? targetPayload.bomItems : [];
+            const targetItem = bomItems.find((item) => String(item?.componentCode || "").trim() === String(componentTrigger.dataset.bomCode || "").trim());
+            if (targetItem) {
+                void loadBomComponentViewer(targetItem);
+            }
+        }
+    });
+
+    headerDetailBody.addEventListener("input", (event) => {
+        const noteInput = event.target.closest(".bom-note-editor input");
+        if (noteInput) {
+            updateBomNoteEditorState(noteInput.closest(".bom-note-editor"));
+        }
+    });
+}
+
+if (bomComponentViewerCloseButton) {
+    bomComponentViewerCloseButton.addEventListener("click", closeBomComponentViewer);
+}
+
+if (bomComponentViewer) {
+    bomComponentViewer.addEventListener("click", (event) => {
+        if (event.target.closest("[data-bom-component-close]")) {
+            closeBomComponentViewer();
+        }
+    });
+}
+
+if (bomZwViewerCloseButton) {
+    bomZwViewerCloseButton.addEventListener("click", closeBomZwViewer);
+}
+
+if (bomZwViewer) {
+    bomZwViewer.addEventListener("click", (event) => {
+        const documentTrigger = event.target.closest("[data-zw-document-id]");
+        if (documentTrigger) {
+            void loadBomZwDocumentViewer(
+                documentTrigger.dataset.zwDocumentId,
+                documentTrigger.dataset.zwDocumentNumber || ""
+            );
+            return;
+        }
+
+        if (event.target.closest("[data-bom-zw-close]")) {
+            closeBomZwViewer();
+        }
+    });
+}
+
+if (bomZwDocumentViewerCloseButton) {
+    bomZwDocumentViewerCloseButton.addEventListener("click", closeBomZwDocumentViewer);
+}
+
+if (bomZwDocumentViewer) {
+    bomZwDocumentViewer.addEventListener("click", (event) => {
+        if (event.target.closest("[data-bom-zw-document-close]")) {
+            closeBomZwDocumentViewer();
+        }
     });
 }
 

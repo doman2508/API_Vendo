@@ -8,20 +8,12 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/zapotrzebowanie/zapotrzebowanie.css?v=20260410-10">
+    <link rel="stylesheet" href="/core/shell.css">
 </head>
-<body>
+<body data-app-module="zapotrzebowanie" data-app-layout="standard">
     <main class="app-shell">
-        <nav class="nav-bar">
-            <a class="tab" href="/console">Konsola API</a>
-            <a class="tab" href="/kosztykkw">Koszty KKW</a>
-            <a class="tab" href="/production-dashboard">Produkcja</a>
-            <a class="tab" href="/rentownosc">Rentownosc</a>
-            <a class="tab" href="/piaskownica">Piaskownica</a>
-            <a class="tab active" href="/zapotrzebowanie">Zapotrzebowanie</a>
-        </nav>
-
         <div class="context-bar">
-            <span>Zapotrzebowanie ma teraz dwa tryby pracy: operacyjny panel naglowkow z SQLite oraz osobny raport zakupowy liczony z Access, WMS i Vendo.</span>
+            <span id="vendo-connection-status" class="connection-indicator is-disconnected">Vendo: brak logowania</span>
             <span id="status-badge" class="status idle">Gotowe</span>
         </div>
 
@@ -34,33 +26,8 @@
             <div class="left-panel">
                 <section id="operations-view" class="module-view" data-module-view="operations">
                     <section class="table-section">
-                        <div class="table-section-header">
-                            <h3>Dashboard operacyjny</h3>
-                            <p>Pierwszy widok odzwierciedla aplikacje Accessa: naglowki produkcyjne, ich statusy robocze oraz pozycje BOM do pracy zakupowca i produkcji.</p>
-                        </div>
-
                         <div id="operations-summary" class="detail-summary hidden"></div>
                         <div id="operations-error" class="error-box hidden"></div>
-
-                        <div class="vendo-pilot-panel">
-                            <div>
-                                <strong>Pilot naglowka z Vendo</strong>
-                                <span>Pozycja ZLP jako zrodlo naglowka, BOM z KKW albo technologii.</span>
-                            </div>
-                            <form id="vendo-pilot-form" class="vendo-pilot-form">
-                                <label class="compact-field">
-                                    <span>Pozycja ZLP ID</span>
-                                    <input id="vendo-pilot-position-id" name="planPositionId" type="number" min="1" value="6699">
-                                </label>
-                                <button type="submit" id="vendo-pilot-submit" class="btn btn-primary">Pobierz z Vendo</button>
-                            </form>
-                            <div id="vendo-pilot-summary" class="detail-summary hidden"></div>
-                            <div id="vendo-pilot-error" class="error-box hidden"></div>
-                            <details id="vendo-pilot-raw" class="vendo-pilot-raw hidden">
-                                <summary>Surowy JSON pilota</summary>
-                                <pre id="vendo-pilot-output">Brak danych.</pre>
-                            </details>
-                        </div>
 
                         <div class="results-toolbar">
                             <label class="compact-field compact-field-search">
@@ -163,13 +130,14 @@
                                         <th>Zap. total</th>
                                         <th>WMS</th>
                                         <th>Vendo</th>
+                                        <th>ZW</th>
                                         <th>To ord.</th>
                                         <th>Uwagi</th>
                                     </tr>
                                 </thead>
                                 <tbody id="header-detail-body">
                                     <tr>
-                                        <td colspan="10" class="empty-state">Szczegoly pojawia sie po kliknieciu indeksu w tabeli naglowkow.</td>
+                                        <td colspan="11" class="empty-state">Szczegoly pojawia sie po kliknieciu indeksu w tabeli naglowkow.</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -187,6 +155,116 @@
                                 <button type="button" id="header-note-viewer-close" class="btn btn-ghost note-viewer-close">Zamknij</button>
                             </div>
                             <div id="header-note-viewer-body" class="note-viewer-body"></div>
+                        </div>
+                    </div>
+
+                    <div id="bom-component-viewer" class="note-viewer hidden" aria-hidden="true">
+                        <div class="note-viewer-backdrop" data-bom-component-close></div>
+                        <div class="note-viewer-card bom-component-viewer-card" role="dialog" aria-modal="true" aria-labelledby="bom-component-viewer-title">
+                            <div class="table-section-header detail-section-header note-viewer-header">
+                                <div>
+                                    <h3 id="bom-component-viewer-title">Rozbicie komponentu</h3>
+                                    <p id="bom-component-viewer-meta">Widok z aktywnych naglowkow Vendo.</p>
+                                </div>
+                                <button type="button" id="bom-component-viewer-close" class="btn btn-ghost note-viewer-close">Zamknij</button>
+                            </div>
+                            <div id="bom-component-viewer-summary" class="detail-summary bom-component-viewer-summary hidden"></div>
+                            <div id="bom-component-viewer-error" class="error-box bom-component-viewer-error hidden"></div>
+                            <div class="table-wrap bom-component-viewer-table-wrap">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Termin</th>
+                                            <th>KKW</th>
+                                            <th>Zlecenie</th>
+                                            <th>Nr obcy</th>
+                                            <th>Indeks prod.</th>
+                                            <th>Produkt</th>
+                                            <th>Klient</th>
+                                            <th>Ilosc prod.</th>
+                                            <th>Potrzeba</th>
+                                            <th>Dostepne przed</th>
+                                            <th>Brak</th>
+                                            <th>Bilans po</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="bom-component-viewer-body">
+                                        <tr>
+                                            <td colspan="12" class="empty-state">Kliknij kod komponentu w pozycjach BOM, aby zobaczyc rozbicie.</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="bom-zw-viewer" class="note-viewer hidden" aria-hidden="true">
+                        <div class="note-viewer-backdrop" data-bom-zw-close></div>
+                        <div class="note-viewer-card bom-component-viewer-card bom-zw-viewer-card" role="dialog" aria-modal="true" aria-labelledby="bom-zw-viewer-title">
+                            <div class="table-section-header detail-section-header note-viewer-header">
+                                <div>
+                                    <h3 id="bom-zw-viewer-title">Szczegoly ZW</h3>
+                                    <p id="bom-zw-viewer-meta">Widok zamowien wlasnych dla wybranego indeksu.</p>
+                                </div>
+                                <button type="button" id="bom-zw-viewer-close" class="btn btn-ghost note-viewer-close">Zamknij</button>
+                            </div>
+                            <div id="bom-zw-viewer-summary" class="detail-summary bom-component-viewer-summary hidden"></div>
+                            <div id="bom-zw-viewer-error" class="error-box bom-component-viewer-error hidden"></div>
+                            <div class="table-wrap bom-component-viewer-table-wrap bom-zw-viewer-table-wrap">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Data utw.</th>
+                                            <th>Dostawca</th>
+                                            <th>Numer ZW</th>
+                                            <th>Ilosc</th>
+                                            <th>Jedn.</th>
+                                            <th>Data</th>
+                                            <th>Uwagi</th>
+                                            <th>Data Dostawy</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="bom-zw-viewer-body">
+                                        <tr>
+                                            <td colspan="8" class="empty-state">Kliknij wartosc w kolumnie ZW, aby zobaczyc szczegoly dokumentow.</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="bom-zw-document-viewer" class="note-viewer hidden" aria-hidden="true">
+                        <div class="note-viewer-backdrop" data-bom-zw-document-close></div>
+                        <div class="note-viewer-card bom-component-viewer-card bom-zw-document-viewer-card" role="dialog" aria-modal="true" aria-labelledby="bom-zw-document-viewer-title">
+                            <div class="table-section-header detail-section-header note-viewer-header">
+                                <div>
+                                    <h3 id="bom-zw-document-viewer-title">Pozycje ZW</h3>
+                                    <p id="bom-zw-document-viewer-meta">Kliknij numer ZW w poprzednim modalu, aby zobaczyc wszystkie pozycje dokumentu.</p>
+                                </div>
+                                <button type="button" id="bom-zw-document-viewer-close" class="btn btn-ghost note-viewer-close">Zamknij</button>
+                            </div>
+                            <div id="bom-zw-document-viewer-summary" class="detail-summary bom-component-viewer-summary hidden"></div>
+                            <div id="bom-zw-document-viewer-error" class="error-box bom-component-viewer-error hidden"></div>
+                            <div class="table-wrap bom-component-viewer-table-wrap bom-zw-document-viewer-table-wrap">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Kod</th>
+                                            <th>Nazwa</th>
+                                            <th>Ilosc</th>
+                                            <th>Jedn.</th>
+                                            <th>Data</th>
+                                            <th>Uwagi</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="bom-zw-document-viewer-body">
+                                        <tr>
+                                            <td colspan="6" class="empty-state">Kliknij numer ZW, aby zobaczyc wszystkie pozycje dokumentu.</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </section>
@@ -315,59 +393,87 @@
                         <pre id="zapotrzebowanie-raw-output">Brak danych.</pre>
                     </details>
                 </section>
-            </div>
 
-            <div class="right-panel">
-                <section class="zapotrzebowanie-side-panel">
-                    <h2>Snapshot SQLite</h2>
-                    <p class="side-panel-copy">To jest nasza lokalna baza robocza pod nowa wersje aplikacji. Mozesz recznie odswiezyc dane z Accessa i od razu zobaczyc wynik na liscie naglowkow.</p>
-                    <div class="actions-row">
-                        <button type="button" id="refresh-storage" class="btn btn-primary">Odswiez z Accessa</button>
+                <details class="operations-technical-panel">
+                    <summary>Panel techniczny</summary>
+                    <div class="operations-technical-grid">
+                        <section class="zapotrzebowanie-side-panel technical-connection-panel">
+                            <h2>Dostep Vendo</h2>
+                            <form id="connection-form" class="operations-connection-form">
+                                <label class="compact-field">
+                                    <span>Login Vendo</span>
+                                    <input name="vendoUserLogin" type="text" required>
+                                </label>
+                                <label class="compact-field">
+                                    <span>Haslo Vendo</span>
+                                    <input name="vendoUserPassword" type="password" required>
+                                </label>
+                                <div class="toolbar-actions">
+                                    <button type="button" id="save-connection" class="btn btn-success">Zapamietaj</button>
+                                    <button type="button" id="clear-button" class="btn btn-ghost">Wyczysc</button>
+                                    <button type="button" id="refresh-storage" class="btn btn-primary">Odswiez z Accessa</button>
+                                </div>
+                            </form>
+                        </section>
+
+                        <section class="zapotrzebowanie-side-panel">
+                            <h2>Snapshot SQLite</h2>
+                            <p class="side-panel-copy">To jest nasza lokalna baza robocza pod nowa wersje aplikacji. Mozesz recznie odswiezyc dane z Accessa i od razu zobaczyc wynik na liscie naglowkow.</p>
+                            <pre id="storage-meta" class="module-meta">Ladowanie snapshotu...</pre>
+                        </section>
+
+                        <section class="zapotrzebowanie-side-panel technical-pilot-panel">
+                            <div class="vendo-pilot-panel">
+                                <div>
+                                    <strong>Pilot naglowka z Vendo</strong>
+                                    <span>Pozycja ZLP jako zrodlo naglowka, BOM z KKW albo technologii.</span>
+                                </div>
+                                <form id="vendo-pilot-form" class="vendo-pilot-form">
+                                    <label class="compact-field">
+                                        <span>Pozycja ZLP ID</span>
+                                        <input id="vendo-pilot-position-id" name="planPositionId" type="number" min="1" value="6699">
+                                    </label>
+                                    <button type="submit" id="vendo-pilot-submit" class="btn btn-primary">Pobierz z Vendo</button>
+                                </form>
+                                <div id="vendo-pilot-summary" class="detail-summary hidden"></div>
+                                <div id="vendo-pilot-error" class="error-box hidden"></div>
+                                <details id="vendo-pilot-raw" class="vendo-pilot-raw hidden">
+                                    <summary>Surowy JSON pilota</summary>
+                                    <pre id="vendo-pilot-output">Brak danych.</pre>
+                                </details>
+                            </div>
+                        </section>
+
+                        <section class="zapotrzebowanie-side-panel">
+                            <h2>Zrodla danych</h2>
+                            <div class="quick-links">
+                                <article class="quick-link quick-link-static">
+                                    <strong>Access backend</strong>
+                                    <span>Naglowki i pozycje BOM przechodza do naszego snapshotu `SQLite`.</span>
+                                </article>
+                                <article class="quick-link quick-link-static">
+                                    <strong>WMS SQL</strong>
+                                    <span>Stan magazynowy liczony z `dbo.LogisticUnits` oraz `dbo.Materials`.</span>
+                                </article>
+                                <article class="quick-link quick-link-static">
+                                    <strong>Vendo API</strong>
+                                    <span>Raport zakupowy i szczegoly komponentow dalej moga dociagac dane live z Vendo.</span>
+                                </article>
+                            </div>
+                        </section>
+
+                        <section class="zapotrzebowanie-side-panel">
+                            <h2>Meta modulu</h2>
+                            <pre id="module-meta" class="module-meta">Ladowanie danych modulu...</pre>
+                        </section>
                     </div>
-                    <pre id="storage-meta" class="module-meta">Ladowanie snapshotu...</pre>
-                </section>
-
-                <form id="connection-form" class="form-stack">
-                    <label>
-                        <span>Login Vendo</span>
-                        <input name="vendoUserLogin" type="text" required>
-                    </label>
-                    <label>
-                        <span>Haslo Vendo</span>
-                        <input name="vendoUserPassword" type="password" required>
-                    </label>
-                    <div class="actions-row">
-                        <button type="button" id="save-connection" class="btn btn-success">Zapamietaj</button>
-                        <button type="button" id="clear-button" class="btn btn-ghost">Wyczysc</button>
-                    </div>
-                </form>
-
-                <section class="zapotrzebowanie-side-panel">
-                    <h2>Zrodla danych</h2>
-                    <div class="quick-links">
-                        <article class="quick-link quick-link-static">
-                            <strong>Access backend</strong>
-                            <span>Naglowki i pozycje BOM przechodza do naszego snapshotu `SQLite`.</span>
-                        </article>
-                        <article class="quick-link quick-link-static">
-                            <strong>WMS SQL</strong>
-                            <span>Stan magazynowy liczony z `dbo.LogisticUnits` oraz `dbo.Materials`.</span>
-                        </article>
-                        <article class="quick-link quick-link-static">
-                            <strong>Vendo API</strong>
-                            <span>Raport zakupowy i szczegoly komponentow dalej moga dociagac dane live z Vendo.</span>
-                        </article>
-                    </div>
-                </section>
-
-                <section class="zapotrzebowanie-side-panel">
-                    <h2>Meta modulu</h2>
-                    <pre id="module-meta" class="module-meta">Ladowanie danych modulu...</pre>
-                </section>
+                </details>
             </div>
         </div>
     </main>
 
+    <script src="/core/modules.js"></script>
+    <script src="/core/shell.js"></script>
     <script src="/zapotrzebowanie/zapotrzebowanie.js?v=20260410-10"></script>
 </body>
 </html>

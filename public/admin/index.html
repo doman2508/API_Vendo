@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="pl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Vendo Workspace | Administracja</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/core/shell.css">
+    <link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body class="admin-page" data-app-module="admin" data-app-layout="standard">
+    <main class="app-shell">
+        <section class="panel admin-overview">
+            <div class="admin-overview__copy">
+                <h2>Zarzadzanie kontami</h2>
+                <p class="admin-overview__lead">Lokalni uzytkownicy, role i wyjatki dostepowe do modulow.</p>
+                <p class="admin-overview__meta">Plik lokalny: <code id="admin-auth-users-path">.data/auth-users.json</code></p>
+            </div>
+            <div id="admin-stats" class="admin-stats"></div>
+        </section>
+
+        <div id="admin-message" class="admin-flash hidden" aria-live="polite"></div>
+
+        <section class="panel admin-users-panel admin-users-panel--wide">
+            <div class="admin-section-heading">
+                <div>
+                    <h3>Lista kont</h3>
+                    <p>Dodawanie i edycja odbywaja sie w formularzu modalnym, dzieki czemu tabela moze zajac cala szerokosc.</p>
+                </div>
+                <div class="admin-heading-actions">
+                    <label class="admin-search-field">
+                        <span>Szukaj</span>
+                        <input id="admin-user-search" type="search" placeholder="login, nazwa, rola lub modul">
+                    </label>
+                    <button id="admin-create-open" type="button" class="admin-primary-button">Dodaj uzytkownika</button>
+                </div>
+            </div>
+
+            <div class="table-wrap admin-table-wrap">
+                <table class="admin-users-table">
+                    <thead>
+                        <tr>
+                            <th>Login</th>
+                            <th>Nazwa</th>
+                            <th>Role</th>
+                            <th>Dodatkowe moduly</th>
+                            <th>Status</th>
+                            <th>Aktualizacja</th>
+                            <th>Akcje</th>
+                        </tr>
+                    </thead>
+                    <tbody id="admin-users-body"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="panel admin-role-panel">
+            <div class="admin-section-heading">
+                <div>
+                    <h3>Pakiety rol</h3>
+                    <p>Role sa punktem wyjscia. Dodatkowe moduly traktujemy jako kontrolowane wyjatki od standardowego dostepu.</p>
+                </div>
+            </div>
+            <div id="admin-role-cards" class="admin-role-grid"></div>
+        </section>
+    </main>
+
+    <div id="admin-modal" class="admin-modal hidden" role="dialog" aria-modal="true" aria-labelledby="admin-modal-title">
+        <button type="button" class="admin-modal__backdrop" data-admin-modal-close aria-label="Zamknij okno"></button>
+        <section class="admin-modal__dialog">
+            <div class="admin-modal__header">
+                <div class="admin-modal__copy">
+                    <h3 id="admin-modal-title">Dodaj uzytkownika</h3>
+                    <p id="admin-modal-copy">Utworz lokalne konto aplikacji i ustaw jego role oraz dodatkowe moduly.</p>
+                </div>
+                <button type="button" class="admin-modal__close" data-admin-modal-close aria-label="Zamknij okno">Zamknij</button>
+            </div>
+
+            <div id="admin-modal-message" class="admin-modal__flash hidden" aria-live="polite"></div>
+
+            <form id="admin-user-form" class="form-grid admin-form-grid">
+                <label>
+                    <span>Login</span>
+                    <input id="admin-user-login" name="login" type="text" autocomplete="off" required>
+                </label>
+                <label>
+                    <span>Nazwa wyswietlana</span>
+                    <input id="admin-user-display-name" name="displayName" type="text" autocomplete="off">
+                </label>
+                <label id="admin-user-password-field">
+                    <span>Haslo startowe</span>
+                    <input id="admin-user-password" name="password" type="password" autocomplete="new-password" minlength="4">
+                </label>
+                <label class="admin-checkbox-inline">
+                    <input id="admin-user-active" name="isActive" type="checkbox" checked>
+                    <span>Konto aktywne</span>
+                </label>
+
+                <div class="admin-options-block">
+                    <div class="admin-options-block__heading">
+                        <h4>Role</h4>
+                        <p>Rola nadaje podstawowy pakiet dostepu. Admin ma pelny dostep do panelu i wszystkich modulow.</p>
+                    </div>
+                    <div id="admin-user-roles" class="admin-option-grid"></div>
+                </div>
+
+                <div class="admin-options-block">
+                    <div class="admin-options-block__heading">
+                        <h4>Dodatkowe moduly</h4>
+                        <p>To sa wyjatki poza rolami, np. jednorazowy dostep do konkretnego obszaru.</p>
+                    </div>
+                    <div id="admin-user-modules" class="admin-option-grid"></div>
+                </div>
+
+                <div class="actions admin-modal__actions">
+                    <button id="admin-user-submit" type="submit">Utworz konto</button>
+                    <button id="admin-user-cancel" type="button" class="admin-secondary-button" data-admin-modal-close>Anuluj</button>
+                </div>
+            </form>
+
+            <section id="admin-reset-section" class="admin-modal__section hidden">
+                <div class="admin-options-block__heading">
+                    <h4>Reset hasla</h4>
+                    <p>Zmiana hasla nie modyfikuje pozostalych ustawien konta.</p>
+                </div>
+                <form id="admin-reset-password-form" class="form-grid admin-form-grid admin-reset-form">
+                    <label>
+                        <span>Nowe haslo</span>
+                        <input id="admin-reset-password" name="password" type="password" autocomplete="new-password" required minlength="4">
+                    </label>
+                    <div class="actions admin-modal__actions">
+                        <button id="admin-reset-password-submit" type="submit">Zmien haslo</button>
+                    </div>
+                </form>
+            </section>
+        </section>
+    </div>
+
+    <script src="/core/modules.js"></script>
+    <script src="/core/shell.js"></script>
+    <script src="/admin/admin.js"></script>
+</body>
+</html>

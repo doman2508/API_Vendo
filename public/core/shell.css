@@ -1,0 +1,433 @@
+.vendo-shell {
+    position: relative;
+    z-index: 30;
+    display: grid;
+    gap: 10px;
+    padding: 12px 16px;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96));
+    box-shadow: 0 12px 24px rgba(15, 23, 42, 0.06);
+    font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+.vendo-shell__masthead {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: start;
+}
+
+.vendo-shell__brand-block {
+    display: grid;
+    gap: 6px;
+}
+
+.vendo-shell__brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    width: fit-content;
+    color: #0f172a;
+    text-decoration: none;
+}
+
+.vendo-shell__brand-logo {
+    display: block;
+    width: 132px;
+    height: auto;
+    object-fit: contain;
+}
+
+.vendo-shell__brand-copy {
+    display: grid;
+    gap: 3px;
+}
+
+.vendo-shell__brand-title {
+    color: #0f172a;
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+}
+
+.vendo-shell__brand-subtitle {
+    color: #475569;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.vendo-shell__context {
+    display: grid;
+    gap: 2px;
+}
+
+.vendo-shell__eyebrow {
+    color: #0f766e;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.vendo-shell__heading {
+    color: #0f172a;
+    font-size: 21px;
+    font-weight: 800;
+    line-height: 1.05;
+}
+
+.vendo-shell__description {
+    max-width: 820px;
+    color: #475569;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.vendo-shell__actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.vendo-shell__action-link,
+.vendo-shell__action-badge,
+.vendo-shell__action-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 34px;
+    padding: 7px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(15, 23, 42, 0.1);
+    font-size: 12px;
+    font-weight: 700;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.vendo-shell__action-link {
+    color: #0f172a;
+    background: rgba(255, 255, 255, 0.96);
+}
+
+.vendo-shell__action-link:hover {
+    background: #f8fafc;
+}
+
+.vendo-shell__action-badge {
+    color: #475569;
+    background: rgba(241, 245, 249, 0.98);
+}
+
+.vendo-shell__action-button {
+    font: inherit;
+    cursor: pointer;
+    color: #0f172a;
+    background: rgba(255, 255, 255, 0.96);
+}
+
+.vendo-shell__action-button:hover {
+    background: #f8fafc;
+}
+
+.vendo-shell__action-button:disabled {
+    opacity: 0.7;
+    cursor: wait;
+}
+
+.vendo-shell__nav {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 1px;
+    scrollbar-width: thin;
+}
+
+.vendo-shell__nav-item {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 38px;
+    padding: 8px 14px;
+    border-radius: 12px;
+    border: 1px solid rgba(148, 163, 184, 0.26);
+    background: rgba(255, 255, 255, 0.94);
+    color: #1e293b;
+    font-size: 13px;
+    font-weight: 700;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.vendo-shell__nav-item:hover {
+    transform: translateY(-1px);
+    background: rgba(248, 250, 252, 0.98);
+}
+
+.vendo-shell__nav-item.is-active {
+    background: linear-gradient(135deg, #1d4ed8, #2563eb);
+    border-color: transparent;
+    color: #fff;
+    box-shadow: 0 14px 28px rgba(37, 99, 235, 0.2);
+}
+
+.vendo-shell--operator {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+}
+
+.vendo-shell__compact-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 34px;
+    padding: 7px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(15, 23, 42, 0.1);
+    background: rgba(255, 255, 255, 0.96);
+    color: #0f172a;
+    font-size: 12px;
+    font-weight: 700;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.vendo-shell__compact-link:hover {
+    background: #f8fafc;
+}
+
+.vendo-shell__compact-context {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.vendo-shell__compact-context strong {
+    color: #0f172a;
+    font-size: 16px;
+    font-weight: 800;
+}
+
+.vendo-shell__compact-context span {
+    color: #475569;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.vendo-shell__compact-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.start-page {
+    background:
+        radial-gradient(circle at top right, rgba(37, 99, 235, 0.1), transparent 26%),
+        linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+}
+
+.start-page .app-shell {
+    width: min(1320px, calc(100% - 32px));
+}
+
+.start-panel {
+    display: grid;
+    gap: 18px;
+}
+
+.start-section-heading {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.start-section-heading h2 {
+    margin: 0;
+    color: #0f172a;
+    font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+    font-size: 20px;
+    font-weight: 800;
+}
+
+.start-section-heading p {
+    margin: 0;
+    color: #475569;
+    font-size: 14px;
+}
+
+.start-module-groups {
+    display: grid;
+    gap: 18px;
+}
+
+.start-module-group {
+    display: grid;
+    gap: 12px;
+}
+
+.start-module-group-heading {
+    display: grid;
+    gap: 3px;
+}
+
+.start-module-group-heading h3 {
+    margin: 0;
+    color: #0f172a;
+    font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+    font-size: 16px;
+    font-weight: 800;
+}
+
+.start-module-group-heading p {
+    margin: 0;
+    color: #64748b;
+    font-size: 13px;
+}
+
+.start-module-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 14px;
+}
+
+.start-module-card {
+    display: grid;
+    gap: 10px;
+    padding: 18px;
+    border-radius: 18px;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    background: rgba(255, 255, 255, 0.96);
+    text-decoration: none;
+    color: inherit;
+    box-shadow: 0 14px 30px rgba(15, 23, 42, 0.05);
+    transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.start-module-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 18px 34px rgba(15, 23, 42, 0.08);
+    border-color: rgba(37, 99, 235, 0.26);
+}
+
+.start-module-card__eyebrow {
+    color: #0f766e;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.start-module-card__title {
+    color: #0f172a;
+    font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+    font-size: 18px;
+    font-weight: 800;
+    line-height: 1.12;
+}
+
+.start-module-card__description {
+    color: #475569;
+    font-size: 13px;
+    line-height: 1.55;
+}
+
+.start-module-card__footer {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #1d4ed8;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.start-guides {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+}
+
+.start-guide-card {
+    display: grid;
+    gap: 10px;
+    padding: 18px;
+    border-radius: 18px;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    background: rgba(248, 250, 252, 0.96);
+}
+
+.start-guide-card h3 {
+    margin: 0;
+    color: #0f172a;
+    font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+    font-size: 17px;
+    font-weight: 800;
+}
+
+.start-guide-card p,
+.start-guide-card li {
+    margin: 0;
+    color: #475569;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.start-guide-card ul {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+    padding-left: 18px;
+}
+
+body.screen-mode .vendo-shell {
+    display: none;
+}
+
+@media (max-width: 900px) {
+    .vendo-shell__masthead {
+        grid-template-columns: 1fr;
+    }
+
+    .vendo-shell__actions {
+        justify-content: flex-start;
+    }
+}
+
+@media (max-width: 720px) {
+    .vendo-shell {
+        padding: 12px;
+        border-radius: 14px;
+    }
+
+    .vendo-shell__heading {
+        font-size: 18px;
+    }
+
+    .vendo-shell__nav {
+        gap: 6px;
+    }
+
+    .vendo-shell__nav-item {
+        min-height: 36px;
+        padding: 8px 12px;
+    }
+
+    .vendo-shell--operator {
+        grid-template-columns: 1fr;
+        justify-items: start;
+    }
+
+    .start-page .app-shell {
+        width: min(100% - 20px, 1320px);
+    }
+}

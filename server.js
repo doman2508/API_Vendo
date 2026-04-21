@@ -2,10 +2,12 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const crypto = require("crypto");
 const { execFile } = require("child_process");
 const { promisify } = require("util");
 const {
     buildBomNoteKey,
+    getAccessBomNotesForLiveHeader,
     getBomNotesForPlanPosition,
     getHeaderDetails: getZapotrzebowanieHeaderDetails,
     getOperationalOverview: getZapotrzebowanieOperationalOverview,
@@ -14,8 +16,12 @@ const {
     upsertBomNote,
 } = require("./lib/zapotrzebowanie-sqlite");
 const {
+    assignOvenPulsesToBatch,
+    deleteOvenBatch,
+    deleteOvenPulses,
     endOvenBatch,
     getActiveOvenBatch,
+    getBatchUnassignedSuggestion,
     getMesStorageMeta,
     getOvenSummary,
     insertOvenPulse,
@@ -25,6 +31,27 @@ const {
     updateOvenBatchDetails,
     upsertOvenBatchPcsPerPanel,
 } = require("./lib/mes-sqlite");
+const {
+    ALL_MODULE_IDS,
+    ROLE_MODULES,
+    getAllowedModuleIds,
+    getApiRequirement,
+    getDefaultRouteForUser,
+    getPageRequirement,
+    hasModuleAccess,
+    normalizePathname,
+} = require("./lib/app-access");
+const {
+    createUser,
+    findUserByLogin,
+    getAuthUsersPath,
+    getPublicUser,
+    getUserById,
+    listUsers,
+    setUserPassword,
+    updateUser,
+    verifyPassword,
+} = require("./lib/auth-store");
 
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
@@ -46,11 +73,17 @@ const kkwOverviewContextCache = new Map();
 const vendoOperationalHeadersCache = new Map();
 const vendoOperationalHeaderSummaryCache = new Map();
 const vendoDemandTotalsCache = new Map();
+const vendoDemandDetailsCache = new Map();
+const vendoZwDetailsCache = new Map();
+const vendoZwDocumentDetailsCache = new Map();
 const vendoTechnologyLookupCache = new Map();
 const zapotrzebowanieSourceCache = new Map();
 const zapotrzebowanieDetailCache = new Map();
 const wmsInventoryCache = new Map();
 const vendoInventoryCache = new Map();
+const authSessionStore = new Map();
+const AUTH_SESSION_COOKIE = "vendo_workspace_session";
+const AUTH_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 
 function getCacheEntry(cache, key, ttlMs) {
     const entry = cache.get(key);
@@ -108,6 +141,8 @@ function parseStartLocalConfig() {
         ACCESS_BACKEND_PATH: "",
         SQLITE_DB_PATH: "",
         MES_SQLITE_DB_PATH: "",
+        APP_ADMIN_LOGIN: "",
+        APP_ADMIN_PASSWORD: "",
     };
 
     try {
@@ -226,6 +261,313 @@ function sendJson(res, statusCode, payload) {
 function sendText(res, statusCode, payload) {
     res.writeHead(statusCode, { "Content-Type": "text/plain; charset=utf-8" });
     res.end(payload);
+}
+
+function getAuthConfig() {
+    const localConfig = parseStartLocalConfig();
+
+    return {
+        adminLogin: (process.env.APP_ADMIN_LOGIN || localConfig.APP_ADMIN_LOGIN || "admin").trim() || "admin",
+        adminPassword: process.env.APP_ADMIN_PASSWORD || localConfig.APP_ADMIN_PASSWORD || "admin",
+    };
+}
+
+function parseCookies(req) {
+    const cookieHeader = String(req?.headers?.cookie || "");
+    const cookies = {};
+
+    for (const part of cookieHeader.split(";")) {
+        const [rawName, ...rawValueParts] = part.split("=");
+        const name = String(rawName || "").trim();
+        if (!name) {
+            continue;
+        }
+
+        cookies[name] = decodeURIComponent(rawValueParts.join("=").trim());
+    }
+
+    return cookies;
+}
+
+function pruneExpiredAuthSessions() {
+    const now = Date.now();
+
+    for (const [sessionId, session] of authSessionStore.entries()) {
+        if (!session || Number(session.expiresAt) <= now) {
+            authSessionStore.delete(sessionId);
+        }
+    }
+}
+
+function setCookie(res, value) {
+    res.setHeader("Set-Cookie", value);
+}
+
+function setAuthSessionCookie(res, sessionId, expiresAt) {
+    const maxAgeSeconds = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
+    setCookie(
+        res,
+        `${AUTH_SESSION_COOKIE}=${sessionId}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${maxAgeSeconds}`
+    );
+}
+
+function clearAuthSessionCookie(res) {
+    setCookie(
+        res,
+        `${AUTH_SESSION_COOKIE}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0`
+    );
+}
+
+function createAuthSession(user) {
+    pruneExpiredAuthSessions();
+    const sessionId = crypto.randomBytes(32).toString("hex");
+    const expiresAt = Date.now() + AUTH_SESSION_TTL_MS;
+
+    authSessionStore.set(sessionId, {
+        id: sessionId,
+        userId: user.id,
+        expiresAt,
+    });
+
+    return {
+        id: sessionId,
+        expiresAt,
+    };
+}
+
+function resolveAuthContext(req) {
+    pruneExpiredAuthSessions();
+
+    const sessionId = parseCookies(req)[AUTH_SESSION_COOKIE];
+    if (!sessionId) {
+        return {
+            session: null,
+            user: null,
+            publicUser: null,
+            allowedModuleIds: [],
+        };
+    }
+
+    const session = authSessionStore.get(sessionId);
+    if (!session || Number(session.expiresAt) <= Date.now()) {
+        authSessionStore.delete(sessionId);
+        return {
+            session: null,
+            user: null,
+            publicUser: null,
+            allowedModuleIds: [],
+        };
+    }
+
+    const user = getUserById(session.userId, getAuthConfig());
+    if (!user || user.isActive === false) {
+        authSessionStore.delete(sessionId);
+        return {
+            session: null,
+            user: null,
+            publicUser: null,
+            allowedModuleIds: [],
+        };
+    }
+
+    session.expiresAt = Date.now() + AUTH_SESSION_TTL_MS;
+    authSessionStore.set(sessionId, session);
+
+    return {
+        session,
+        user,
+        publicUser: getPublicUser(user),
+        allowedModuleIds: getAllowedModuleIds(user),
+    };
+}
+
+function getLoginRedirectPath(req) {
+    const requestUrl = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    const nextValue = `${requestUrl.pathname}${requestUrl.search}`;
+    return `/login?next=${encodeURIComponent(nextValue)}`;
+}
+
+function buildSafeNextPath(rawNextPath, user) {
+    const defaultPath = getDefaultRouteForUser(user);
+    const nextPath = String(rawNextPath || "").trim();
+
+    if (!nextPath || !nextPath.startsWith("/") || nextPath.startsWith("//")) {
+        return defaultPath;
+    }
+
+    try {
+        const nextUrl = new URL(nextPath, "http://localhost");
+        const nextRequirement = getPageRequirement(nextUrl.pathname);
+
+        if (normalizePathname(nextUrl.pathname) === "/login") {
+            return defaultPath;
+        }
+
+        if (nextRequirement && !hasModuleAccess(user, nextRequirement.modules)) {
+            return defaultPath;
+        }
+
+        return `${nextUrl.pathname}${nextUrl.search}`;
+    } catch {
+        return defaultPath;
+    }
+}
+
+async function handleApiAuthLogin(req, res) {
+    try {
+        const body = await readJsonBody(req);
+        const login = String(body.login || "").trim();
+        const password = String(body.password || "");
+
+        if (!login || !password) {
+            return sendJson(res, 400, { error: "Podaj login i haslo." });
+        }
+
+        const user = findUserByLogin(login, getAuthConfig());
+        if (!user || user.isActive === false || !verifyPassword(user, password)) {
+            clearAuthSessionCookie(res);
+            return sendJson(res, 401, { error: "Nieprawidlowy login lub haslo." });
+        }
+
+        const session = createAuthSession(user);
+        setAuthSessionCookie(res, session.id, session.expiresAt);
+
+        sendJson(res, 200, {
+            user: getPublicUser(user),
+            allowedModuleIds: getAllowedModuleIds(user),
+            redirectTo: buildSafeNextPath(body.next, user),
+        });
+    } catch (error) {
+        sendJson(res, 500, {
+            error: error.message || "Nie udalo sie zalogowac.",
+        });
+    }
+}
+
+function handleApiAuthMe(_req, res, authContext) {
+    if (!authContext.user) {
+        return sendJson(res, 401, { error: "Sesja wygasla. Zaloguj sie ponownie." });
+    }
+
+    if (authContext.session?.id) {
+        setAuthSessionCookie(res, authContext.session.id, authContext.session.expiresAt);
+    }
+
+    sendJson(res, 200, {
+        user: authContext.publicUser,
+        allowedModuleIds: authContext.allowedModuleIds,
+        defaultPath: getDefaultRouteForUser(authContext.user),
+    });
+}
+
+function handleApiAuthLogout(_req, res, authContext) {
+    if (authContext.session?.id) {
+        authSessionStore.delete(authContext.session.id);
+    }
+
+    clearAuthSessionCookie(res);
+    sendJson(res, 200, { ok: true });
+}
+
+function isAdminUser(user) {
+    return Boolean(user && Array.isArray(user.roles) && user.roles.includes("admin"));
+}
+
+function getAdminMeta() {
+    const assignableModules = ALL_MODULE_IDS.filter((moduleId) => moduleId !== "start" && moduleId !== "admin");
+    return {
+        authUsersPath: getAuthUsersPath(),
+        roles: ["admin", ...Object.keys(ROLE_MODULES)],
+        roleModules: ROLE_MODULES,
+        modules: ALL_MODULE_IDS,
+        assignableModules,
+    };
+}
+
+function sanitizeAdminRoles(value) {
+    const allowedRoles = new Set(getAdminMeta().roles);
+    return Array.isArray(value)
+        ? Array.from(new Set(value.map((role) => String(role || "").trim()).filter((role) => allowedRoles.has(role))))
+        : [];
+}
+
+function sanitizeAdminModules(value) {
+    const allowedModules = new Set(getAdminMeta().assignableModules);
+    return Array.isArray(value)
+        ? Array.from(new Set(value.map((moduleId) => String(moduleId || "").trim()).filter((moduleId) => allowedModules.has(moduleId))))
+        : [];
+}
+
+function buildAdminUsersPayload() {
+    return {
+        users: listUsers(getAuthConfig()).map((user) => getPublicUser(user)),
+        meta: getAdminMeta(),
+    };
+}
+
+function handleApiAdminUsers(_req, res) {
+    sendJson(res, 200, buildAdminUsersPayload());
+}
+
+async function handleApiAdminUsersCreate(req, res) {
+    try {
+        const body = await readJsonBody(req);
+        const user = createUser({
+            login: body.login,
+            displayName: body.displayName,
+            password: body.password,
+            roles: sanitizeAdminRoles(body.roles),
+            modules: sanitizeAdminModules(body.modules),
+            isActive: body.isActive !== false,
+        }, getAuthConfig());
+
+        sendJson(res, 201, {
+            user: getPublicUser(user),
+            ...buildAdminUsersPayload(),
+        });
+    } catch (error) {
+        sendJson(res, 400, {
+            error: error.message || "Nie udalo sie utworzyc uzytkownika.",
+        });
+    }
+}
+
+async function handleApiAdminUserUpdate(req, res, userId) {
+    try {
+        const body = await readJsonBody(req);
+        const user = updateUser(userId, {
+            login: body.login,
+            displayName: body.displayName,
+            roles: sanitizeAdminRoles(body.roles),
+            modules: sanitizeAdminModules(body.modules),
+            isActive: body.isActive !== false,
+        }, getAuthConfig());
+
+        sendJson(res, 200, {
+            user: getPublicUser(user),
+            ...buildAdminUsersPayload(),
+        });
+    } catch (error) {
+        sendJson(res, 400, {
+            error: error.message || "Nie udalo sie zaktualizowac uzytkownika.",
+        });
+    }
+}
+
+async function handleApiAdminUserResetPassword(req, res, userId) {
+    try {
+        const body = await readJsonBody(req);
+        const user = setUserPassword(userId, body.password, getAuthConfig());
+
+        sendJson(res, 200, {
+            user: getPublicUser(user),
+            message: `Haslo dla ${user.login} zostalo zmienione.`,
+        });
+    } catch (error) {
+        sendJson(res, 400, {
+            error: error.message || "Nie udalo sie zmienic hasla.",
+        });
+    }
 }
 
 function resolveVendoUserCredentials(body = {}) {
@@ -673,26 +1015,58 @@ function isAllowedOperationalSeries(value) {
     return normalizeText(value) === "msx";
 }
 
-function buildVendoInventoryCacheKey(connection, code, includeExpected = true) {
+function buildVendoInventoryCacheKey(connection, code, {
+    includeExpected = true,
+    includeZw = false,
+} = {}) {
+    const mode = includeExpected
+        ? (includeZw ? "full+zw" : "full")
+        : (includeZw ? "stock+zw" : "stock");
     return [
         connection.baseUrl,
         connection.vendoUserLogin,
-        includeExpected ? "full" : "stock",
+        mode,
         String(code || "").trim(),
     ].join("::");
 }
 
-async function fetchVendoInventoryForCode(connection, accessToken, code, { includeExpected = true } = {}) {
+function isZwDocumentNumber(value) {
+    const normalized = String(value || "").trim().toUpperCase();
+    return normalized.endsWith("/ZW")
+        || normalized.endsWith("ZW")
+        || normalized.includes("/ZW/")
+        || normalized.includes(" ZW");
+}
+
+function isZwDocumentRecord(record) {
+    const kind = String(record?.RodzajKod || "").trim().toUpperCase();
+    return kind === "ZW" || isZwDocumentNumber(record?.NumerPelny);
+}
+
+function isZwBackorderRecord(record, document = null) {
+    if (!record) return false;
+    return isZwDocumentRecord(document)
+        || isZwDocumentNumber(record?.NumerDokumentu);
+}
+
+async function fetchVendoInventoryForCode(connection, accessToken, code, {
+    includeExpected = true,
+    includeZw = false,
+} = {}) {
     const normalizedCode = String(code || "").trim();
     if (!normalizedCode) {
         return {
             code: "",
             vendoStock: 0,
             vendoExpected: 0,
+            zwQty: 0,
         };
     }
 
-    const cacheKey = buildVendoInventoryCacheKey(connection, normalizedCode, includeExpected);
+    const cacheKey = buildVendoInventoryCacheKey(connection, normalizedCode, {
+        includeExpected,
+        includeZw,
+    });
     const cached = getCacheEntry(vendoInventoryCache, cacheKey, 20 * 60 * 1000);
     if (cached) {
         return cached;
@@ -706,8 +1080,9 @@ async function fetchVendoInventoryForCode(connection, accessToken, code, { inclu
     const productRecord = productRecords.find((item) => String(item?.Kod || "").trim() === normalizedCode) || productRecords[0] || null;
     const vendoStock = Number(productRecord?.LacznyStan) || 0;
     let vendoExpected = 0;
+    let zwQty = 0;
 
-    if (includeExpected) {
+    if (includeExpected || includeZw) {
         const expectedRecords = await fetchAllCursorRecords(
             connection,
             accessToken,
@@ -722,17 +1097,30 @@ async function fetchVendoInventoryForCode(connection, accessToken, code, { inclu
                 maxPages: 20,
             }
         );
-        vendoExpected = expectedRecords.reduce((sum, item) => sum + (Number(item?.Ilosc) || 0), 0);
+        if (includeExpected) {
+            vendoExpected = expectedRecords.reduce((sum, item) => sum + (Number(item?.Ilosc) || 0), 0);
+        }
+        if (includeZw) {
+            zwQty = expectedRecords
+                .filter((item) => isZwBackorderRecord(item))
+                .reduce((sum, item) => sum + (Number(item?.Ilosc) || 0), 0);
+        }
     }
 
     return setCacheEntry(vendoInventoryCache, cacheKey, {
         code: normalizedCode,
         vendoStock,
         vendoExpected,
+        zwQty,
     });
 }
 
-async function fetchVendoInventoryMap(connection, accessToken, codes, { includeExpected = true, concurrency = 6, warnings = null } = {}) {
+async function fetchVendoInventoryMap(connection, accessToken, codes, {
+    includeExpected = true,
+    includeZw = false,
+    concurrency = 6,
+    warnings = null,
+} = {}) {
     const normalizedCodes = [...new Set((codes || [])
         .map((item) => String(item || "").trim())
         .filter(Boolean))];
@@ -743,7 +1131,10 @@ async function fetchVendoInventoryMap(connection, accessToken, codes, { includeE
 
     const inventoryRows = await mapWithConcurrency(normalizedCodes, concurrency, async (code) => {
         try {
-            return await fetchVendoInventoryForCode(connection, accessToken, code, { includeExpected });
+            return await fetchVendoInventoryForCode(connection, accessToken, code, {
+                includeExpected,
+                includeZw,
+            });
         } catch (error) {
             if (Array.isArray(warnings)) {
                 warnings.push(`Nie udalo sie pobrac danych Vendo dla kodu ${code}: ${error.message}`);
@@ -753,6 +1144,7 @@ async function fetchVendoInventoryMap(connection, accessToken, codes, { includeE
                 code,
                 vendoStock: 0,
                 vendoExpected: 0,
+                zwQty: 0,
             };
         }
     });
@@ -1425,6 +1817,47 @@ function buildDocumentsLookupByOrderIdsModel({ orderIds, pageSize }) {
     };
 }
 
+function buildDocumentsLookupByIdsModel({ documentIds, pageSize, includeItems = false }) {
+    return {
+        Cursor: true,
+        CursorCzyZamknac: false,
+        Strona: {
+            Indeks: 0,
+            LiczbaRekordow: Number.isFinite(pageSize) ? pageSize : Math.max(documentIds.length * 2, 20),
+        },
+        DokumentyID: documentIds,
+        ZwracanePola: [
+            "ID",
+            "RodzajKod",
+            "NumerPelny",
+            "DataWystawienia",
+            "Data1",
+            "Data2",
+            "Klient1Nazwa",
+            "Opis",
+            ...(includeItems ? ["Pozycje"] : []),
+        ],
+    };
+}
+
+function buildVendoZwDetailsCacheKey(connection, componentCode = "") {
+    return [
+        connection?.baseUrl || "",
+        connection?.vendoUserLogin || "",
+        "zw-detail",
+        String(componentCode || "").trim().toUpperCase(),
+    ].join("::");
+}
+
+function buildVendoZwDocumentDetailsCacheKey(connection, documentId) {
+    return [
+        connection?.baseUrl || "",
+        connection?.vendoUserLogin || "",
+        "zw-document-detail",
+        String(Number(documentId) || 0),
+    ].join("::");
+}
+
 function getForeignNumberFromRecord(record) {
     const fieldNames = [
         "pz_value84",
@@ -1686,6 +2119,25 @@ function buildVendoDemandTotalsCacheKey(connection, {
         Number(pageSize) || 100,
         Number(maxPages) || 2,
         normalizeMaterialOwnershipFilter(materialOwnershipFilter),
+    ].join("::");
+}
+
+function buildVendoDemandDetailsCacheKey(connection, {
+    componentCode = "",
+    pageSize = 100,
+    maxPages = 2,
+    materialOwnershipFilter = "MSX_OR_EMPTY",
+    includeVendo = true,
+} = {}) {
+    return [
+        connection?.baseUrl || "",
+        connection?.vendoUserLogin || "",
+        "detail",
+        String(componentCode || "").trim().toUpperCase(),
+        Number(pageSize) || 100,
+        Number(maxPages) || 2,
+        normalizeMaterialOwnershipFilter(materialOwnershipFilter),
+        includeVendo ? "vendo-stock" : "wms-only",
     ].join("::");
 }
 
@@ -2385,7 +2837,478 @@ async function getVendoOperationalDemandTotals({
     return setCacheEntry(vendoDemandTotalsCache, cacheKey, totalsByCode);
 }
 
-async function enrichBomItemsWithLiveInventory({ bomItems, connection, accessToken, includeVendo, warnings }) {
+async function getVendoOperationalComponentDetails({
+    connection,
+    accessToken,
+    componentCode,
+    materialOwnershipFilter = "MSX_OR_EMPTY",
+    pageSize = 100,
+    maxPages = 2,
+    includeVendo = true,
+    warnings = [],
+    forceRefresh = false,
+} = {}) {
+    const normalizedComponentCode = String(componentCode || "").trim().toUpperCase();
+    const cacheKey = buildVendoDemandDetailsCacheKey(connection, {
+        componentCode: normalizedComponentCode,
+        pageSize,
+        maxPages,
+        materialOwnershipFilter,
+        includeVendo,
+    });
+    const cached = forceRefresh ? null : getCacheEntry(vendoDemandDetailsCache, cacheKey, 2 * 60 * 1000);
+    if (cached) {
+        if (Array.isArray(cached?.warnings) && cached.warnings.length) {
+            warnings.push(...cached.warnings);
+        }
+        return cached;
+    }
+
+    const overviewContext = await getVendoOperationalHeadersContext({
+        connection,
+        accessToken,
+        pageSize,
+        maxPages,
+        includeClosed: false,
+        includeNoScope: true,
+        materialOwnershipFilter,
+        forceRefresh,
+    });
+
+    if (Array.isArray(overviewContext?.warnings) && overviewContext.warnings.length) {
+        warnings.push(...overviewContext.warnings);
+    }
+
+    const activeHeaderContexts = (overviewContext?.headerContexts || [])
+        .filter((context) => context?.header?.includeInDemand);
+    if (!activeHeaderContexts.length || !normalizedComponentCode) {
+        return setCacheEntry(vendoDemandDetailsCache, cacheKey, {
+            componentCode: normalizedComponentCode,
+            componentName: null,
+            typeName: null,
+            inventory: {
+                wmsStock: 0,
+                vendoStock: 0,
+                vendoExpected: 0,
+            },
+            rows: [],
+            warnings: [...new Set(warnings.filter(Boolean))],
+        });
+    }
+
+    const uniqueKkwIds = [...new Set(activeHeaderContexts
+        .flatMap((context) => (context?.kkwRecords || [])
+            .map((record) => Number(record?.ID))
+            .filter((value) => Number.isInteger(value) && value > 0)))];
+    let kkwMaterialRowsById = new Map();
+    if (uniqueKkwIds.length) {
+        try {
+            kkwMaterialRowsById = groupRowsByNumericKey(
+                await fetchKkwMaterialRowsByIds(connection, accessToken, uniqueKkwIds, {
+                    pageSize: 500,
+                    maxPages: 20,
+                }),
+                "KKWID"
+            );
+        } catch (error) {
+            warnings.push(`Nie udalo sie pobrac materialowki KKW do szczegolow komponentu: ${error.message}`);
+        }
+    }
+
+    const technologyCandidates = new Map();
+    for (const context of activeHeaderContexts) {
+        const kkwIds = (context?.kkwRecords || [])
+            .map((record) => Number(record?.ID))
+            .filter((value) => Number.isInteger(value) && value > 0);
+        const kkwRows = kkwIds.flatMap((kkwId) => kkwMaterialRowsById.get(kkwId) || []);
+        const hasKkwConsumptionRows = kkwRows.some((row) => normalizeText(row?.Typ) === "rozchod");
+        if (hasKkwConsumptionRows) {
+            continue;
+        }
+
+        const position = context?.positionWithFields || context?.position || {};
+        const technologyKey = buildVendoTechnologyLookupCacheKey(connection, position);
+        if (!technologyCandidates.has(technologyKey)) {
+            technologyCandidates.set(technologyKey, position);
+        }
+    }
+
+    const technologyByKey = new Map();
+    if (technologyCandidates.size) {
+        const technologyEntries = await mapWithConcurrency(
+            [...technologyCandidates.entries()],
+            4,
+            async ([technologyKey, position]) => {
+                try {
+                    return [technologyKey, await resolveTechnologyForPosition(connection, accessToken, position)];
+                } catch (error) {
+                    warnings.push(`Nie udalo sie znalezc technologii dla ${String(position?.Kod || position?.ID || "-")}: ${error.message}`);
+                    return [technologyKey, null];
+                }
+            }
+        );
+
+        for (const [technologyKey, technology] of technologyEntries) {
+            technologyByKey.set(technologyKey, technology);
+        }
+    }
+
+    const uniqueTechnologyIds = [...new Set([...technologyByKey.values()]
+        .map((technology) => Number(technology?.ID))
+        .filter((value) => Number.isInteger(value) && value > 0))];
+    let technologyMaterialRowsById = new Map();
+    if (uniqueTechnologyIds.length) {
+        try {
+            technologyMaterialRowsById = groupRowsByNumericKey(
+                await fetchTechnologyMaterialRowsByIds(connection, accessToken, uniqueTechnologyIds, {
+                    pageSize: 500,
+                    maxPages: 20,
+                }),
+                "TechnologiaID"
+            );
+        } catch (error) {
+            warnings.push(`Nie udalo sie pobrac materialowki technologii do szczegolow komponentu: ${error.message}`);
+        }
+    }
+
+    const rows = [];
+    let resolvedComponentName = null;
+    let resolvedTypeName = null;
+
+    for (const context of activeHeaderContexts) {
+        const position = context?.positionWithFields || context?.position || {};
+        const orderQty = getPositiveNumber(position?.Ilosc);
+        const kkwIds = (context?.kkwRecords || [])
+            .map((record) => Number(record?.ID))
+            .filter((value) => Number.isInteger(value) && value > 0);
+        const kkwRows = kkwIds.flatMap((kkwId) => (kkwMaterialRowsById.get(kkwId) || []).map((row) => ({
+            ...row,
+            KKWID: Number(row?.KKWID) || kkwId,
+        })));
+        const hasKkwConsumptionRows = kkwRows.some((row) => normalizeText(row?.Typ) === "rozchod");
+
+        let sourceType = "technology";
+        let materialRows = [];
+        if (hasKkwConsumptionRows) {
+            sourceType = "kkw";
+            materialRows = kkwRows;
+        } else {
+            const technology = technologyByKey.get(buildVendoTechnologyLookupCacheKey(connection, position)) || null;
+            materialRows = technology ? (technologyMaterialRowsById.get(Number(technology?.ID)) || []) : [];
+        }
+
+        if (!materialRows.length) {
+            continue;
+        }
+
+        const bomItems = filterBomItemsByVendoScope(
+            normalizeVendoBomItems(materialRows, {
+                sourceType,
+                orderQty,
+            }),
+            context?.statusScope
+        );
+
+        const matchingItems = bomItems.filter((item) => String(item?.componentCode || "").trim().toUpperCase() === normalizedComponentCode);
+        if (!matchingItems.length) {
+            continue;
+        }
+
+        const requiredQty = matchingItems.reduce((sum, item) => sum + getPositiveNumber(item?.requiredQty), 0);
+        if (requiredQty <= 0) {
+            continue;
+        }
+
+        if (!resolvedComponentName) {
+            resolvedComponentName = matchingItems.find((item) => String(item?.componentName || "").trim())?.componentName || null;
+        }
+        if (!resolvedTypeName) {
+            resolvedTypeName = matchingItems.find((item) => String(item?.typeName || "").trim())?.typeName || null;
+        }
+
+        rows.push({
+            headerId: Number(context?.header?.id) || null,
+            planPositionId: Number(context?.header?.sourcePlanPositionId) || null,
+            planningOrderId: Number(context?.header?.sourcePlanOrderId) || null,
+            termDate: context?.header?.termDate || null,
+            kkwNumber: context?.header?.kkwNumber || null,
+            orderNumber: context?.header?.zlpNumber || null,
+            foreignNumber: context?.header?.nrObcy || null,
+            vendoProductCode: context?.header?.productIndex || null,
+            vendoProductName: context?.header?.productName || null,
+            clientName: context?.header?.clientName || null,
+            orderQty: getPositiveNumber(context?.header?.orderQty),
+            requiredQty,
+            stageKey: context?.header?.stageKey || null,
+            stageLabel: context?.header?.stageLabel || null,
+            planningSeries: context?.header?.planningSeries || null,
+            materialOwnershipLabel: context?.header?.materialOwnershipLabel || null,
+        });
+    }
+
+    rows.sort((left, right) => {
+        const leftTerm = Date.parse(String(left?.termDate || "")) || 0;
+        const rightTerm = Date.parse(String(right?.termDate || "")) || 0;
+        if (leftTerm !== rightTerm) {
+            return leftTerm - rightTerm;
+        }
+
+        const leftKkw = String(left?.kkwNumber || "");
+        const rightKkw = String(right?.kkwNumber || "");
+        const kkwCompare = leftKkw.localeCompare(rightKkw, "pl");
+        if (kkwCompare !== 0) {
+            return kkwCompare;
+        }
+
+        return String(left?.orderNumber || "").localeCompare(String(right?.orderNumber || ""), "pl");
+    });
+
+    let wmsStock = 0;
+    let vendoStock = 0;
+    let vendoExpected = 0;
+    const wmsMissing = requireWmsSqlConfig();
+    if (wmsMissing.length) {
+        warnings.push(`Brakuje konfiguracji WMS: ${[...new Set(wmsMissing)].join(", ")}.`);
+    } else {
+        try {
+            wmsStock = getPositiveNumber((await getWmsInventoryForCodes([normalizedComponentCode])).get(normalizedComponentCode)?.wmsStock);
+        } catch (error) {
+            warnings.push(`Nie udalo sie pobrac stanu WMS dla ${normalizedComponentCode}: ${error.message}`);
+        }
+    }
+
+    if (includeVendo) {
+        try {
+            const vendoInventoryByCode = await fetchVendoInventoryMap(connection, accessToken, [normalizedComponentCode], {
+                includeExpected: false,
+                concurrency: 1,
+                warnings,
+            });
+            vendoStock = getPositiveNumber(vendoInventoryByCode.get(normalizedComponentCode)?.vendoStock);
+            vendoExpected = getPositiveNumber(vendoInventoryByCode.get(normalizedComponentCode)?.vendoExpected);
+        } catch (error) {
+            warnings.push(`Nie udalo sie pobrac stanu Vendo dla ${normalizedComponentCode}: ${error.message}`);
+        }
+    }
+
+    return setCacheEntry(vendoDemandDetailsCache, cacheKey, {
+        componentCode: normalizedComponentCode,
+        componentName: resolvedComponentName,
+        typeName: resolvedTypeName,
+        inventory: {
+            wmsStock,
+            vendoStock,
+            vendoExpected,
+        },
+        rows,
+        warnings: [...new Set(warnings.filter(Boolean))],
+    });
+}
+
+async function getVendoZwDetailsForComponent({
+    connection,
+    accessToken,
+    componentCode,
+    warnings = [],
+    forceRefresh = false,
+} = {}) {
+    const normalizedComponentCode = String(componentCode || "").trim().toUpperCase();
+    const cacheKey = buildVendoZwDetailsCacheKey(connection, normalizedComponentCode);
+    const cached = forceRefresh ? null : getCacheEntry(vendoZwDetailsCache, cacheKey, 2 * 60 * 1000);
+    if (cached) {
+        if (Array.isArray(cached?.warnings) && cached.warnings.length) {
+            warnings.push(...cached.warnings);
+        }
+        return cached;
+    }
+
+    if (!normalizedComponentCode) {
+        return setCacheEntry(vendoZwDetailsCache, cacheKey, {
+            componentCode: "",
+            componentName: null,
+            unitCode: null,
+            totalQty: 0,
+            rows: [],
+            warnings: [],
+        });
+    }
+
+    const backorderRows = await fetchAllCursorRecords(
+        connection,
+        accessToken,
+        "/Magazyn/Backordery/Lista",
+        buildBackordersModel({
+            productCode: normalizedComponentCode,
+            direction: "1",
+            pageSize: 100,
+        }),
+        {
+            pageSize: 100,
+            maxPages: 20,
+        }
+    );
+
+    const documentIds = [...new Set(backorderRows
+        .map((item) => Number(item?.DokumentID))
+        .filter((value) => Number.isInteger(value) && value > 0))];
+
+    let documentById = new Map();
+    if (documentIds.length) {
+        try {
+            const documents = await resolveDocumentsByIds(connection, accessToken, documentIds, {
+                allowMissing: true,
+                includeItems: true,
+            });
+            documentById = new Map(
+                documents
+                    .filter((item) => Number.isInteger(Number(item?.ID)))
+                    .map((item) => [Number(item.ID), item])
+            );
+        } catch (error) {
+            warnings.push(`Nie udalo sie pobrac dokumentow ZW dla ${normalizedComponentCode}: ${error.message}`);
+        }
+    }
+
+    const rows = backorderRows
+        .filter((row) => isZwBackorderRecord(row, documentById.get(Number(row?.DokumentID))))
+        .map((row) => {
+            const documentId = Number(row?.DokumentID) || null;
+            const document = documentById.get(documentId) || null;
+            const documentItems = Array.isArray(document?.Pozycje) ? document.Pozycje : [];
+            const matchedItem = documentItems.find((item) => Number(item?.ElementID) === Number(row?.PozycjaDokumentuID))
+                || documentItems.find((item) => String(item?.Towar?.Kod || "").trim().toUpperCase() === normalizedComponentCode)
+                || null;
+
+            return {
+                backorderId: Number(row?.ID) || null,
+                documentId,
+                documentKind: String(document?.RodzajKod || "").trim() || null,
+                documentNumber: String(document?.NumerPelny || row?.NumerDokumentu || "").trim() || null,
+                supplierName: String(document?.Klient1Nazwa || "").trim() || null,
+                createdAt: row?.DataUtworzenia || document?.Data2 || null,
+                expectedDate: matchedItem?.DataRealizacji || row?.DataBackorderu || document?.Data1 || null,
+                date1: document?.Data1 || null,
+                date2: document?.Data2 || null,
+                qty: Number(row?.Ilosc) || Number(matchedItem?.Ilosc) || 0,
+                qtyKg: Number(matchedItem?.IloscKg) || 0,
+                qtyM3: Number(matchedItem?.IloscM3) || 0,
+                unitCode: String(matchedItem?.Jednostka?.Kod || "").trim() || null,
+                componentCode: String(matchedItem?.Towar?.Kod || normalizedComponentCode).trim() || normalizedComponentCode,
+                componentName: String(matchedItem?.Nazwa || "").trim() || null,
+                notes: String(
+                    matchedItem?.Uwagi
+                    ?? matchedItem?.Opis
+                    ?? document?.Uwagi
+                    ?? document?.Opis
+                    ?? ""
+                ).trim() || null,
+            };
+        })
+        .sort((left, right) => {
+            const leftExpected = Date.parse(String(left?.expectedDate || "")) || 0;
+            const rightExpected = Date.parse(String(right?.expectedDate || "")) || 0;
+            if (leftExpected !== rightExpected) {
+                return leftExpected - rightExpected;
+            }
+
+            const leftCreated = Date.parse(String(left?.createdAt || "")) || 0;
+            const rightCreated = Date.parse(String(right?.createdAt || "")) || 0;
+            if (leftCreated !== rightCreated) {
+                return rightCreated - leftCreated;
+            }
+
+            return String(left?.documentNumber || "").localeCompare(String(right?.documentNumber || ""), "pl");
+        });
+
+    const totalQty = rows.reduce((sum, row) => sum + (Number(row?.qty) || 0), 0);
+    const componentName = rows.find((row) => String(row?.componentName || "").trim())?.componentName || null;
+    const unitCode = rows.find((row) => String(row?.unitCode || "").trim())?.unitCode || null;
+
+    return setCacheEntry(vendoZwDetailsCache, cacheKey, {
+        componentCode: normalizedComponentCode,
+        componentName,
+        unitCode,
+        totalQty,
+        rows,
+        warnings: [...new Set(warnings.filter(Boolean))],
+    });
+}
+
+async function getVendoZwDocumentDetails({
+    connection,
+    accessToken,
+    documentId,
+    warnings = [],
+    forceRefresh = false,
+} = {}) {
+    const normalizedDocumentId = Number(documentId);
+    const cacheKey = buildVendoZwDocumentDetailsCacheKey(connection, normalizedDocumentId);
+    const cached = forceRefresh ? null : getCacheEntry(vendoZwDocumentDetailsCache, cacheKey, 2 * 60 * 1000);
+    if (cached) {
+        if (Array.isArray(cached?.warnings) && cached.warnings.length) {
+            warnings.push(...cached.warnings);
+        }
+        return cached;
+    }
+
+    if (!Number.isInteger(normalizedDocumentId) || normalizedDocumentId <= 0) {
+        return setCacheEntry(vendoZwDocumentDetailsCache, cacheKey, {
+            documentId: null,
+            documentNumber: null,
+            supplierName: null,
+            rows: [],
+            totalQty: 0,
+            warnings: [],
+        });
+    }
+
+    const [document] = await resolveDocumentsByIds(connection, accessToken, [normalizedDocumentId], {
+        allowMissing: false,
+        includeItems: true,
+    });
+
+    const rows = (Array.isArray(document?.Pozycje) ? document.Pozycje : [])
+        .map((item) => ({
+            itemId: Number(item?.ID) || Number(item?.ElementID) || null,
+            productId: Number(item?.Towar?.ID) || null,
+            productCode: String(item?.Towar?.Kod || "").trim() || null,
+            productName: String(item?.Nazwa || item?.Towar?.Nazwa || "").trim() || null,
+            qty: Number(item?.Ilosc) || 0,
+            unitCode: String(item?.Jednostka?.Kod || "").trim() || null,
+            expectedDate: item?.DataRealizacji || document?.Data1 || null,
+            notes: String(item?.Uwagi ?? item?.Opis ?? "").trim() || null,
+        }))
+        .sort((left, right) => {
+            const leftCode = String(left?.productCode || left?.productName || "");
+            const rightCode = String(right?.productCode || right?.productName || "");
+            return leftCode.localeCompare(rightCode, "pl");
+        });
+
+    const totalQty = rows.reduce((sum, row) => sum + (Number(row?.qty) || 0), 0);
+
+    return setCacheEntry(vendoZwDocumentDetailsCache, cacheKey, {
+        documentId: normalizedDocumentId,
+        documentKind: String(document?.RodzajKod || "").trim() || null,
+        documentNumber: String(document?.NumerPelny || "").trim() || null,
+        supplierName: String(document?.Klient1Nazwa || "").trim() || null,
+        issueDate: document?.DataWystawienia || null,
+        deliveryDate: document?.Data1 || null,
+        createdAt: document?.Data2 || null,
+        notes: String(document?.Opis || "").trim() || null,
+        rows,
+        totalQty,
+        warnings: [...new Set(warnings.filter(Boolean))],
+    });
+}
+
+async function enrichBomItemsWithLiveInventory({
+    bomItems,
+    connection,
+    accessToken,
+    includeVendo,
+    includeZw = false,
+    warnings,
+}) {
     const codes = [...new Set((bomItems || [])
         .map((item) => String(item?.componentCode || "").trim())
         .filter(Boolean))];
@@ -2406,6 +3329,7 @@ async function enrichBomItemsWithLiveInventory({ bomItems, connection, accessTok
     if (includeVendo && codes.length) {
         vendoInventoryByCode = await fetchVendoInventoryMap(connection, accessToken, codes, {
             includeExpected: false,
+            includeZw,
             concurrency: 8,
             warnings,
         });
@@ -2427,6 +3351,7 @@ function applyLiveInventoryToBomItems(bomItems, {
         const wmsStock = getPositiveNumber(wmsInventoryByCode.get(code)?.wmsStock);
         const vendoStock = getPositiveNumber(vendoInventoryByCode.get(code)?.vendoStock);
         const vendoExpected = getPositiveNumber(vendoInventoryByCode.get(code)?.vendoExpected);
+        const zwQty = getPositiveNumber(vendoInventoryByCode.get(code)?.zwQty);
         const requiredQty = getPositiveNumber(item?.requiredQty);
         const availableBefore = availableByCode.has(code)
             ? getPositiveNumber(availableByCode.get(code))
@@ -2441,6 +3366,7 @@ function applyLiveInventoryToBomItems(bomItems, {
             wmsStock,
             vendoStock,
             vendoExpected,
+            zwQty,
             availableBefore,
             availableAfter,
             toOrder,
@@ -2800,6 +3726,42 @@ async function resolveDocumentsByOrderIds(connection, accessToken, orderIds, { a
     }
 
     return records;
+}
+
+async function resolveDocumentsByIds(connection, accessToken, ids, {
+    allowMissing = false,
+    includeItems = false,
+} = {}) {
+    if (!ids.length) {
+        return [];
+    }
+
+    const response = await vendoPost(connection.baseUrl, "/Dokumenty/Dokumenty/Lista", {
+        Token: accessToken,
+        Model: buildDocumentsLookupByIdsModel({
+            documentIds: ids,
+            pageSize: Math.max(ids.length * 2, 20),
+            includeItems,
+        }),
+    });
+
+    const records = Array.isArray(response?.Wynik?.Rekordy) ? response.Wynik.Rekordy : [];
+    const byId = new Map(
+        records
+            .filter((item) => Number.isInteger(Number(item?.ID)))
+            .map((item) => [Number(item.ID), item])
+    );
+
+    const missing = ids.filter((id) => !byId.has(id));
+    if (!allowMissing && missing.length) {
+        throw new Error(`Nie znaleziono dokumentow o ID: ${missing.join(", ")}`);
+    }
+
+    if (allowMissing) {
+        return ids.map((id) => byId.get(id)).filter(Boolean);
+    }
+
+    return ids.map((id) => byId.get(id));
 }
 
 async function resolvePlanningPositionsByIds(connection, accessToken, ids, { allowMissing = false } = {}) {
@@ -4022,12 +4984,14 @@ async function handleApiMesOvenEvents(req, res) {
         const requestUrl = new URL(req.url, `http://${req.headers.host || "localhost"}`);
         const deviceId = requestUrl.searchParams.get("device_id") || requestUrl.searchParams.get("deviceId") || "";
         const batchId = requestUrl.searchParams.get("batch_id") || requestUrl.searchParams.get("batchId") || "";
+        const rawUnassigned = requestUrl.searchParams.get("unassigned") || requestUrl.searchParams.get("unassigned_only") || "";
+        const unassigned = ["1", "true", "yes", "on"].includes(String(rawUnassigned).trim().toLowerCase());
         const limit = requestUrl.searchParams.get("limit") || 50;
         const storageConfig = getMesStorageConfig();
 
         sendJson(res, 200, {
             storage: getMesStorageMeta(storageConfig.dbPath),
-            events: listOvenPulses(storageConfig.dbPath, { deviceId, batchId, limit }),
+            events: listOvenPulses(storageConfig.dbPath, { deviceId, batchId, unassigned, limit }),
         });
     } catch (error) {
         sendJson(res, 500, {
@@ -4241,6 +5205,128 @@ async function handleApiMesOvenBatchPcsPerPanel(req, res) {
     } catch (error) {
         sendJson(res, 500, {
             error: error.message || "Nie udalo sie zapisac PCB na panel.",
+        });
+    }
+}
+
+async function handleApiMesOvenBatchUpdate(req, res) {
+    try {
+        const body = await readJsonBody(req);
+        const storageConfig = getMesStorageConfig();
+        const rawSaveForProduct = body.save_for_product ?? body.saveForProduct;
+        const saveForProduct = rawSaveForProduct === undefined
+            ? true
+            : !["false", "0", "no", "off"].includes(String(rawSaveForProduct).trim().toLowerCase());
+
+        let batch = updateOvenBatchDetails(storageConfig.dbPath, {
+            batchId: body.batch_id || body.batchId || null,
+            kkwNumber: body.kkw_number || body.kkwNumber || "",
+            plannedQuantity: body.planned_quantity ?? body.plannedQuantity ?? null,
+            orderNumber: body.order_number || body.orderNumber || "",
+            productCode: body.product_code || body.productCode || "",
+            productName: body.product_name || body.productName || "",
+            pcsPerPanel: body.pcs_per_panel ?? body.pcsPerPanel ?? null,
+            pcsPerPanelSource: body.pcs_per_panel ? (body.pcs_per_panel_source || body.pcsPerPanelSource || "admin_panel") : "",
+        });
+
+        let pcsPerPanelSave = null;
+        if (body.pcs_per_panel ?? body.pcsPerPanel) {
+            pcsPerPanelSave = upsertOvenBatchPcsPerPanel(storageConfig.dbPath, {
+                batchId: batch?.id,
+                deviceId: batch?.deviceId || body.device_id || body.deviceId || "reflow_1",
+                pcsPerPanel: body.pcs_per_panel ?? body.pcsPerPanel ?? null,
+                operator: body.operator || body.operatorName || "",
+                source: body.source || "admin_panel",
+                saveForProduct,
+            });
+            batch = pcsPerPanelSave.batch || batch;
+        }
+
+        sendJson(res, 200, {
+            status: "ok",
+            batch,
+            savedForProduct: pcsPerPanelSave?.savedForProduct || false,
+            productSetting: pcsPerPanelSave?.productSetting || null,
+            warning: pcsPerPanelSave?.warning || null,
+        });
+    } catch (error) {
+        sendJson(res, 500, {
+            error: error.message || "Nie udalo sie zapisac zmian partii MES.",
+        });
+    }
+}
+
+async function handleApiMesOvenBatchDelete(req, res) {
+    try {
+        const body = await readJsonBody(req);
+        const storageConfig = getMesStorageConfig();
+        const rawDeletePulses = body.delete_pulses ?? body.deletePulses;
+        const deletePulses = rawDeletePulses === undefined
+            ? false
+            : ["1", "true", "yes", "on"].includes(String(rawDeletePulses).trim().toLowerCase());
+        const result = deleteOvenBatch(storageConfig.dbPath, {
+            batchId: body.batch_id || body.batchId || null,
+            deletePulses,
+        });
+
+        sendJson(res, 200, {
+            status: "ok",
+            ...result,
+        });
+    } catch (error) {
+        sendJson(res, 500, {
+            error: error.message || "Nie udalo sie usunac partii MES.",
+        });
+    }
+}
+
+async function handleApiMesOvenEventsDelete(req, res) {
+    try {
+        const body = await readJsonBody(req);
+        const storageConfig = getMesStorageConfig();
+        const result = deleteOvenPulses(storageConfig.dbPath, {
+            pulseIds: body.pulse_ids || body.pulseIds || body.ids || [],
+        });
+
+        sendJson(res, 200, {
+            status: "ok",
+            ...result,
+        });
+    } catch (error) {
+        sendJson(res, 500, {
+            error: error.message || "Nie udalo sie usunac impulsow MES.",
+        });
+    }
+}
+
+async function handleApiMesOvenEventsAssign(req, res) {
+    try {
+        const body = await readJsonBody(req);
+        const storageConfig = getMesStorageConfig();
+        const rawSuggested = body.suggested_unassigned ?? body.suggestedUnassigned ?? body.useSuggestedWindow;
+        const suggestedUnassigned = rawSuggested === undefined
+            ? false
+            : ["1", "true", "yes", "on"].includes(String(rawSuggested).trim().toLowerCase());
+        const result = assignOvenPulsesToBatch(storageConfig.dbPath, {
+            batchId: body.batch_id || body.batchId || null,
+            pulseIds: body.pulse_ids || body.pulseIds || body.ids || [],
+            suggestedUnassigned,
+            maxLookbackMinutes: body.max_lookback_minutes || body.maxLookbackMinutes || 30,
+        });
+        const suggestion = getBatchUnassignedSuggestion(storageConfig.dbPath, {
+            batchId: body.batch_id || body.batchId || null,
+            deviceId: body.device_id || body.deviceId || "reflow_1",
+            limit: 1000,
+        });
+
+        sendJson(res, 200, {
+            status: "ok",
+            ...result,
+            pendingAssignment: suggestion,
+        });
+    } catch (error) {
+        sendJson(res, 500, {
+            error: error.message || "Nie udalo sie przypisac impulsow MES.",
         });
     }
 }
@@ -4712,14 +5798,26 @@ async function handleApiZapotrzebowanieVendoHeaderDetails(req, res) {
             connection,
             accessToken,
             includeVendo: body?.includeVendo !== false,
+            includeZw: true,
             warnings,
         });
-        const noteMap = getBomNotesForPlanPosition(getZapotrzebowanieStorageConfig().dbPath, planPositionId);
+        const storageConfig = getZapotrzebowanieStorageConfig();
+        const productCode = String(position?.Kod || "").trim() || null;
+        const noteMap = getBomNotesForPlanPosition(storageConfig.dbPath, planPositionId);
+        const accessNoteMap = getAccessBomNotesForLiveHeader(storageConfig.dbPath, {
+            planPositionId,
+            productIndex: productCode,
+            kkwNumber: bomSource?.type === "kkw" ? (bomSource.kkwNumbers || []).join(", ") : null,
+            termDate: position?.DataRealizacji || planningOrder?.DataTerminZakonczenia || null,
+        });
         bomItems = bomItems.map((item) => {
             const savedNote = noteMap.get(buildBomNoteKey(item?.sourceType, item?.sourceMaterialId));
+            const accessNote = accessNoteMap.get(String(item?.componentCode || "").trim().toUpperCase()) || "";
             return {
                 ...item,
-                note: savedNote?.note || item?.note || "",
+                accessNote: accessNote || null,
+                note: savedNote ? savedNote.note || "" : (accessNote || item?.note || ""),
+                noteSource: savedNote ? "sqlite" : (accessNote ? "access" : null),
                 noteUpdatedAt: savedNote?.updatedAt || null,
             };
         });
@@ -4753,7 +5851,6 @@ async function handleApiZapotrzebowanieVendoHeaderDetails(req, res) {
         const selectedStatusNames = objectStatuses
             .map((item) => String(item?.Nazwa || item?.StatusNazwa || item?.Status || "").trim())
             .filter(Boolean);
-        const productCode = String(position?.Kod || "").trim() || null;
         const vendoNote = getPlanningPositionNote(position);
         const operationalNote = statusScope.hasDemandScope ? "" : "SMD/THT wykluczone z zapotrzebowania";
         const headerNotes = [vendoNote, operationalNote].filter(Boolean).join(" | ") || null;
@@ -4822,6 +5919,195 @@ async function handleApiZapotrzebowanieVendoHeaderDetails(req, res) {
     } catch (error) {
         sendJson(res, 500, {
             error: error.message || "Nie udalo sie pobrac pilota naglowka z Vendo.",
+        });
+    }
+}
+
+async function handleApiZapotrzebowanieVendoComponentDetails(req, res) {
+    try {
+        const body = await readJsonBody(req);
+        const componentCode = String(body?.code || body?.componentCode || "").trim();
+
+        if (!componentCode) {
+            return sendJson(res, 400, {
+                error: "Brakuje pola: code.",
+            });
+        }
+
+        const missing = requireServerConfig();
+        if (missing.length) {
+            return sendJson(res, 500, {
+                error: `Brakuje konfiguracji Vendo: ${[...new Set(missing)].join(", ")}.`,
+            });
+        }
+
+        const vendoUserLogin = String(body?.vendoUserLogin || "").trim();
+        const vendoUserPassword = String(body?.vendoUserPassword || "");
+        if (!vendoUserLogin) {
+            return sendJson(res, 400, { error: "Brakuje pola: vendoUserLogin." });
+        }
+        if (!vendoUserPassword.trim()) {
+            return sendJson(res, 400, { error: "Brakuje pola: vendoUserPassword." });
+        }
+
+        const serverConfig = getServerConfig();
+        const connection = {
+            baseUrl: serverConfig.apiUrl,
+            apiLogin: serverConfig.apiLogin,
+            apiPassword: serverConfig.apiPassword,
+            vendoUserLogin,
+            vendoUserPassword,
+        };
+        const accessToken = await getAccessToken(connection);
+        const warnings = [];
+        const materialOwnershipFilter = body?.materialOwnershipFilter || "MSX_OR_EMPTY";
+        const payload = await getVendoOperationalComponentDetails({
+            connection,
+            accessToken,
+            componentCode,
+            materialOwnershipFilter,
+            pageSize: 100,
+            maxPages: 2,
+            includeVendo: body?.includeVendo !== false,
+            warnings,
+            forceRefresh: body?.forceRefresh === true,
+        });
+
+        sendJson(res, 200, {
+            ...payload,
+            meta: {
+                generatedAt: new Date().toISOString(),
+                view: "operations-component-detail",
+                source: "vendo",
+                materialOwnershipFilter: normalizeMaterialOwnershipFilter(materialOwnershipFilter),
+                warnings: [...new Set([...(payload?.warnings || []), ...warnings].filter(Boolean))],
+            },
+        });
+    } catch (error) {
+        sendJson(res, 500, {
+            error: error.message || "Nie udalo sie pobrac szczegolow komponentu z panelu operacyjnego.",
+        });
+    }
+}
+
+async function handleApiZapotrzebowanieVendoZwDetails(req, res) {
+    try {
+        const body = await readJsonBody(req);
+        const componentCode = String(body?.code || body?.componentCode || "").trim();
+
+        if (!componentCode) {
+            return sendJson(res, 400, {
+                error: "Brakuje pola: code.",
+            });
+        }
+
+        const missing = requireServerConfig();
+        if (missing.length) {
+            return sendJson(res, 500, {
+                error: `Brakuje konfiguracji Vendo: ${[...new Set(missing)].join(", ")}.`,
+            });
+        }
+
+        const vendoUserLogin = String(body?.vendoUserLogin || "").trim();
+        const vendoUserPassword = String(body?.vendoUserPassword || "");
+        if (!vendoUserLogin) {
+            return sendJson(res, 400, { error: "Brakuje pola: vendoUserLogin." });
+        }
+        if (!vendoUserPassword.trim()) {
+            return sendJson(res, 400, { error: "Brakuje pola: vendoUserPassword." });
+        }
+
+        const serverConfig = getServerConfig();
+        const connection = {
+            baseUrl: serverConfig.apiUrl,
+            apiLogin: serverConfig.apiLogin,
+            apiPassword: serverConfig.apiPassword,
+            vendoUserLogin,
+            vendoUserPassword,
+        };
+        const accessToken = await getAccessToken(connection);
+        const warnings = [];
+        const payload = await getVendoZwDetailsForComponent({
+            connection,
+            accessToken,
+            componentCode,
+            warnings,
+            forceRefresh: body?.forceRefresh === true,
+        });
+
+        sendJson(res, 200, {
+            ...payload,
+            meta: {
+                generatedAt: new Date().toISOString(),
+                view: "operations-zw-detail",
+                source: "vendo",
+                warnings: [...new Set([...(payload?.warnings || []), ...warnings].filter(Boolean))],
+            },
+        });
+    } catch (error) {
+        sendJson(res, 500, {
+            error: error.message || "Nie udalo sie pobrac szczegolow ZW.",
+        });
+    }
+}
+
+async function handleApiZapotrzebowanieVendoZwDocumentDetails(req, res) {
+    try {
+        const body = await readJsonBody(req);
+        const documentId = Number(body?.documentId);
+
+        if (!Number.isInteger(documentId) || documentId <= 0) {
+            return sendJson(res, 400, {
+                error: "Brakuje pola: documentId.",
+            });
+        }
+
+        const missing = requireServerConfig();
+        if (missing.length) {
+            return sendJson(res, 500, {
+                error: `Brakuje konfiguracji Vendo: ${[...new Set(missing)].join(", ")}.`,
+            });
+        }
+
+        const vendoUserLogin = String(body?.vendoUserLogin || "").trim();
+        const vendoUserPassword = String(body?.vendoUserPassword || "");
+        if (!vendoUserLogin) {
+            return sendJson(res, 400, { error: "Brakuje pola: vendoUserLogin." });
+        }
+        if (!vendoUserPassword.trim()) {
+            return sendJson(res, 400, { error: "Brakuje pola: vendoUserPassword." });
+        }
+
+        const serverConfig = getServerConfig();
+        const connection = {
+            baseUrl: serverConfig.apiUrl,
+            apiLogin: serverConfig.apiLogin,
+            apiPassword: serverConfig.apiPassword,
+            vendoUserLogin,
+            vendoUserPassword,
+        };
+        const accessToken = await getAccessToken(connection);
+        const warnings = [];
+        const payload = await getVendoZwDocumentDetails({
+            connection,
+            accessToken,
+            documentId,
+            warnings,
+            forceRefresh: body?.forceRefresh === true,
+        });
+
+        sendJson(res, 200, {
+            ...payload,
+            meta: {
+                generatedAt: new Date().toISOString(),
+                view: "operations-zw-document-detail",
+                source: "vendo",
+                warnings: [...new Set([...(payload?.warnings || []), ...warnings].filter(Boolean))],
+            },
+        });
+    } catch (error) {
+        sendJson(res, 500, {
+            error: error.message || "Nie udalo sie pobrac pozycji dokumentu ZW.",
         });
     }
 }
@@ -6708,6 +7994,18 @@ function resolveStaticPath(urlPath) {
         return { redirect: "/console" };
     }
 
+    if (urlPath === "/login") {
+        return { pathname: "/login/index.html" };
+    }
+
+    if (urlPath === "/start") {
+        return { redirect: "/console" };
+    }
+
+    if (urlPath === "/admin") {
+        return { pathname: "/admin/index.html" };
+    }
+
     if (urlPath === "/console") {
         return { pathname: "/console/index.html" };
     }
@@ -7016,8 +8314,27 @@ async function handleApiSandboxInvoices(req, res) {
     }
 }
 
-function handleStatic(req, res) {
+function handleStatic(req, res, authContext) {
     const requestUrl = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    const pageRequirement = getPageRequirement(requestUrl.pathname);
+
+    if (normalizePathname(requestUrl.pathname) === "/login" && authContext?.user) {
+        sendRedirect(res, buildSafeNextPath(requestUrl.searchParams.get("next"), authContext.user));
+        return;
+    }
+
+    if (pageRequirement) {
+        if (!authContext?.user) {
+            sendRedirect(res, getLoginRedirectPath(req));
+            return;
+        }
+
+        if (!hasModuleAccess(authContext.user, pageRequirement.modules)) {
+            sendRedirect(res, getDefaultRouteForUser(authContext.user));
+            return;
+        }
+    }
+
     const resolved = resolveStaticPath(requestUrl.pathname);
     if (resolved.redirect) {
         sendRedirect(res, resolved.redirect);
@@ -7044,6 +8361,66 @@ function handleStatic(req, res) {
 }
 
 const server = http.createServer(async (req, res) => {
+    const requestUrl = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    const pathname = normalizePathname(requestUrl.pathname);
+    const authContext = resolveAuthContext(req);
+
+    if (req.method === "POST" && pathname === "/api/auth/login") {
+        await handleApiAuthLogin(req, res);
+        return;
+    }
+
+    if (req.method === "POST" && pathname === "/api/auth/logout") {
+        handleApiAuthLogout(req, res, authContext);
+        return;
+    }
+
+    if (req.method === "GET" && pathname === "/api/auth/me") {
+        handleApiAuthMe(req, res, authContext);
+        return;
+    }
+
+    const apiRequirement = pathname.startsWith("/api/") ? getApiRequirement(pathname) : null;
+    if (apiRequirement) {
+        if (!authContext.user) {
+            clearAuthSessionCookie(res);
+            sendJson(res, 401, {
+                error: "Sesja wygasla. Zaloguj sie ponownie.",
+                loginUrl: getLoginRedirectPath(req),
+            });
+            return;
+        }
+
+        if (!hasModuleAccess(authContext.user, apiRequirement.modules)) {
+            sendJson(res, 403, {
+                error: "Brak dostepu do tego modulu.",
+            });
+            return;
+        }
+    }
+
+    if (req.method === "GET" && pathname === "/api/admin/users") {
+        handleApiAdminUsers(req, res);
+        return;
+    }
+
+    if (req.method === "POST" && pathname === "/api/admin/users") {
+        await handleApiAdminUsersCreate(req, res);
+        return;
+    }
+
+    const adminUserResetMatch = pathname.match(/^\/api\/admin\/users\/([^/]+)\/reset-password$/);
+    if (req.method === "POST" && adminUserResetMatch) {
+        await handleApiAdminUserResetPassword(req, res, decodeURIComponent(adminUserResetMatch[1]));
+        return;
+    }
+
+    const adminUserMatch = pathname.match(/^\/api\/admin\/users\/([^/]+)$/);
+    if (req.method === "PATCH" && adminUserMatch) {
+        await handleApiAdminUserUpdate(req, res, decodeURIComponent(adminUserMatch[1]));
+        return;
+    }
+
     if (req.method === "POST" && req.url === "/api/products") {
         await handleApiProducts(req, res);
         return;
@@ -7125,6 +8502,26 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
+    if (req.method === "POST" && req.url === "/api/mes/oven/batch/update") {
+        await handleApiMesOvenBatchUpdate(req, res);
+        return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/mes/oven/batch/delete") {
+        await handleApiMesOvenBatchDelete(req, res);
+        return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/mes/oven/events/delete") {
+        await handleApiMesOvenEventsDelete(req, res);
+        return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/mes/oven/events/assign") {
+        await handleApiMesOvenEventsAssign(req, res);
+        return;
+    }
+
     if (req.method === "GET" && req.url.startsWith("/api/mes/oven/batch/history")) {
         await handleApiMesOvenBatchHistory(req, res);
         return;
@@ -7180,6 +8577,21 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
+    if (req.method === "POST" && req.url === "/api/zapotrzebowanie/vendo/component-details") {
+        await handleApiZapotrzebowanieVendoComponentDetails(req, res);
+        return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/zapotrzebowanie/vendo/zw-details") {
+        await handleApiZapotrzebowanieVendoZwDetails(req, res);
+        return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/zapotrzebowanie/vendo/zw-document-details") {
+        await handleApiZapotrzebowanieVendoZwDocumentDetails(req, res);
+        return;
+    }
+
     if (req.method === "POST" && req.url === "/api/zapotrzebowanie/vendo/bom-note") {
         await handleApiZapotrzebowanieVendoBomNote(req, res);
         return;
@@ -7202,7 +8614,7 @@ const server = http.createServer(async (req, res) => {
 
 
     if (req.method === "GET") {
-        handleStatic(req, res);
+        handleStatic(req, res, authContext);
         return;
     }
 
