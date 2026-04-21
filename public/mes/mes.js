@@ -48,6 +48,18 @@ function formatPcbCount(value) {
         : formatNumber(value, " szt.");
 }
 
+function formatDistanceCm(value) {
+    return value === null || value === undefined
+        ? "-"
+        : formatNumber(value, " cm");
+}
+
+function formatSpeedMetersPerMinute(value) {
+    return value === null || value === undefined
+        ? "-"
+        : formatNumber(value, " m/min");
+}
+
 function escapeHtml(value) {
     return String(value || "")
         .replace(/&/g, "&amp;")
@@ -264,6 +276,7 @@ function renderAdminPreview(batch, summary) {
           ["Status", batch.status === "active" ? "Aktywna" : "Zamknieta"],
           ["Start", formatDateTime(batch.startedAt)],
           ["Koniec", formatDateTime(batch.endedAt)],
+          ["Odleglosc czujnikow", formatDistanceCm(batch.sensorDistanceCm ?? summary?.sensorDistanceCm)],
           ["Zrodlo", batch.source || "-"],
           ["Rozpoczal", batch.startedBy || "-"],
           ["Zakonczyl", batch.endedBy || "-"],
@@ -280,6 +293,11 @@ function renderAdminPreview(batch, summary) {
           ["Wyjscia partii", formatPanelCount(batch.batchOutputCount ?? batch.batchPanelCount ?? batch.batchPulseCount)],
           ["W piecu partii", formatPanelCount(batch.batchInOvenCount)],
           ["Sr. czas pieca", formatDurationSeconds(batch.batchAverageOvenTimeSeconds ?? batch.averageOvenTimeSeconds)],
+          ["Sr. predkosc pieca", formatSpeedMetersPerMinute(batch.batchAverageOvenSpeedMetersPerMinute ?? batch.averageOvenSpeedMetersPerMinute)],
+          ["Takt wejsc partii", formatDurationSeconds(batch.batchAverageEntryTaktSeconds ?? batch.averageEntryTaktSeconds)],
+          ["Takt wyjsc partii", formatDurationSeconds(batch.batchAverageExitTaktSeconds ?? batch.averageExitTaktSeconds)],
+          ["Odstep wejsc partii", formatDistanceCm(batch.batchAverageEntrySpacingCm ?? batch.averageEntrySpacingCm)],
+          ["Odstep wyjsc partii", formatDistanceCm(batch.batchAverageExitSpacingCm ?? batch.averageExitSpacingCm)],
           ["Plan", batch.plannedQuantity ? formatNumber(batch.plannedQuantity, " szt.") : "-"],
           ["Realizacja", batch.progressPercent === null || batch.progressPercent === undefined ? "-" : formatNumber(batch.progressPercent, "%")],
           ["PCB/panel", getPcsPerPanelLabel(batch)],
@@ -347,6 +365,8 @@ function renderSummary(payload) {
           ["Ta partia wejscia", activeBatch ? formatPanelCount(activeBatch.batchInputCount) : "-"],
           ["Ta partia wyjscia", activeBatch ? formatPanelCount(activeBatch.batchOutputCount ?? activeBatch.batchPanelCount ?? activeBatch.batchPulseCount) : "-"],
           ["Sr. czas pieca", formatDurationSeconds(activeBatch?.averageOvenTimeSeconds ?? summary.averageOvenTimeSeconds)],
+          ["Predkosc pieca", formatSpeedMetersPerMinute(activeBatch?.batchAverageOvenSpeedMetersPerMinute ?? activeBatch?.averageOvenSpeedMetersPerMinute ?? summary.averageOvenSpeedMetersPerMinute)],
+          ["Odstep wyjsc", formatDistanceCm(activeBatch?.batchAverageExitSpacingCm ?? activeBatch?.averageExitSpacingCm ?? summary.averageExitSpacingCm)],
           ["Realizacja", activeBatch?.progressPercent === null || activeBatch?.progressPercent === undefined ? "-" : formatNumber(activeBatch.progressPercent, "%")],
           ["Status pieca", summary.status || "-"],
           ["Ostatnie wejscie", formatDateTime(summary.lastEntryPulse?.ts)],
