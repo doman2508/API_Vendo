@@ -22,6 +22,7 @@ const headerMaterialFilter = document.getElementById("header-material-filter");
 const refreshHeadersButton = document.getElementById("refresh-headers");
 const resetHeaderFiltersButton = document.getElementById("reset-header-filters");
 const headersRefreshStatus = document.getElementById("headers-refresh-status");
+const headerSortButtons = Array.from(document.querySelectorAll("[data-header-sort]"));
 const headerDetailSection = document.getElementById("header-detail-section");
 const headerDetailTitle = document.getElementById("header-detail-title");
 const headerDetailDescription = document.getElementById("header-detail-description");
@@ -107,6 +108,7 @@ let bomNoteSaveInFlight = false;
 let operationalBomComponentRequestToken = 0;
 let operationalBomZwRequestToken = 0;
 let operationalBomZwDocumentRequestToken = 0;
+let operationalHeaderSort = { key: "sourceCreatedAt", direction: "asc" };
 
 function formatNumber(value) {
     return numberFormatter.format(Number(value) || 0);
@@ -133,6 +135,137 @@ function formatTime(value) {
     if (!value) return "-";
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? String(value) : timeFormatter.format(date);
+}
+
+function compareOptionalNumbers(leftValue, rightValue) {
+    const leftNumber = Number(leftValue);
+    const rightNumber = Number(rightValue);
+    const leftFinite = Number.isFinite(leftNumber);
+    const rightFinite = Number.isFinite(rightNumber);
+
+    if (leftFinite && rightFinite && leftNumber !== rightNumber) {
+        return leftNumber - rightNumber;
+    }
+
+    if (leftFinite !== rightFinite) {
+        return leftFinite ? -1 : 1;
+    }
+
+    return 0;
+}
+
+function compareOptionalDates(leftValue, rightValue) {
+    const leftDate = Date.parse(String(leftValue || ""));
+    const rightDate = Date.parse(String(rightValue || ""));
+    const leftFinite = Number.isFinite(leftDate);
+    const rightFinite = Number.isFinite(rightDate);
+
+    if (leftFinite && rightFinite && leftDate !== rightDate) {
+        return leftDate - rightDate;
+    }
+
+    if (leftFinite !== rightFinite) {
+        return leftFinite ? -1 : 1;
+    }
+
+    return 0;
+}
+
+function compareOptionalText(leftValue, rightValue) {
+    const leftText = String(leftValue || "").trim();
+    const rightText = String(rightValue || "").trim();
+
+    if (leftText && rightText) {
+        const delta = leftText.localeCompare(rightText, "pl", { numeric: true, sensitivity: "base" });
+        if (delta !== 0) {
+            return delta;
+        }
+    }
+
+    if (Boolean(leftText) !== Boolean(rightText)) {
+        return leftText ? -1 : 1;
+    }
+
+    return 0;
+}
+
+function compareHeadersByDefaultOrder(leftHeader, rightHeader) {
+    const createdDelta = compareOptionalDates(
+        leftHeader?.sourceCreatedAt || leftHeader?.importedAt,
+        rightHeader?.sourceCreatedAt || rightHeader?.importedAt
+    );
+    if (createdDelta !== 0) {
+        return createdDelta;
+    }
+
+    return (Number(leftHeader?.id) || 0) - (Number(rightHeader?.id) || 0);
+}
+
+function compareHeadersBySort(leftHeader, rightHeader) {
+    const { key, direction } = operationalHeaderSort;
+    let delta = 0;
+
+    switch (key) {
+    case "termDate":
+        delta = compareOptionalDates(leftHeader?.termDate, rightHeader?.termDate);
+        break;
+    case "kkwNumber":
+        delta = compareOptionalText(leftHeader?.kkwNumber, rightHeader?.kkwNumber);
+        break;
+    case "productIndex":
+        delta = compareOptionalText(leftHeader?.productIndex, rightHeader?.productIndex);
+        break;
+    case "productName":
+        delta = compareOptionalText(leftHeader?.productName, rightHeader?.productName);
+        break;
+    case "clientName":
+        delta = compareOptionalText(leftHeader?.clientName, rightHeader?.clientName);
+        break;
+    case "orderQty":
+        delta = compareOptionalNumbers(leftHeader?.orderQty, rightHeader?.orderQty);
+        break;
+    case "stageLabel":
+        delta = compareOptionalText(leftHeader?.stageLabel, rightHeader?.stageLabel);
+        break;
+    case "bomCount":
+        delta = compareOptionalNumbers(leftHeader?.bomCount, rightHeader?.bomCount);
+        break;
+    case "openBomCount":
+        delta = compareOptionalNumbers(leftHeader?.openBomCount, rightHeader?.openBomCount);
+        break;
+    case "shortageBomCount":
+        delta = compareOptionalNumbers(leftHeader?.shortageBomCount, rightHeader?.shortageBomCount);
+        if (delta === 0) {
+            delta = compareOptionalNumbers(leftHeader?.openBomCount, rightHeader?.openBomCount);
+        }
+        break;
+    case "notes":
+        delta = compareOptionalText(leftHeader?.notes, rightHeader?.notes);
+        break;
+    case "sourceCreatedAt":
+        delta = compareOptionalDates(
+            leftHeader?.sourceCreatedAt || leftHeader?.importedAt,
+            rightHeader?.sourceCreatedAt || rightHeader?.importedAt
+        );
+        break;
+    default:
+        delta = compareHeadersByDefaultOrder(leftHeader, rightHeader);
+        break;
+    }
+
+    if (direction === "desc") {
+        delta *= -1;
+    }
+
+    if (delta !== 0) {
+        return delta;
+    }
+
+    return compareHeadersByDefaultOrder(leftHeader, rightHeader);
+}
+
+function isDefaultHeaderSort() {
+    return operationalHeaderSort.key === "sourceCreatedAt" && operationalHeaderSort.direction === "asc";
 }
 
 function normalizeText(value) {
@@ -576,25 +709,10 @@ function getFilteredHeaders(headers) {
             header.notes,
         ].join(" "));
         return searchable.includes(searchTerm);
-    }).sort((left, right) => {
-        const leftCreatedAt = Date.parse(left.sourceCreatedAt || left.importedAt || "");
-        const rightCreatedAt = Date.parse(right.sourceCreatedAt || right.importedAt || "");
-        const leftHasDate = Number.isFinite(leftCreatedAt);
-        const rightHasDate = Number.isFinite(rightCreatedAt);
-
-        if (leftHasDate && rightHasDate && leftCreatedAt !== rightCreatedAt) {
-            return leftCreatedAt - rightCreatedAt;
-        }
-
-        if (leftHasDate !== rightHasDate) {
-            return leftHasDate ? -1 : 1;
-        }
-
-        return (Number(left.id) || 0) - (Number(right.id) || 0);
-    });
+    }).sort(compareHeadersBySort);
 }
 
-function clearOperationalDetailPanel({ hide = true, message = "Kliknij indeks produktu w tabeli naglowkow, aby zobaczyc pozycje BOM." } = {}) {
+function clearOperationalDetailPanel({ hide = true, message = "Kliknij rekord w tabeli naglowkow, aby zobaczyc pozycje BOM." } = {}) {
     closeBomComponentViewer();
     closeBomZwViewer();
     selectedHeaderId = hide ? null : selectedHeaderId;
@@ -772,6 +890,45 @@ function updateConnectionStatusIndicator() {
 
     vendoConnectionStatus.classList.add("is-disconnected");
     vendoConnectionStatus.textContent = "Vendo: brak logowania";
+}
+
+function updateHeaderSortButtons() {
+    headerSortButtons.forEach((button) => {
+        const sortKey = String(button.dataset.headerSort || "");
+        const isActive = operationalHeaderSort.key === sortKey;
+        const direction = isActive ? operationalHeaderSort.direction : "";
+        const indicator = button.querySelector(".sort-indicator");
+
+        button.classList.toggle("is-active", isActive);
+        button.dataset.sortDirection = direction;
+        button.setAttribute("aria-pressed", isActive ? "true" : "false");
+
+        if (indicator) {
+            indicator.textContent = direction === "asc" ? "▲" : direction === "desc" ? "▼" : "↕";
+        }
+    });
+}
+
+function setHeaderSort(sortKey) {
+    const normalizedKey = String(sortKey || "").trim();
+    if (!normalizedKey) {
+        return;
+    }
+
+    if (operationalHeaderSort.key === normalizedKey) {
+        operationalHeaderSort = {
+            key: normalizedKey,
+            direction: operationalHeaderSort.direction === "asc" ? "desc" : "asc",
+        };
+    } else {
+        operationalHeaderSort = {
+            key: normalizedKey,
+            direction: "asc",
+        };
+    }
+
+    updateHeaderSortButtons();
+    renderOperationalHeaders();
 }
 
 function renderBomComponentViewerSummary(rows, overviewRow) {
@@ -1324,12 +1481,13 @@ function syncHeadersTableViewport() {
             return;
         }
 
-        headersTableWrap.scrollTop = headersTableWrap.scrollHeight;
+        headersTableWrap.scrollTop = isDefaultHeaderSort() ? headersTableWrap.scrollHeight : 0;
     });
 }
 
 function renderOperationalHeaders() {
     const headers = Array.isArray(operationalPayload?.headers) ? operationalPayload.headers : [];
+    updateHeaderSortButtons();
     renderHeadersTable(getFilteredHeaders(headers), headers.length);
 }
 
@@ -1495,7 +1653,6 @@ function renderHeaderDetailTable(items, { totalCount = items.length } = {}) {
             <td>${escapeHtml(item.typeName || "-")}</td>
             <td>${escapeHtml(formatNumber(item.componentQty))}</td>
             <td>${escapeHtml(formatNumber(item.requiredQty))}</td>
-            <td>${escapeHtml(formatOptionalNumber(item.totalDemandQty))}</td>
             <td>${escapeHtml(formatNumber(item.wmsStock))}</td>
             <td>${escapeHtml(formatNumber(item.vendoStock))}</td>
             <td>
@@ -1509,9 +1666,10 @@ function renderHeaderDetailTable(items, { totalCount = items.length } = {}) {
                         >
                             ${escapeHtml(formatNumber(item.zwQty))}
                         </button>
-                    `
+                      `
                     : escapeHtml(formatNumber(item.zwQty))}
             </td>
+            <td>${escapeHtml(formatOptionalNumber(item.totalDemandQty))}</td>
             <td class="${item.toOrder > 0 ? "access-to-order-shortage" : (item.toOrder < 0 ? "access-to-order-covered" : "access-to-order-zero")}">${escapeHtml(formatNumber(item.toOrder))}</td>
             <td class="bom-note">${renderBomNoteCell(item)}</td>
         </tr>
@@ -2164,6 +2322,11 @@ if (headerSearchInput) headerSearchInput.addEventListener("input", renderOperati
 if (headerStatusFilter) headerStatusFilter.addEventListener("change", renderOperationalHeaders);
 if (headerPhaseFilter) headerPhaseFilter.addEventListener("change", renderOperationalHeaders);
 if (headerMaterialFilter) headerMaterialFilter.addEventListener("change", () => loadOperationalOverview({ preserveSelection: true }));
+if (headerSortButtons.length) {
+    headerSortButtons.forEach((button) => {
+        button.addEventListener("click", () => setHeaderSort(button.dataset.headerSort));
+    });
+}
 if (refreshHeadersButton) refreshHeadersButton.addEventListener("click", refreshOperationalHeaders);
 if (headerDetailSearchInput) {
     headerDetailSearchInput.addEventListener("input", () => {
@@ -2381,6 +2544,7 @@ if (zapotrzebowanieForm) {
 }
 
 loadStoredValues();
+updateHeaderSortButtons();
 clearVendoPilotPanel();
 clearResults();
 clearOperationalDetailPanel({ hide: true });

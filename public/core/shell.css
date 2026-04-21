@@ -177,6 +177,75 @@
     box-shadow: 0 14px 28px rgba(37, 99, 235, 0.2);
 }
 
+.vendo-shell__toggle-button {
+    white-space: nowrap;
+}
+
+body.vendo-shell-collapsed .vendo-shell:not(.vendo-shell--operator) {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+}
+
+body.vendo-shell-collapsed .vendo-shell:not(.vendo-shell--operator) .vendo-shell__masthead {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 0 0 auto;
+    min-width: 0;
+}
+
+body.vendo-shell-collapsed .vendo-shell:not(.vendo-shell--operator) .vendo-shell__brand {
+    display: none;
+}
+
+body.vendo-shell-collapsed .vendo-shell:not(.vendo-shell--operator) .vendo-shell__brand-block {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+body.vendo-shell-collapsed .vendo-shell:not(.vendo-shell--operator) .vendo-shell__context {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+body.vendo-shell-collapsed .vendo-shell:not(.vendo-shell--operator) .vendo-shell__eyebrow,
+body.vendo-shell-collapsed .vendo-shell:not(.vendo-shell--operator) .vendo-shell__description,
+body.vendo-shell-collapsed .vendo-shell:not(.vendo-shell--operator) .vendo-shell__action-badge,
+body.vendo-shell-collapsed .vendo-shell:not(.vendo-shell--operator) .vendo-shell__action-link {
+    display: none;
+}
+
+body.vendo-shell-collapsed .vendo-shell:not(.vendo-shell--operator) .vendo-shell__heading {
+    font-size: 15px;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+body.vendo-shell-collapsed .vendo-shell:not(.vendo-shell--operator) .vendo-shell__actions {
+    gap: 6px;
+}
+
+body.vendo-shell-collapsed .vendo-shell:not(.vendo-shell--operator) .vendo-shell__nav {
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: 6px;
+    padding-bottom: 0;
+}
+
+body.vendo-shell-collapsed .vendo-shell:not(.vendo-shell--operator) .vendo-shell__nav-item,
+body.vendo-shell-collapsed .vendo-shell:not(.vendo-shell--operator) .vendo-shell__action-button {
+    min-height: 30px;
+    padding: 6px 10px;
+    font-size: 12px;
+    box-shadow: none;
+}
+
 .vendo-shell--operator {
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
