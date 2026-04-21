@@ -469,6 +469,10 @@ function handleApiAuthLogout(_req, res, authContext) {
     sendJson(res, 200, { ok: true });
 }
 
+function isPublicApiRequest(req, pathname) {
+    return req.method === "POST" && pathname === "/api/mes/oven/pulse";
+}
+
 function isAdminUser(user) {
     return Boolean(user && Array.isArray(user.roles) && user.roles.includes("admin"));
 }
@@ -8380,7 +8384,9 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
-    const apiRequirement = pathname.startsWith("/api/") ? getApiRequirement(pathname) : null;
+    const apiRequirement = pathname.startsWith("/api/") && !isPublicApiRequest(req, pathname)
+        ? getApiRequirement(pathname)
+        : null;
     if (apiRequirement) {
         if (!authContext.user) {
             clearAuthSessionCookie(res);
