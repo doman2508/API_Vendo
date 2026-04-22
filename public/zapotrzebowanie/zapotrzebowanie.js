@@ -1168,22 +1168,23 @@ function renderBomZwViewerTable(rows) {
     `).join("");
 }
 
-function renderBomZwViewerContent(item, payload) {
-    const rows = Array.isArray(payload?.rows) ? payload.rows : [];
-    const warnings = Array.isArray(payload?.meta?.warnings) ? payload.meta.warnings.filter(Boolean) : [];
-    const componentCode = payload?.componentCode || item?.componentCode || "";
-    const componentName = payload?.componentName || item?.componentName || "Wybrany indeks";
+  function renderBomZwViewerContent(item, payload) {
+      const rows = Array.isArray(payload?.rows) ? payload.rows : [];
+      const warnings = Array.isArray(payload?.meta?.warnings) ? payload.meta.warnings.filter(Boolean) : [];
+      const componentCode = payload?.componentCode || item?.componentCode || "";
+      const componentName = payload?.componentName || item?.componentName || "Wybrany indeks";
+      const typeName = item?.typeName || item?.rodzaj || "-";
 
     if (bomZwViewerTitle) {
         bomZwViewerTitle.textContent = `Szczegoly ZW ${componentCode}`.trim();
     }
-    if (bomZwViewerMeta) {
-        const parts = [
-            componentName,
-            `Rodzaj: ${item?.typeName || "-"}`,
-            `Materialy: ${headerMaterialFilter?.selectedOptions?.[0]?.textContent || "MSX + puste"}`,
-            "Oczekiwane z dokumentow ZW w Vendo.",
-        ];
+     if (bomZwViewerMeta) {
+         const parts = [
+             componentName,
+             `Rodzaj: ${typeName}`,
+             `Materialy: ${headerMaterialFilter?.selectedOptions?.[0]?.textContent || "MSX + puste"}`,
+             "Oczekiwane z dokumentow ZW w Vendo.",
+         ];
         if (warnings.length) {
             parts.push(`Uwaga: ${warnings.join(" ")}`);
         }
@@ -2518,13 +2519,26 @@ function renderReportTable(rows, totalRows) {
                 <td>${escapeHtml(row.component ?? "")}</td>
                 <td>${escapeHtml(formatNumber(row.requiredQty))}</td>
                 <td>${escapeHtml(formatNumber(row.wmsStock))}</td>
-                <td>${escapeHtml(formatNumber(row.vendoStock))}</td>
-                <td>${escapeHtml(formatNumber(row.vendoExpected))}</td>
-                <td>${escapeHtml(row.rodzaj ?? "")}</td>
-                <td class="report-pcs-cell">${renderReportPcsPerPanelCell(row)}</td>
-                <td>${escapeHtml(row.status ?? 0)}</td>
-                <td class="to-order ${toneClass}">${escapeHtml(formatNumber(toOrder))}</td>
-                <td class="bom-note report-note-cell">${renderReportNoteCell(row)}</td>
+                 <td>${escapeHtml(formatNumber(row.vendoStock))}</td>
+                 <td>
+                     ${Number(row.vendoExpected) > 0
+                         ? `
+                             <button
+                                 type="button"
+                                 class="zw-link"
+                                 data-report-zw-code="${escapeHtml(row.code ?? "")}"
+                                 title="Pokaz szczegoly ZW"
+                             >
+                                 ${escapeHtml(formatNumber(row.vendoExpected))}
+                             </button>
+                         `
+                         : escapeHtml(formatNumber(row.vendoExpected))}
+                 </td>
+                 <td>${escapeHtml(row.rodzaj ?? "")}</td>
+                 <td class="report-pcs-cell">${renderReportPcsPerPanelCell(row)}</td>
+                 <td>${escapeHtml(row.status ?? 0)}</td>
+                 <td class="to-order ${toneClass}">${escapeHtml(formatNumber(toOrder))}</td>
+                 <td class="bom-note report-note-cell">${renderReportNoteCell(row)}</td>
             </tr>
         `;
     }).join("");
@@ -2996,6 +3010,20 @@ if (detailSection) {
 
 if (resultsBody) {
     resultsBody.addEventListener("click", (event) => {
+        const zwTrigger = event.target.closest("[data-report-zw-code]");
+        if (zwTrigger) {
+            const rows = Array.isArray(lastReportPayload?.rows) ? lastReportPayload.rows : [];
+            const targetRow = rows.find((row) => String(row?.code || "").trim() === String(zwTrigger.dataset.reportZwCode || "").trim());
+            if (targetRow) {
+                void loadBomZwViewer({
+                    componentCode: targetRow.code,
+                    componentName: targetRow.component,
+                    rodzaj: targetRow.rodzaj,
+                });
+            }
+            return;
+        }
+
         const trigger = event.target.closest(".index-link[data-code]");
         if (trigger) loadComponentDetails(trigger.dataset.code, trigger.dataset.rodzaj);
     });

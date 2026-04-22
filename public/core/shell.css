@@ -298,6 +298,41 @@ body.vendo-shell-collapsed .vendo-shell:not(.vendo-shell--operator) .vendo-shell
     flex-wrap: wrap;
 }
 
+body[data-app-layout="operator"] .vendo-shell--operator {
+    padding: 8px 10px;
+    gap: 8px;
+}
+
+body[data-app-layout="operator"] .vendo-shell--operator .vendo-shell__compact-link,
+body[data-app-layout="operator"] .vendo-shell--operator .vendo-shell__action-button,
+body[data-app-layout="operator"] .vendo-shell--operator .vendo-shell__action-badge {
+    min-height: 30px;
+    padding: 5px 10px;
+    font-size: 11px;
+}
+
+body[data-app-layout="operator"] .vendo-shell--operator .vendo-shell__compact-context {
+    gap: 0;
+}
+
+body[data-app-layout="operator"] .vendo-shell--operator .vendo-shell__compact-context strong {
+    font-size: 14px;
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+body[data-app-layout="operator"] .vendo-shell--operator .vendo-shell__compact-context span {
+    font-size: 10px;
+    line-height: 1;
+}
+
+body[data-app-layout="operator"] .vendo-shell--operator .vendo-shell__compact-actions {
+    gap: 6px;
+    flex-wrap: nowrap;
+}
+
 .start-page {
     background:
         radial-gradient(circle at top right, rgba(37, 99, 235, 0.1), transparent 26%),
@@ -491,9 +526,51 @@ body.screen-mode .vendo-shell {
         padding: 8px 12px;
     }
 
+    .vendo-shell:not(.vendo-shell--operator) {
+        padding: 12px;
+        border-radius: 14px;
+    }
+
     .vendo-shell--operator {
-        grid-template-columns: 1fr;
-        justify-items: start;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: center;
+        justify-items: stretch;
+        gap: 6px;
+        padding: 6px 8px;
+    }
+
+    .vendo-shell--operator .vendo-shell__compact-link,
+    .vendo-shell--operator .vendo-shell__action-button,
+    .vendo-shell--operator .vendo-shell__action-badge {
+        min-height: 28px;
+        padding: 4px 8px;
+        font-size: 10px;
+    }
+
+    .vendo-shell--operator .vendo-shell__compact-context {
+        min-width: 0;
+        gap: 0;
+    }
+
+    .vendo-shell--operator .vendo-shell__compact-context span {
+        display: none;
+    }
+
+    .vendo-shell--operator .vendo-shell__compact-context strong {
+        font-size: 13px;
+        line-height: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .vendo-shell--operator .vendo-shell__compact-actions {
+        gap: 4px;
+        flex-wrap: nowrap;
+    }
+
+    .vendo-shell--operator .vendo-shell__action-badge {
+        display: none;
     }
 
     .start-page .app-shell {

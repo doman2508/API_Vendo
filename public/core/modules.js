@@ -108,7 +108,7 @@
             showInNav: false,
             showInStart: true,
             compactBackPath: "/mes",
-            compactBackLabel: "MES admin",
+            compactBackLabel: "MES",
         },
     ];
 
