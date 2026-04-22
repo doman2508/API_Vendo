@@ -198,75 +198,6 @@
                         </div>
                     </div>
 
-                    <div id="bom-zw-viewer" class="note-viewer hidden" aria-hidden="true">
-                        <div class="note-viewer-backdrop" data-bom-zw-close></div>
-                        <div class="note-viewer-card bom-component-viewer-card bom-zw-viewer-card" role="dialog" aria-modal="true" aria-labelledby="bom-zw-viewer-title">
-                            <div class="table-section-header detail-section-header note-viewer-header">
-                                <div>
-                                    <h3 id="bom-zw-viewer-title">Szczegoly ZW</h3>
-                                    <p id="bom-zw-viewer-meta">Widok zamowien wlasnych dla wybranego indeksu.</p>
-                                </div>
-                                <button type="button" id="bom-zw-viewer-close" class="btn btn-ghost note-viewer-close">Zamknij</button>
-                            </div>
-                            <div id="bom-zw-viewer-summary" class="detail-summary bom-component-viewer-summary hidden"></div>
-                            <div id="bom-zw-viewer-error" class="error-box bom-component-viewer-error hidden"></div>
-                            <div class="table-wrap bom-component-viewer-table-wrap bom-zw-viewer-table-wrap">
-                                <table>
-                                    <thead>
-                                        <tr>
-                                            <th>Data utw.</th>
-                                            <th>Dostawca</th>
-                                            <th>Numer ZW</th>
-                                            <th>Ilosc</th>
-                                            <th>Jedn.</th>
-                                            <th>Data</th>
-                                            <th>Uwagi</th>
-                                            <th>Data Dostawy</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="bom-zw-viewer-body">
-                                        <tr>
-                                            <td colspan="8" class="empty-state">Kliknij wartosc w kolumnie ZW, aby zobaczyc szczegoly dokumentow.</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div id="bom-zw-document-viewer" class="note-viewer hidden" aria-hidden="true">
-                        <div class="note-viewer-backdrop" data-bom-zw-document-close></div>
-                        <div class="note-viewer-card bom-component-viewer-card bom-zw-document-viewer-card" role="dialog" aria-modal="true" aria-labelledby="bom-zw-document-viewer-title">
-                            <div class="table-section-header detail-section-header note-viewer-header">
-                                <div>
-                                    <h3 id="bom-zw-document-viewer-title">Pozycje ZW</h3>
-                                    <p id="bom-zw-document-viewer-meta">Kliknij numer ZW w poprzednim modalu, aby zobaczyc wszystkie pozycje dokumentu.</p>
-                                </div>
-                                <button type="button" id="bom-zw-document-viewer-close" class="btn btn-ghost note-viewer-close">Zamknij</button>
-                            </div>
-                            <div id="bom-zw-document-viewer-summary" class="detail-summary bom-component-viewer-summary hidden"></div>
-                            <div id="bom-zw-document-viewer-error" class="error-box bom-component-viewer-error hidden"></div>
-                            <div class="table-wrap bom-component-viewer-table-wrap bom-zw-document-viewer-table-wrap">
-                                <table>
-                                    <thead>
-                                        <tr>
-                                            <th>Kod</th>
-                                            <th>Nazwa</th>
-                                            <th>Ilosc</th>
-                                            <th>Jedn.</th>
-                                            <th>Data</th>
-                                            <th>Uwagi</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="bom-zw-document-viewer-body">
-                                        <tr>
-                                            <td colspan="6" class="empty-state">Kliknij numer ZW, aby zobaczyc wszystkie pozycje dokumentu.</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
                 </section>
 
                 <section id="report-view" class="module-view hidden" data-module-view="report">
@@ -398,6 +329,76 @@
                         <pre id="zapotrzebowanie-raw-output">Brak danych.</pre>
                     </details>
                 </section>
+
+                <div id="bom-zw-viewer" class="note-viewer hidden" aria-hidden="true">
+                    <div class="note-viewer-backdrop" data-bom-zw-close></div>
+                    <div class="note-viewer-card bom-component-viewer-card bom-zw-viewer-card" role="dialog" aria-modal="true" aria-labelledby="bom-zw-viewer-title">
+                        <div class="table-section-header detail-section-header note-viewer-header">
+                            <div>
+                                <h3 id="bom-zw-viewer-title">Szczegoly ZW</h3>
+                                <p id="bom-zw-viewer-meta">Widok zamowien wlasnych dla wybranego indeksu.</p>
+                            </div>
+                            <button type="button" id="bom-zw-viewer-close" class="btn btn-ghost note-viewer-close">Zamknij</button>
+                        </div>
+                        <div id="bom-zw-viewer-summary" class="detail-summary bom-component-viewer-summary hidden"></div>
+                        <div id="bom-zw-viewer-error" class="error-box bom-component-viewer-error hidden"></div>
+                        <div class="table-wrap bom-component-viewer-table-wrap bom-zw-viewer-table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Data utw.</th>
+                                        <th>Dostawca</th>
+                                        <th>Numer ZW</th>
+                                        <th>Ilosc</th>
+                                        <th>Jedn.</th>
+                                        <th>Data</th>
+                                        <th>Uwagi</th>
+                                        <th>Data Dostawy</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="bom-zw-viewer-body">
+                                    <tr>
+                                        <td colspan="8" class="empty-state">Kliknij wartosc w kolumnie ZW, aby zobaczyc szczegoly dokumentow.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="bom-zw-document-viewer" class="note-viewer hidden" aria-hidden="true">
+                    <div class="note-viewer-backdrop" data-bom-zw-document-close></div>
+                    <div class="note-viewer-card bom-component-viewer-card bom-zw-document-viewer-card" role="dialog" aria-modal="true" aria-labelledby="bom-zw-document-viewer-title">
+                        <div class="table-section-header detail-section-header note-viewer-header">
+                            <div>
+                                <h3 id="bom-zw-document-viewer-title">Pozycje ZW</h3>
+                                <p id="bom-zw-document-viewer-meta">Kliknij numer ZW w poprzednim modalu, aby zobaczyc wszystkie pozycje dokumentu.</p>
+                            </div>
+                            <button type="button" id="bom-zw-document-viewer-close" class="btn btn-ghost note-viewer-close">Zamknij</button>
+                        </div>
+                        <div id="bom-zw-document-viewer-summary" class="detail-summary bom-component-viewer-summary hidden"></div>
+                        <div id="bom-zw-document-viewer-error" class="error-box bom-component-viewer-error hidden"></div>
+                        <div class="table-wrap bom-component-viewer-table-wrap bom-zw-document-viewer-table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Kod</th>
+                                        <th>Nazwa</th>
+                                        <th>Ilosc</th>
+                                        <th>Jedn.</th>
+                                        <th>Data</th>
+                                        <th>Uwagi</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="bom-zw-document-viewer-body">
+                                    <tr>
+                                        <td colspan="6" class="empty-state">Kliknij numer ZW, aby zobaczyc wszystkie pozycje dokumentu.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
 
                 <details class="operations-technical-panel">
                     <summary>Panel techniczny</summary>
