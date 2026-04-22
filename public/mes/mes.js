@@ -170,6 +170,10 @@ function getPcsPerPanelLabel(batch) {
         return `${baseLabel} | produkt`;
     }
 
+    if (batch.pcsPerPanelSource === "name_hint") {
+        return `${baseLabel} | nazwa`;
+    }
+
     if (batch.pcsPerPanelSource === "operator_panel" || batch.pcsPerPanelSource === "admin_panel") {
         return `${baseLabel} | panel`;
     }

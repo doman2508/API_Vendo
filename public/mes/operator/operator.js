@@ -237,8 +237,8 @@ function renderActiveBatch(summary) {
     const pcsMissingNotice = !batch.pcsPerPanel
         ? `
             <div class="mes-operator-alert">
-                <strong>Ustaw PCB na panel teraz.</strong>
-                <span>Bez tej wartosci MES policzy tylko panele, nie pojedyncze PCB.</span>
+                <strong>Ustaw PCB/panel.</strong>
+                <span>Bez tego MES policzy tylko panele.</span>
             </div>
         `
         : "";
@@ -246,8 +246,7 @@ function renderActiveBatch(summary) {
         ? `
             <div class="mes-operator-alert mes-operator-alert-pending">
                 <strong>Wykryto ${escapeHtml(formatNumber(pendingAssignment.count))} nieprzypisanych impulsow.</strong>
-                <span>To wyglada na plytki, ktore przeszly przez piec zanim operator uruchomil KKW.</span>
-                <span>Zakres: ${escapeHtml(formatDateTime(pendingAssignment.firstTs))} - ${escapeHtml(formatDateTime(pendingAssignment.lastTs))}</span>
+                <span>Wyglada na plytki sprzed startu KKW.</span>
                 <div class="mes-operator-alert-actions">
                     <button id="operator-assign-unassigned" class="ghost" type="button">Przypisz do tej partii</button>
                 </div>
@@ -260,7 +259,6 @@ function renderActiveBatch(summary) {
         <article class="mes-batch-card">
             <div class="mes-batch-header">
                 <div>
-                    <span class="eyebrow">Aktywna partia</span>
                     <h2>${escapeHtml(batch.kkwNumber)}</h2>
                     <div class="mes-batch-product">
                         ${productTitle ? `<strong>${escapeHtml(productTitle)}</strong>` : ""}
@@ -360,15 +358,15 @@ async function loadOperatorState() {
     refreshState.textContent = `Aktualizacja: ${formatDateTime(data.summary?.now)}`;
 
     if (data.summary?.pendingAssignment?.count) {
-        setMessage(`Wykryto ${formatNumber(data.summary.pendingAssignment.count)} nieprzypisanych impulsow sprzed startu tej partii. Mozesz przypisac je z karty aktywnej partii.`, "warning");
+        setMessage(`Wykryto ${formatNumber(data.summary.pendingAssignment.count)} nieprzypisanych impulsow.`, "warning");
     } else if (data.summary?.activeBatch && !data.summary.activeBatch.pcsPerPanel) {
-        setMessage("Ustaw PCB na panel, aby policzyc pojedyncze PCB dla tej partii.", "warning");
+        setMessage("Ustaw PCB/panel.", "warning");
     } else if (data.plannedQuantityLookup?.warning) {
         setMessage(data.plannedQuantityLookup.warning, "warning");
     } else if (data.summary?.activeBatch) {
-        setMessage(`Aktywna partia ${data.summary.activeBatch.kkwNumber}. MES liczy wejscia, wyjscia i czas w piecu.`, "success");
+        setMessage(`Aktywna partia ${data.summary.activeBatch.kkwNumber}.`, "success");
     } else if (!data.summary?.activeBatch) {
-        setMessage("Zeskanuj KKW. Po starcie od razu mozesz dopisac PCB na panel.", "info");
+        setMessage("Zeskanuj KKW.", "info");
     }
 }
 
