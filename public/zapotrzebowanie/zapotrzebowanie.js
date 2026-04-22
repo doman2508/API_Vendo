@@ -91,11 +91,14 @@ const dateFormatter = new Intl.DateTimeFormat("pl-PL", { year: "numeric", month:
 const dateTimeFormatter = new Intl.DateTimeFormat("pl-PL", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 const timeFormatter = new Intl.DateTimeFormat("pl-PL", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 const OPERATIONAL_AUTO_REFRESH_MS = 90 * 1000;
+const NOTE_AUTOSAVE_DELAY_MS = 900;
+const noteAutosaveTimers = new WeakMap();
 
 let activeView = "operations";
 let operationalPayload = null;
 let operationalDetailPayload = null;
 let selectedHeaderId = null;
+let selectedBomRowKey = "";
 let selectedDetailKey = "";
 let detailRequestToken = 0;
 let vendoPilotPayload = null;
@@ -423,11 +426,16 @@ function isBomZwDocumentViewerOpen() {
     return Boolean(bomZwDocumentViewer && !bomZwDocumentViewer.classList.contains("hidden"));
 }
 
+function isReportDetailViewerOpen() {
+    return Boolean(detailSection && !detailSection.classList.contains("hidden"));
+}
+
 function syncModalOpenState() {
     const hasOpenModal = isHeaderNoteViewerOpen()
         || isBomComponentViewerOpen()
         || isBomZwViewerOpen()
-        || isBomZwDocumentViewerOpen();
+        || isBomZwDocumentViewerOpen()
+        || isReportDetailViewerOpen();
     document.body.classList.toggle("modal-open", hasOpenModal);
     updateOperationalRefreshStatus();
 }
@@ -716,6 +724,7 @@ function clearOperationalDetailPanel({ hide = true, message = "Kliknij rekord w 
     closeBomComponentViewer();
     closeBomZwViewer();
     selectedHeaderId = hide ? null : selectedHeaderId;
+    selectedBomRowKey = "";
     if (hide && headerDetailSearchInput) headerDetailSearchInput.value = "";
     if (headerDetailSection) headerDetailSection.classList.toggle("hidden", hide);
     if (headerDetailTitle) headerDetailTitle.textContent = "Pozycje naglowka";
@@ -1533,6 +1542,203 @@ function updateBomNoteEditorState(editor) {
     editor.classList.toggle("has-note", hasNote);
 }
 
+function normalizeNoteValue(value) {
+    return String(value ?? "").trim();
+}
+
+function setEditorSavedNote(editor, note) {
+    if (!editor) return;
+    editor.dataset.savedNote = normalizeNoteValue(note);
+}
+
+function getEditorSavedNote(editor) {
+    return normalizeNoteValue(editor?.dataset?.savedNote || "");
+}
+
+function getEditorCurrentNote(editor) {
+    return normalizeNoteValue(editor?.querySelector("input")?.value || "");
+}
+
+function hasEditorPendingChanges(editor) {
+    return getEditorCurrentNote(editor) !== getEditorSavedNote(editor);
+}
+
+function clearNoteAutosave(editor) {
+    const timerId = noteAutosaveTimers.get(editor);
+    if (timerId) {
+        clearTimeout(timerId);
+        noteAutosaveTimers.delete(editor);
+    }
+}
+
+function scheduleNoteAutosave(editor, saveHandler) {
+    if (!editor || typeof saveHandler !== "function") {
+        return;
+    }
+
+    clearNoteAutosave(editor);
+    if (!hasEditorPendingChanges(editor)) {
+        return;
+    }
+
+    const timerId = setTimeout(() => {
+        noteAutosaveTimers.delete(editor);
+        void saveHandler(editor);
+    }, NOTE_AUTOSAVE_DELAY_MS);
+
+    noteAutosaveTimers.set(editor, timerId);
+}
+
+function buildReportNoteKey(code, rodzaj) {
+    return `${String(code || "").trim().toUpperCase()}::${String(rodzaj || "").trim().toUpperCase()}`;
+}
+
+function updateReportNoteEditorState(editor) {
+    if (!editor) return;
+    const input = editor.querySelector("input");
+    const hasNote = Boolean(String(input?.value || "").trim());
+    editor.classList.toggle("has-note", hasNote);
+}
+
+function normalizePcsPerPanelValue(value) {
+    const normalized = String(value ?? "").trim().replace(",", ".");
+    if (!normalized) {
+        return "";
+    }
+
+    const numeric = Number(normalized);
+    if (!Number.isInteger(numeric) || numeric <= 0) {
+        return "";
+    }
+
+    return String(numeric);
+}
+
+function updateReportPcsPerPanelEditorState(editor) {
+    if (!editor) return;
+    const input = editor.querySelector("input");
+    const hasValue = Boolean(normalizePcsPerPanelValue(input?.value || ""));
+    editor.classList.toggle("has-note", hasValue);
+}
+
+function renderReportNoteCell(row) {
+    const currentNote = String(row?.note || "").trim();
+    return `
+        <div class="bom-note-editor report-note-editor${currentNote ? " has-note" : ""}"
+            data-report-code="${escapeHtml(row?.code || "")}"
+            data-report-rodzaj="${escapeHtml(row?.rodzaj || "")}"
+            data-saved-note="${escapeHtml(currentNote)}">
+            <input type="text" value="${escapeHtml(row?.note || "")}" placeholder="Uwagi">
+        </div>
+    `;
+}
+
+function getPcsPerPanelSourceLabel(source) {
+    if (source === "product_setting") return "Wspolne ustawienie MES";
+    if (source === "name_hint") return "Automatyczna podpowiedz z nazwy";
+    if (source === "report_panel") return "Zapis z raportu zakupowego";
+    if (source === "operator_panel" || source === "admin_panel") return "Zapis z MES";
+    if (source === "multiple_consistent") return "Kilka wyrobow gotowych ma te sama wartosc PCB/panel";
+    if (source === "multiple_products") return "Surowiec PCB jest powiazany z kilkoma wyrobami gotowymi; zapis ujednolici wszystkie";
+    return "";
+}
+
+function normalizeReportPcsTargets(targets) {
+    if (!Array.isArray(targets)) {
+        return [];
+    }
+
+    return targets
+        .map((target) => ({
+            productCode: String(target?.productCode || "").trim(),
+            productName: String(target?.productName || "").trim(),
+            requiredQty: Number(target?.requiredQty) || 0,
+            orderQty: Number(target?.orderQty) || 0,
+            headerCount: Number(target?.headerCount) || 0,
+            pcsPerPanel: normalizePcsPerPanelValue(target?.pcsPerPanel),
+            source: String(target?.source || "").trim() || null,
+            updatedAt: target?.updatedAt || null,
+            updatedBy: target?.updatedBy || null,
+        }))
+        .filter((target) => target.productCode);
+}
+
+function summarizeReportPcsTargets(targets) {
+    const normalizedTargets = normalizeReportPcsTargets(targets);
+    if (!normalizedTargets.length) {
+        return {
+            pcsPerPanel: null,
+            pcsPerPanelSource: null,
+            pcsPerPanelUpdatedAt: null,
+            pcsPerPanelUpdatedBy: null,
+            pcsPerPanelMode: "none",
+            pcsPerPanelProductCode: null,
+            pcsPerPanelProductName: null,
+            pcsPerPanelTargetCount: 0,
+            pcsPerPanelTargets: [],
+        };
+    }
+
+    if (normalizedTargets.length === 1) {
+        const target = normalizedTargets[0];
+        return {
+            pcsPerPanel: target.pcsPerPanel || null,
+            pcsPerPanelSource: target.source || null,
+            pcsPerPanelUpdatedAt: target.updatedAt || null,
+            pcsPerPanelUpdatedBy: target.updatedBy || null,
+            pcsPerPanelMode: "single",
+            pcsPerPanelProductCode: target.productCode,
+            pcsPerPanelProductName: target.productName || null,
+            pcsPerPanelTargetCount: 1,
+            pcsPerPanelTargets: normalizedTargets,
+        };
+    }
+
+    const distinctValues = [...new Set(normalizedTargets.map((target) => target.pcsPerPanel).filter(Boolean))];
+    return {
+        pcsPerPanel: distinctValues.length === 1 ? distinctValues[0] : null,
+        pcsPerPanelSource: distinctValues.length === 1 ? "multiple_consistent" : "multiple_products",
+        pcsPerPanelUpdatedAt: null,
+        pcsPerPanelUpdatedBy: null,
+        pcsPerPanelMode: "multiple",
+        pcsPerPanelProductCode: null,
+        pcsPerPanelProductName: null,
+        pcsPerPanelTargetCount: normalizedTargets.length,
+        pcsPerPanelTargets: normalizedTargets,
+    };
+}
+
+function renderReportPcsPerPanelCell(row) {
+    if (String(row?.rodzaj || "").trim().toUpperCase() !== "PCB") {
+        return "-";
+    }
+
+    const currentValue = normalizePcsPerPanelValue(row?.pcsPerPanel);
+    const source = String(row?.pcsPerPanelSource || "").trim();
+    const sourceLabel = getPcsPerPanelSourceLabel(source);
+    const targets = normalizeReportPcsTargets(row?.pcsPerPanelTargets);
+    const productCodes = targets.map((target) => target.productCode).filter(Boolean);
+    const effectiveProductCode = row?.pcsPerPanelProductCode || productCodes[0] || "";
+    const effectiveProductName = row?.pcsPerPanelProductName || targets[0]?.productName || "";
+
+    if (!effectiveProductCode && !productCodes.length) {
+        return '<span class="empty-inline">-</span>';
+    }
+
+    return `
+        <div class="bom-note-editor report-pcs-editor${currentValue ? " has-note" : ""}${source === "name_hint" ? " is-hint" : ""}"
+            data-report-code="${escapeHtml(row?.code || "")}"
+            data-product-code="${escapeHtml(effectiveProductCode)}"
+            data-product-name="${escapeHtml(effectiveProductName)}"
+            data-product-codes="${escapeHtml(productCodes.join("|"))}"
+            data-report-pcs-per-panel
+            data-saved-note="${escapeHtml(currentValue)}"
+            title="${escapeHtml(sourceLabel)}">
+            <input type="number" min="1" step="1" inputmode="numeric" value="${escapeHtml(currentValue)}" placeholder="PCB/panel">
+        </div>
+    `;
+}
+
 function renderBomNoteCell(item) {
     const resolvedNote = String(resolveBomNote(item) || "").trim();
     if (!canEditBomNote(item)) {
@@ -1552,9 +1758,9 @@ function renderBomNoteCell(item) {
         <div class="bom-note-editor${currentNote ? " has-note" : ""}"
             data-source-type="${escapeHtml(item.sourceType)}"
             data-source-material-id="${escapeHtml(item.sourceMaterialId)}"
-            data-component-code="${escapeHtml(item.componentCode || "")}">
+            data-component-code="${escapeHtml(item.componentCode || "")}"
+            data-saved-note="${escapeHtml(currentNote)}">
             <input type="text" value="${escapeHtml(item.note || "")}" placeholder="Uwagi">
-            <button type="button" class="btn btn-ghost save-bom-note" title="Zapisz uwage">OK</button>
         </div>
     `;
 }
@@ -1620,6 +1826,34 @@ function renderHeaderDetailCount(visibleCount, totalCount) {
     headerDetailCount.textContent = `Widoczne: ${visibleCount} z ${totalCount}`;
 }
 
+function buildBomRowKey(item) {
+    return [
+        String(item?.sourceType || "").trim(),
+        String(item?.sourceMaterialId ?? "").trim(),
+        String(item?.componentCode || "").trim(),
+    ].join("::");
+}
+
+function syncSelectedBomRowState() {
+    if (!headerDetailBody) return;
+
+    const rows = Array.from(headerDetailBody.querySelectorAll("tr[data-bom-row-key]"));
+    rows.forEach((row) => {
+        const isSelected = String(row.dataset.bomRowKey || "") === String(selectedBomRowKey || "");
+        row.classList.toggle("is-selected", isSelected);
+
+        const componentLink = row.querySelector(".bom-component-link");
+        if (componentLink) {
+            componentLink.classList.toggle("active", isSelected);
+        }
+    });
+}
+
+function setSelectedBomRowKey(rowKey) {
+    selectedBomRowKey = String(rowKey || "").trim();
+    syncSelectedBomRowState();
+}
+
 function renderHeaderDetailTable(items, { totalCount = items.length } = {}) {
     renderHeaderDetailCount(items.length, totalCount);
 
@@ -1638,11 +1872,11 @@ function renderHeaderDetailTable(items, { totalCount = items.length } = {}) {
     const sortedItems = sortBomItemsByToOrder(items);
 
     headerDetailBody.innerHTML = sortedItems.map((item) => `
-        <tr>
+        <tr class="operations-bom-row${buildBomRowKey(item) === selectedBomRowKey ? " is-selected" : ""}" data-bom-row-key="${escapeHtml(buildBomRowKey(item))}">
             <td>
                 <button
                     type="button"
-                    class="index-link bom-component-link"
+                    class="index-link bom-component-link${buildBomRowKey(item) === selectedBomRowKey ? " active" : ""}"
                     data-bom-code="${escapeHtml(item.componentCode || "")}"
                     title="Pokaz rozbicie komponentu"
                 >
@@ -1729,7 +1963,7 @@ async function loadOperationalOverview({ preserveSelection = true, silentStatus 
                     payload = await postJson("/api/zapotrzebowanie/vendo/overview", {
                         ...connection,
                         pageSize: 100,
-                        maxPages: 2,
+                        maxPages: 10,
                         includeNoScope: true,
                         materialOwnershipFilter: headerMaterialFilter?.value || "MSX_OR_EMPTY",
                         forceRefresh,
@@ -1819,6 +2053,9 @@ async function refreshStorageSnapshot() {
 async function loadHeaderDetails(headerId, { silentStatus = false } = {}) {
     closeBomComponentViewer();
     closeBomZwViewer();
+    if (Number(selectedHeaderId) !== Number(headerId)) {
+        selectedBomRowKey = "";
+    }
     selectedHeaderId = Number(headerId);
     renderOperationalHeaders();
     if (!silentStatus) setStatus("loading", "Naglowek");
@@ -1876,8 +2113,7 @@ async function loadHeaderDetails(headerId, { silentStatus = false } = {}) {
     }
 }
 
-async function saveBomNote(trigger) {
-    const editor = trigger.closest(".bom-note-editor");
+async function saveBomNote(editor) {
     const input = editor?.querySelector("input");
     const header = operationalDetailPayload?.header || vendoPilotPayload?.header || {};
     const planPositionId = Number(header.planPositionId);
@@ -1890,19 +2126,26 @@ async function saveBomNote(trigger) {
         return;
     }
 
-    trigger.disabled = true;
+    if (!hasEditorPendingChanges(editor)) {
+        updateBomNoteEditorState(editor);
+        return;
+    }
+
+    clearNoteAutosave(editor);
     bomNoteSaveInFlight = true;
     setStatus("loading", "Uwagi");
     updateOperationalRefreshStatus();
+    editor.classList.add("is-saving");
     updateBomNoteEditorState(editor);
 
     try {
+        const normalizedNote = getEditorCurrentNote(editor);
         const payload = await postJson("/api/zapotrzebowanie/vendo/bom-note", {
             planPositionId,
             sourceType,
             sourceMaterialId,
             componentCode,
-            note: input.value,
+            note: normalizedNote,
             ...getConnectionPayload(),
         });
         const targetPayload = operationalDetailPayload || vendoPilotPayload;
@@ -1911,13 +2154,19 @@ async function saveBomNote(trigger) {
                 if (String(item?.sourceType || "") === sourceType && Number(item?.sourceMaterialId) === sourceMaterialId) {
                     return {
                         ...item,
-                        note: payload?.note?.note || "",
+                        note: payload?.note?.note || normalizedNote,
                         noteUpdatedAt: payload?.note?.updatedAt || null,
                     };
                 }
 
                 return item;
             });
+        }
+        input.value = payload?.note?.note || normalizedNote;
+        setEditorSavedNote(editor, payload?.note?.note || normalizedNote);
+        if (headerDetailError) {
+            headerDetailError.classList.add("hidden");
+            headerDetailError.textContent = "";
         }
         updateBomNoteEditorState(editor);
         setStatus("success", "Uwagi");
@@ -1929,8 +2178,200 @@ async function saveBomNote(trigger) {
         setStatus("error", "Uwagi");
     } finally {
         bomNoteSaveInFlight = false;
-        trigger.disabled = false;
+        editor.classList.remove("is-saving");
         updateOperationalRefreshStatus();
+    }
+}
+
+function syncReportNoteInPayload(code, rodzaj, note, updatedAt) {
+    if (!Array.isArray(lastReportPayload?.rows)) {
+        return;
+    }
+
+    const targetKey = buildReportNoteKey(code, rodzaj);
+    lastReportPayload.rows = lastReportPayload.rows.map((row) => {
+        if (buildReportNoteKey(row?.code, row?.rodzaj) !== targetKey) {
+            return row;
+        }
+
+        return {
+            ...row,
+            note: String(note || ""),
+            noteUpdatedAt: updatedAt || null,
+        };
+    });
+}
+
+function syncReportPcsPerPanelInPayload(code, productCodes, pcsPerPanel, source, updatedAt) {
+    if (!Array.isArray(lastReportPayload?.rows)) {
+        return;
+    }
+
+    const targetCode = String(code || "").trim().toUpperCase();
+    const normalizedProductCodes = [...new Set((Array.isArray(productCodes) ? productCodes : [productCodes])
+        .map((item) => String(item || "").trim().toUpperCase())
+        .filter(Boolean))];
+    lastReportPayload.rows = lastReportPayload.rows.map((row) => {
+        if (String(row?.code || "").trim().toUpperCase() !== targetCode) {
+            return row;
+        }
+
+        const currentTargets = normalizeReportPcsTargets(row?.pcsPerPanelTargets);
+        const nextTargets = currentTargets.map((target) => {
+            if (!normalizedProductCodes.includes(String(target?.productCode || "").trim().toUpperCase())) {
+                return target;
+            }
+
+            return {
+                ...target,
+                pcsPerPanel: normalizePcsPerPanelValue(pcsPerPanel),
+                source: source || "report_panel",
+                updatedAt: updatedAt || null,
+            };
+        });
+        const targetExists = nextTargets.some((target) => normalizedProductCodes.includes(String(target?.productCode || "").trim().toUpperCase()));
+        const finalTargets = targetExists || !normalizedProductCodes.length
+            ? nextTargets
+            : currentTargets;
+        const summary = summarizeReportPcsTargets(finalTargets);
+
+        return {
+            ...row,
+            ...summary,
+        };
+    });
+}
+
+async function saveReportNote(editor) {
+    const input = editor?.querySelector("input");
+    const code = String(editor?.dataset.reportCode || "").trim();
+    const rodzaj = String(editor?.dataset.reportRodzaj || "").trim();
+
+    if (!editor || !input || !code || !rodzaj) {
+        return;
+    }
+
+    if (!hasEditorPendingChanges(editor)) {
+        updateReportNoteEditorState(editor);
+        return;
+    }
+
+    clearNoteAutosave(editor);
+    setStatus("loading", "Uwagi");
+    editor.classList.add("is-saving");
+    updateReportNoteEditorState(editor);
+
+    try {
+        const normalizedNote = getEditorCurrentNote(editor);
+        const payload = await postJson("/api/zapotrzebowanie/report-note", {
+            code,
+            rodzaj,
+            note: normalizedNote,
+            ...getConnectionPayload(),
+        });
+
+        syncReportNoteInPayload(code, rodzaj, payload?.note?.note || normalizedNote, payload?.note?.updatedAt || null);
+        input.value = payload?.note?.note || normalizedNote;
+        setEditorSavedNote(editor, payload?.note?.note || normalizedNote);
+        if (reportErrorBox) {
+            reportErrorBox.classList.add("hidden");
+            reportErrorBox.textContent = "";
+        }
+        if (rawOutput && lastReportPayload) {
+            rawOutput.textContent = JSON.stringify(lastReportPayload, null, 2);
+        }
+        if (!editor.contains(document.activeElement)) {
+            renderFilteredResults();
+        }
+        setStatus("success", "Uwagi");
+    } catch (error) {
+        if (reportErrorBox) {
+            reportErrorBox.textContent = error.message || "Nie udalo sie zapisac uwagi raportu.";
+            reportErrorBox.classList.remove("hidden");
+        }
+        setStatus("error", "Uwagi");
+    } finally {
+        editor.classList.remove("is-saving");
+    }
+}
+
+async function saveReportPcsPerPanel(editor) {
+    const input = editor?.querySelector("input");
+    const code = String(editor?.dataset.reportCode || "").trim();
+    const productCode = String(editor?.dataset.productCode || "").trim();
+    const productName = String(editor?.dataset.productName || "").trim();
+    const productCodes = String(editor?.dataset.productCodes || "")
+        .split("|")
+        .map((item) => String(item || "").trim())
+        .filter(Boolean);
+    const normalizedValue = normalizePcsPerPanelValue(input?.value || "");
+
+    if (!editor || !input || !code || !(productCode || productCodes.length)) {
+        return;
+    }
+
+    if (!normalizedValue) {
+        input.value = getEditorSavedNote(editor);
+        updateReportPcsPerPanelEditorState(editor);
+        clearNoteAutosave(editor);
+        return;
+    }
+
+    if (normalizePcsPerPanelValue(getEditorSavedNote(editor)) === normalizedValue) {
+        updateReportPcsPerPanelEditorState(editor);
+        return;
+    }
+
+    clearNoteAutosave(editor);
+    editor.classList.add("is-saving");
+    setStatus("loading", "PCB/panel");
+    updateReportPcsPerPanelEditorState(editor);
+
+    try {
+        const payload = await postJson("/api/zapotrzebowanie/report-pcs-per-panel", {
+            code,
+            productCode,
+            productCodes,
+            productName,
+            pcsPerPanel: normalizedValue,
+            source: "report_panel",
+            ...getConnectionPayload(),
+        });
+
+        const savedValue = normalizePcsPerPanelValue(payload?.setting?.pcsPerPanel || normalizedValue);
+        input.value = savedValue;
+        setEditorSavedNote(editor, savedValue);
+        editor.classList.toggle("is-hint", false);
+        if (payload?.setting?.source) {
+            editor.title = getPcsPerPanelSourceLabel(payload.setting.source);
+        }
+        syncReportPcsPerPanelInPayload(
+            code,
+            productCodes.length ? productCodes : [productCode],
+            savedValue,
+            payload?.setting?.source || "report_panel",
+            payload?.setting?.updatedAt || null
+        );
+        if (reportErrorBox) {
+            reportErrorBox.classList.add("hidden");
+            reportErrorBox.textContent = "";
+        }
+        if (rawOutput && lastReportPayload) {
+            rawOutput.textContent = JSON.stringify(lastReportPayload, null, 2);
+        }
+        if (!editor.contains(document.activeElement)) {
+            renderFilteredResults();
+        }
+        updateReportPcsPerPanelEditorState(editor);
+        setStatus("success", "PCB/panel");
+    } catch (error) {
+        if (reportErrorBox) {
+            reportErrorBox.textContent = error.message || "Nie udalo sie zapisac PCB na panel.";
+            reportErrorBox.classList.remove("hidden");
+        }
+        setStatus("error", "PCB/panel");
+    } finally {
+        editor.classList.remove("is-saving");
     }
 }
 
@@ -1961,7 +2402,10 @@ function buildDetailKey(code, rodzaj) {
 function clearDetailPanel({ hide = true, message = "Szczegoly pojawia sie po kliknieciu kodu komponentu." } = {}) {
     selectedDetailKey = "";
     detailRequestToken += 1;
-    if (detailSection) detailSection.classList.toggle("hidden", hide);
+    if (detailSection) {
+        detailSection.classList.toggle("hidden", hide);
+        detailSection.setAttribute("aria-hidden", hide ? "true" : "false");
+    }
     if (detailTitle) detailTitle.textContent = "Szczegoly komponentu";
     if (detailDescription) detailDescription.textContent = message;
     if (detailSummary) {
@@ -1979,7 +2423,8 @@ function clearDetailPanel({ hide = true, message = "Szczegoly pojawia sie po kli
             </tr>
         `;
     }
-    if (detailCloseButton) detailCloseButton.classList.toggle("hidden", hide);
+    if (detailCloseButton) detailCloseButton.classList.remove("hidden");
+    syncModalOpenState();
 }
 
 function clearResults() {
@@ -1990,7 +2435,7 @@ function clearResults() {
     reportErrorBox.textContent = "";
     resultsBody.innerHTML = `
         <tr>
-            <td colspan="9" class="empty-state">Jeszcze nie pobrano danych zapotrzebowania.</td>
+            <td colspan="11" class="empty-state">Jeszcze nie pobrano danych zapotrzebowania.</td>
         </tr>
     `;
     rawOutput.textContent = "Brak danych.";
@@ -2038,7 +2483,10 @@ function getFilteredReportRows(rows) {
         if (balance === "COVERED" && toOrder < 0) return false;
         if (!searchTerm) return true;
 
-        const searchable = normalizeText([row.code, row.component, row.rodzaj].join(" "));
+        const pcsTargetsText = normalizeReportPcsTargets(row?.pcsPerPanelTargets)
+            .map((target) => [target.productCode, target.productName, target.pcsPerPanel].join(" "))
+            .join(" ");
+        const searchable = normalizeText([row.code, row.component, row.rodzaj, row.note, row.pcsPerPanel, pcsTargetsText].join(" "));
         return searchable.includes(searchTerm);
     });
 }
@@ -2048,7 +2496,7 @@ function renderReportTable(rows, totalRows) {
     if (!rows.length) {
         resultsBody.innerHTML = `
             <tr>
-                <td colspan="9" class="empty-state">Brak wynikow dla wybranych filtrow.</td>
+                <td colspan="11" class="empty-state">Brak wynikow dla wybranych filtrow.</td>
             </tr>
         `;
         return;
@@ -2073,8 +2521,10 @@ function renderReportTable(rows, totalRows) {
                 <td>${escapeHtml(formatNumber(row.vendoStock))}</td>
                 <td>${escapeHtml(formatNumber(row.vendoExpected))}</td>
                 <td>${escapeHtml(row.rodzaj ?? "")}</td>
+                <td class="report-pcs-cell">${renderReportPcsPerPanelCell(row)}</td>
                 <td>${escapeHtml(row.status ?? 0)}</td>
                 <td class="to-order ${toneClass}">${escapeHtml(formatNumber(toOrder))}</td>
+                <td class="bom-note report-note-cell">${renderReportNoteCell(row)}</td>
             </tr>
         `;
     }).join("");
@@ -2152,7 +2602,10 @@ function renderComponentDetails(overviewRow, payload) {
     const hasDebugTrace = Boolean(payload?.meta?.debug);
     const availableTotal = (Number(overviewRow?.wmsStock) || 0) + (Number(overviewRow?.vendoStock) || 0) + (Number(overviewRow?.vendoExpected) || 0);
 
-    if (detailSection) detailSection.classList.remove("hidden");
+    if (detailSection) {
+        detailSection.classList.remove("hidden");
+        detailSection.setAttribute("aria-hidden", "false");
+    }
     if (detailCloseButton) detailCloseButton.classList.remove("hidden");
     if (detailTitle) detailTitle.textContent = `Szczegoly komponentu ${overviewRow?.code || ""}`;
     if (detailDescription) {
@@ -2171,6 +2624,7 @@ function renderComponentDetails(overviewRow, payload) {
 
     renderDetailSummary(calculatedRows, overviewRow);
     renderDetailTable(calculatedRows);
+    syncModalOpenState();
 }
 
 function renderFilteredResults() {
@@ -2197,7 +2651,7 @@ function formatCsvNumber(value) {
 }
 
 function buildCsvContent(rows) {
-    const headers = ["Kod", "Komponent", "Suma wymagane", "Stan WMS", "Vendo stan", "Vendo oczekiwane", "Rodzaj", "Status", "To order"];
+    const headers = ["Kod", "Komponent", "Suma wymagane", "Stan WMS", "Vendo stan", "Vendo oczekiwane", "Rodzaj", "PCB/panel", "Status", "To order", "Uwagi"];
     const lines = rows.map((row) => ([
         row.code,
         row.component,
@@ -2206,8 +2660,10 @@ function buildCsvContent(rows) {
         formatCsvNumber(row.vendoStock),
         formatCsvNumber(row.vendoExpected),
         row.rodzaj,
+        formatCsvNumber(row.pcsPerPanel),
         formatCsvNumber(row.status),
         formatCsvNumber(row.toOrder),
+        row.note || "",
     ].map(escapeCsvCell).join(";")));
 
     return `\uFEFF${headers.join(";")}\n${lines.join("\n")}`;
@@ -2258,7 +2714,10 @@ async function loadComponentDetails(code, rodzaj) {
     const requestToken = detailRequestToken + 1;
     detailRequestToken = requestToken;
 
-    if (detailSection) detailSection.classList.remove("hidden");
+    if (detailSection) {
+        detailSection.classList.remove("hidden");
+        detailSection.setAttribute("aria-hidden", "false");
+    }
     if (detailCloseButton) detailCloseButton.classList.remove("hidden");
     if (detailTitle) detailTitle.textContent = `Szczegoly komponentu ${overviewRow.code || ""}`;
     if (detailDescription) detailDescription.textContent = `Ladowanie rozbicia dla ${overviewRow.component || overviewRow.code || "wybranego komponentu"}...`;
@@ -2277,6 +2736,7 @@ async function loadComponentDetails(code, rodzaj) {
             </tr>
         `;
     }
+    syncModalOpenState();
 
     setStatus("loading", "Szczegoly");
 
@@ -2305,6 +2765,7 @@ async function loadComponentDetails(code, rodzaj) {
                 </tr>
             `;
         }
+        syncModalOpenState();
         setStatus("error", "Blad");
     }
 }
@@ -2408,10 +2869,9 @@ if (headerDetailCloseButton) {
 
 if (headerDetailBody) {
     headerDetailBody.addEventListener("click", (event) => {
-        const noteButton = event.target.closest(".save-bom-note");
-        if (noteButton) {
-            saveBomNote(noteButton);
-            return;
+        const rowTrigger = event.target.closest("[data-bom-row-key]");
+        if (rowTrigger && !event.target.closest(".bom-note-editor")) {
+            setSelectedBomRowKey(rowTrigger.dataset.bomRowKey || "");
         }
 
         const zwTrigger = event.target.closest("[data-bom-zw-code]");
@@ -2439,7 +2899,27 @@ if (headerDetailBody) {
     headerDetailBody.addEventListener("input", (event) => {
         const noteInput = event.target.closest(".bom-note-editor input");
         if (noteInput) {
-            updateBomNoteEditorState(noteInput.closest(".bom-note-editor"));
+            const editor = noteInput.closest(".bom-note-editor");
+            updateBomNoteEditorState(editor);
+            scheduleNoteAutosave(editor, saveBomNote);
+        }
+    });
+
+    headerDetailBody.addEventListener("focusout", (event) => {
+        const noteInput = event.target.closest(".bom-note-editor input");
+        if (noteInput) {
+            const editor = noteInput.closest(".bom-note-editor");
+            if (!event.relatedTarget || !editor?.contains(event.relatedTarget)) {
+                void saveBomNote(editor);
+            }
+        }
+    });
+
+    headerDetailBody.addEventListener("keydown", (event) => {
+        const noteInput = event.target.closest(".bom-note-editor input");
+        if (noteInput && event.key === "Enter") {
+            event.preventDefault();
+            noteInput.blur();
         }
     });
 }
@@ -2505,10 +2985,70 @@ if (detailCloseButton) {
     });
 }
 
+if (detailSection) {
+    detailSection.addEventListener("click", (event) => {
+        if (event.target.closest("[data-report-detail-close]")) {
+            clearDetailPanel({ hide: true });
+            renderFilteredResults();
+        }
+    });
+}
+
 if (resultsBody) {
     resultsBody.addEventListener("click", (event) => {
         const trigger = event.target.closest(".index-link[data-code]");
         if (trigger) loadComponentDetails(trigger.dataset.code, trigger.dataset.rodzaj);
+    });
+
+    resultsBody.addEventListener("input", (event) => {
+        const noteInput = event.target.closest(".report-note-editor input");
+        if (noteInput) {
+            const editor = noteInput.closest(".report-note-editor");
+            updateReportNoteEditorState(editor);
+            scheduleNoteAutosave(editor, saveReportNote);
+            return;
+        }
+
+        const pcsInput = event.target.closest(".report-pcs-editor input");
+        if (pcsInput) {
+            const editor = pcsInput.closest(".report-pcs-editor");
+            updateReportPcsPerPanelEditorState(editor);
+            scheduleNoteAutosave(editor, saveReportPcsPerPanel);
+        }
+    });
+
+    resultsBody.addEventListener("focusout", (event) => {
+        const noteInput = event.target.closest(".report-note-editor input");
+        if (noteInput) {
+            const editor = noteInput.closest(".report-note-editor");
+            if (!event.relatedTarget || !editor?.contains(event.relatedTarget)) {
+                void saveReportNote(editor);
+            }
+            return;
+        }
+
+        const pcsInput = event.target.closest(".report-pcs-editor input");
+        if (pcsInput) {
+            const editor = pcsInput.closest(".report-pcs-editor");
+            if (!event.relatedTarget || !editor?.contains(event.relatedTarget)) {
+                void saveReportPcsPerPanel(editor);
+            }
+        }
+    });
+
+    resultsBody.addEventListener("keydown", (event) => {
+        const noteInput = event.target.closest(".report-note-editor input");
+        if (noteInput && event.key === "Enter") {
+            event.preventDefault();
+            noteInput.blur();
+            return;
+        }
+
+        const pcsInput = event.target.closest(".report-pcs-editor input");
+        if (pcsInput && event.key === "Enter") {
+            event.preventDefault();
+            pcsInput.blur();
+        }
     });
 }
 

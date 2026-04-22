@@ -305,10 +305,10 @@
                             <p>Kolumny odpowiadaja logice znanej z widoku Accessowego, ale sa liczone po naszej stronie. Ujemny <code>To order</code> oznacza brak. Kliknij kod komponentu, aby zobaczyc rozbicie na produkty i zamowienia.</p>
                         </div>
                         <div class="results-toolbar">
-                            <label class="compact-field compact-field-search">
-                                <span>Wyszukaj</span>
-                                <input id="results-search" type="search" placeholder="Kod, komponent lub rodzaj">
-                            </label>
+                              <label class="compact-field compact-field-search">
+                                  <span>Wyszukaj</span>
+                                  <input id="results-search" type="search" placeholder="Kod, komponent, rodzaj lub uwaga">
+                              </label>
                             <label class="compact-field">
                                 <span>Bilans</span>
                                 <select id="balance-filter">
@@ -338,55 +338,60 @@
                                         <th>Vendo stan</th>
                                         <th>Vendo oczekiwane</th>
                                         <th>Rodzaj</th>
+                                        <th>PCB/panel</th>
                                         <th>Status</th>
                                         <th>To order</th>
+                                        <th>Uwagi</th>
                                     </tr>
                                 </thead>
                                 <tbody id="zapotrzebowanie-body">
                                     <tr>
-                                        <td colspan="9" class="empty-state">Jeszcze nie pobrano danych zapotrzebowania.</td>
+                                        <td colspan="11" class="empty-state">Jeszcze nie pobrano danych zapotrzebowania.</td>
                                     </tr>
                                 </tbody>
                             </table>
                         </div>
                     </section>
 
-                    <section id="detail-section" class="table-section hidden">
-                        <div class="table-section-header detail-section-header">
-                            <div>
-                                <h3 id="detail-title">Szczegoly komponentu</h3>
-                                <p id="detail-description">Kliknij kod komponentu w tabeli powyzej, aby zobaczyc rozbicie na produkty i zamowienia.</p>
+                    <div id="detail-section" class="note-viewer hidden" aria-hidden="true">
+                        <div class="note-viewer-backdrop" data-report-detail-close></div>
+                        <div class="note-viewer-card bom-component-viewer-card report-detail-viewer-card" role="dialog" aria-modal="true" aria-labelledby="detail-title">
+                            <div class="table-section-header detail-section-header note-viewer-header">
+                                <div>
+                                    <h3 id="detail-title">Szczegoly komponentu</h3>
+                                    <p id="detail-description">Kliknij kod komponentu w tabeli powyzej, aby zobaczyc rozbicie na produkty i zamowienia.</p>
+                                </div>
+                                <button type="button" id="detail-close" class="btn btn-ghost note-viewer-close">Zamknij szczegoly</button>
                             </div>
-                            <button type="button" id="detail-close" class="btn btn-ghost hidden">Zamknij szczegoly</button>
+                            <div id="detail-summary" class="detail-summary bom-component-viewer-summary hidden"></div>
+                            <div id="detail-error" class="error-box bom-component-viewer-error hidden"></div>
+                            <div class="table-wrap bom-component-viewer-table-wrap report-detail-viewer-table-wrap report-detail-wrap">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Termin</th>
+                                            <th>KKW</th>
+                                            <th>Zlecenie</th>
+                                            <th>Nr obcy</th>
+                                            <th>Indeks prod.</th>
+                                            <th>Produkt</th>
+                                            <th>Klient</th>
+                                            <th>Ilosc prod.</th>
+                                            <th>Potrzeba</th>
+                                            <th>Dostepne przed</th>
+                                            <th>Brak</th>
+                                            <th>Bilans po</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="detail-body">
+                                        <tr>
+                                            <td colspan="12" class="empty-state">Szczegoly pojawia sie po kliknieciu kodu komponentu.</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
-                        <div id="detail-summary" class="detail-summary hidden"></div>
-                        <div id="detail-error" class="error-box hidden"></div>
-                        <div class="table-wrap zapotrzebowanie-detail-wrap report-detail-wrap">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>Termin</th>
-                                        <th>KKW</th>
-                                        <th>Zlecenie</th>
-                                        <th>Nr obcy</th>
-                                        <th>Indeks prod.</th>
-                                        <th>Produkt</th>
-                                        <th>Klient</th>
-                                        <th>Ilosc prod.</th>
-                                        <th>Potrzeba</th>
-                                        <th>Dostepne przed</th>
-                                        <th>Brak</th>
-                                        <th>Bilans po</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="detail-body">
-                                    <tr>
-                                        <td colspan="12" class="empty-state">Szczegoly pojawia sie po kliknieciu kodu komponentu.</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </section>
+                    </div>
 
                     <details class="raw-panel">
                         <summary>Surowa odpowiedz JSON</summary>
@@ -474,6 +479,6 @@
 
     <script src="/core/modules.js"></script>
     <script src="/core/shell.js"></script>
-    <script src="/zapotrzebowanie/zapotrzebowanie.js?v=20260410-10"></script>
+    <script src="/zapotrzebowanie/zapotrzebowanie.js?v=20260422-01"></script>
 </body>
 </html>

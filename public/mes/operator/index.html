@@ -10,8 +10,8 @@
 <body class="mes-operator-page" data-app-module="mes-operator" data-app-layout="operator">
     <main class="mes-operator-shell">
         <section class="mes-operator-topbar">
-            <div>
-                <p class="eyebrow">MES operator</p>
+            <div class="mes-operator-title-row">
+                <p class="eyebrow">MES</p>
                 <h1>Piec / Reflow</h1>
             </div>
             <span id="operator-refresh-state" class="phase-badge neutral">-</span>
@@ -19,13 +19,21 @@
 
         <section class="mes-scan-panel">
             <form id="operator-scan-form">
-                <label>
-                    <span>Skan KKW</span>
-                    <input id="operator-scan-input" name="scan" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="text" enterkeyhint="go" placeholder="np. 258/25" autofocus>
-                </label>
-                <button type="submit">Start partii</button>
+                <input
+                    id="operator-scan-input"
+                    name="scan"
+                    autocomplete="off"
+                    autocapitalize="off"
+                    spellcheck="false"
+                    inputmode="text"
+                    enterkeyhint="go"
+                    placeholder="Skanuj KKW"
+                    aria-label="Skan KKW"
+                    autofocus
+                >
+                <button type="submit">Start</button>
             </form>
-            <p id="operator-message" class="note">Zeskanuj KKW. Po starcie od razu mozesz dopisac PCB na panel.</p>
+            <p id="operator-message" class="note">Zeskanuj KKW.</p>
         </section>
 
         <section id="operator-active-batch" class="mes-active-batch">

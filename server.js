@@ -7,13 +7,16 @@ const { execFile } = require("child_process");
 const { promisify } = require("util");
 const {
     buildBomNoteKey,
+    buildReportNoteKey,
     getAccessBomNotesForLiveHeader,
     getBomNotesForPlanPosition,
     getHeaderDetails: getZapotrzebowanieHeaderDetails,
     getOperationalOverview: getZapotrzebowanieOperationalOverview,
+    getReportNotesMap,
     getStorageMeta: getZapotrzebowanieStorageMeta,
     importAccessSnapshot,
     upsertBomNote,
+    upsertReportNote,
 } = require("./lib/zapotrzebowanie-sqlite");
 const {
     assignOvenPulsesToBatch,
@@ -29,6 +32,8 @@ const {
     listOvenPulses,
     startOvenBatch,
     updateOvenBatchDetails,
+    resolveProductPcsPerPanel,
+    upsertProductPcsPerPanel,
     upsertOvenBatchPcsPerPanel,
 } = require("./lib/mes-sqlite");
 const {
@@ -1061,6 +1066,7 @@ async function fetchVendoInventoryForCode(connection, accessToken, code, {
     if (!normalizedCode) {
         return {
             code: "",
+            productName: "",
             vendoStock: 0,
             vendoExpected: 0,
             zwQty: 0,
@@ -1082,6 +1088,7 @@ async function fetchVendoInventoryForCode(connection, accessToken, code, {
     });
     const productRecords = Array.isArray(productResponse?.Wynik?.Rekordy) ? productResponse.Wynik.Rekordy : [];
     const productRecord = productRecords.find((item) => String(item?.Kod || "").trim() === normalizedCode) || productRecords[0] || null;
+    const productName = String(productRecord?.Nazwa || "").trim();
     const vendoStock = Number(productRecord?.LacznyStan) || 0;
     let vendoExpected = 0;
     let zwQty = 0;
@@ -1113,6 +1120,7 @@ async function fetchVendoInventoryForCode(connection, accessToken, code, {
 
     return setCacheEntry(vendoInventoryCache, cacheKey, {
         code: normalizedCode,
+        productName,
         vendoStock,
         vendoExpected,
         zwQty,
@@ -1146,6 +1154,7 @@ async function fetchVendoInventoryMap(connection, accessToken, codes, {
 
             return {
                 code,
+                productName: "",
                 vendoStock: 0,
                 vendoExpected: 0,
                 zwQty: 0,
@@ -2277,15 +2286,16 @@ async function getVendoOperationalHeadersContext({
     accessToken,
     search = "",
     pageSize = 100,
-    maxPages = 2,
+    maxPages = 10,
     includeClosed = false,
     includeNoScope = true,
     materialOwnershipFilter = "MSX_OR_EMPTY",
     forceRefresh = false,
 } = {}) {
+    const normalizedSearch = String(search || "").trim();
     const normalizedMaterialOwnershipFilter = normalizeMaterialOwnershipFilter(materialOwnershipFilter);
     const cacheKey = buildVendoOperationalHeadersCacheKey(connection, {
-        search,
+        search: normalizedSearch,
         pageSize,
         maxPages,
         includeClosed,
@@ -2304,7 +2314,7 @@ async function getVendoOperationalHeadersContext({
         accessToken,
         "/Produkcja/ZleceniePlanistyczne/PozycjeLista",
         buildVendoPlanPositionsOverviewModel({
-            search,
+            search: normalizedSearch,
             pageSize,
         }),
         { pageSize, maxPages }
@@ -2613,7 +2623,11 @@ function pickBestTechnologyRecord(records, position) {
         );
     });
 
-    return (matching.length ? matching : [...(records || [])])
+    if (!matching.length) {
+        return null;
+    }
+
+    return matching
         .sort((left, right) => {
             const leftScore = (
                 getVendoBoolWeight(left?.Domyslna) * 8
@@ -4892,6 +4906,172 @@ async function getZapotrzebowanieDetailData(componentCode, rodzajFilter) {
     return setCacheEntry(zapotrzebowanieDetailCache, cacheKey, result);
 }
 
+function normalizePositiveIntegerValue(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+        return null;
+    }
+
+    const normalized = Math.trunc(numeric);
+    return normalized > 0 ? normalized : null;
+}
+
+function summarizeReportPcsPerPanelTargets(targets) {
+    const normalizedTargets = Array.isArray(targets)
+        ? targets.filter((target) => String(target?.productCode || "").trim())
+        : [];
+
+    if (!normalizedTargets.length) {
+        return {
+            pcsPerPanel: null,
+            pcsPerPanelSource: null,
+            pcsPerPanelUpdatedAt: null,
+            pcsPerPanelUpdatedBy: null,
+            pcsPerPanelMode: "none",
+            pcsPerPanelProductCode: null,
+            pcsPerPanelProductName: null,
+            pcsPerPanelTargetCount: 0,
+        };
+    }
+
+    if (normalizedTargets.length === 1) {
+        const target = normalizedTargets[0];
+        return {
+            pcsPerPanel: normalizePositiveIntegerValue(target?.pcsPerPanel),
+            pcsPerPanelSource: target?.source || null,
+            pcsPerPanelUpdatedAt: target?.updatedAt || null,
+            pcsPerPanelUpdatedBy: target?.updatedBy || null,
+            pcsPerPanelMode: "single",
+            pcsPerPanelProductCode: target?.productCode || null,
+            pcsPerPanelProductName: target?.productName || null,
+            pcsPerPanelTargetCount: 1,
+        };
+    }
+
+    const distinctValues = [...new Set(normalizedTargets
+        .map((target) => normalizePositiveIntegerValue(target?.pcsPerPanel))
+        .filter(Boolean))];
+
+    if (distinctValues.length === 1) {
+        return {
+            pcsPerPanel: distinctValues[0],
+            pcsPerPanelSource: "multiple_consistent",
+            pcsPerPanelUpdatedAt: null,
+            pcsPerPanelUpdatedBy: null,
+            pcsPerPanelMode: "multiple",
+            pcsPerPanelProductCode: null,
+            pcsPerPanelProductName: null,
+            pcsPerPanelTargetCount: normalizedTargets.length,
+        };
+    }
+
+    return {
+        pcsPerPanel: null,
+        pcsPerPanelSource: "multiple_products",
+        pcsPerPanelUpdatedAt: null,
+        pcsPerPanelUpdatedBy: null,
+        pcsPerPanelMode: "multiple",
+        pcsPerPanelProductCode: null,
+        pcsPerPanelProductName: null,
+        pcsPerPanelTargetCount: normalizedTargets.length,
+    };
+}
+
+async function getReportPcsPerPanelContextByComponent({
+    sourceRows,
+    rodzajFilter,
+    mesDbPath,
+}) {
+    const sourceComponentNameByCode = new Map((sourceRows || [])
+        .filter((row) => String(row?.rodzaj || "").trim().toUpperCase() === "PCB")
+        .map((row) => [
+            String(row?.code || "").trim().toUpperCase(),
+            String(row?.component || "").trim(),
+        ]));
+    const pcbCodes = [...new Set((sourceRows || [])
+        .filter((row) => String(row?.rodzaj || "").trim().toUpperCase() === "PCB")
+        .map((row) => String(row?.code || "").trim().toUpperCase())
+        .filter(Boolean))];
+
+    if (!pcbCodes.length) {
+        return new Map();
+    }
+
+    const entries = await mapWithConcurrency(pcbCodes, 4, async (componentCode) => {
+        try {
+            const componentNameHint = sourceComponentNameByCode.get(componentCode) || "";
+            const detailPayload = await getZapotrzebowanieDetailData(componentCode, rodzajFilter);
+            const detailRows = Array.isArray(detailPayload?.rows) ? detailPayload.rows : [];
+            const targetsByProductCode = new Map();
+
+            detailRows.forEach((detailRow) => {
+                const productCode = String(detailRow?.productIndex || "").trim();
+                if (!productCode) {
+                    return;
+                }
+
+                const normalizedProductCode = productCode.toUpperCase();
+                const currentTarget = targetsByProductCode.get(normalizedProductCode) || {
+                    productCode,
+                    productName: String(detailRow?.productName || "").trim(),
+                    requiredQty: 0,
+                    orderQty: 0,
+                    headerCount: 0,
+                };
+
+                currentTarget.requiredQty += Number(detailRow?.requiredQty) || 0;
+                currentTarget.orderQty += Number(detailRow?.orderQty) || 0;
+                currentTarget.headerCount += 1;
+                if (!currentTarget.productName) {
+                    currentTarget.productName = String(detailRow?.productName || "").trim();
+                }
+
+                targetsByProductCode.set(normalizedProductCode, currentTarget);
+            });
+
+            const targets = [...targetsByProductCode.values()]
+                .map((target) => {
+                    const pcsPerPanelSetting = resolveProductPcsPerPanel(mesDbPath, {
+                        productCode: target.productCode,
+                        productName: target.productName,
+                        fallbackText: componentNameHint,
+                    });
+
+                    return {
+                        ...target,
+                        pcsPerPanel: pcsPerPanelSetting?.pcsPerPanel ?? null,
+                        source: pcsPerPanelSetting?.source || null,
+                        updatedAt: pcsPerPanelSetting?.updatedAt || null,
+                        updatedBy: pcsPerPanelSetting?.updatedBy || null,
+                    };
+                })
+                .sort((left, right) => {
+                    const requiredDelta = (Number(right?.requiredQty) || 0) - (Number(left?.requiredQty) || 0);
+                    if (requiredDelta !== 0) {
+                        return requiredDelta;
+                    }
+
+                    return String(left?.productCode || "").localeCompare(String(right?.productCode || ""), "pl", {
+                        numeric: true,
+                        sensitivity: "base",
+                    });
+                });
+
+            return [componentCode, {
+                targets,
+                ...summarizeReportPcsPerPanelTargets(targets),
+            }];
+        } catch {
+            return [componentCode, {
+                targets: [],
+                ...summarizeReportPcsPerPanelTargets([]),
+            }];
+        }
+    });
+
+    return new Map(entries);
+}
+
 async function exportZapotrzebowanieAccessSnapshot(accessPath) {
     return runPowerShellJsonScript(
         ZAPOTRZEBOWANIE_ACCESS_EXPORT_SCRIPT_PATH,
@@ -5429,7 +5609,7 @@ async function handleApiZapotrzebowanieVendoOverview(req, res) {
         }
 
         const pageSize = Math.min(Math.max(Number(body?.pageSize) || 100, 10), 200);
-        const maxPages = Math.min(Math.max(Number(body?.maxPages) || 2, 1), 5);
+        const maxPages = Math.min(Math.max(Number(body?.maxPages) || 10, 1), 10);
           const includeClosed = body?.includeClosed === true;
           const includeNoScope = body?.includeNoScope !== false;
           const materialOwnershipFilter = normalizeMaterialOwnershipFilter(body?.materialOwnershipFilter);
@@ -6144,6 +6324,70 @@ async function handleApiZapotrzebowanieVendoBomNote(req, res) {
     }
 }
 
+async function handleApiZapotrzebowanieReportNote(req, res) {
+    try {
+        const body = await readJsonBody(req);
+        const storageConfig = getZapotrzebowanieStorageConfig();
+        const note = upsertReportNote({
+            dbPath: storageConfig.dbPath,
+            code: body?.code,
+            rodzaj: body?.rodzaj,
+            note: body?.note,
+            changedBy: String(body?.changedBy || body?.vendoUserLogin || "").trim() || null,
+        });
+
+        sendJson(res, 200, {
+            note,
+            meta: {
+                generatedAt: new Date().toISOString(),
+                storage: storageConfig.dbPath,
+            },
+        });
+    } catch (error) {
+        sendJson(res, 500, {
+            error: error.message || "Nie udalo sie zapisac uwagi raportu zakupowego.",
+        });
+    }
+}
+
+async function handleApiZapotrzebowanieReportPcsPerPanel(req, res) {
+    try {
+        const body = await readJsonBody(req);
+        const storageConfig = getMesStorageConfig();
+        const normalizedProductCodes = [...new Set([
+            body?.productCode,
+            ...(Array.isArray(body?.productCodes) ? body.productCodes : []),
+        ].map((item) => String(item || "").trim()).filter(Boolean))];
+
+        if (!normalizedProductCodes.length) {
+            return sendJson(res, 400, {
+                error: "Brakuje productCode albo productCodes dla zapisu PCB/panel.",
+            });
+        }
+
+        const settings = normalizedProductCodes.map((productCode) => upsertProductPcsPerPanel(storageConfig.dbPath, {
+            productCode,
+            pcsPerPanel: body?.pcsPerPanel,
+            changedBy: String(body?.changedBy || body?.vendoUserLogin || "").trim() || null,
+            source: body?.source || "report_panel",
+        }));
+        const setting = settings[0] || null;
+
+        sendJson(res, 200, {
+            setting,
+            settings,
+            meta: {
+                generatedAt: new Date().toISOString(),
+                storage: storageConfig.dbPath,
+            },
+        });
+    } catch (error) {
+        sendJson(res, 500, {
+            error: error.message || "Nie udalo sie zapisac PCB na panel dla raportu zakupowego.",
+        });
+    }
+}
+
 function buildZapotrzebowanieSummary(rows) {
     const orderRows = rows.filter((row) => (Number(row?.toOrder) || 0) < 0);
 
@@ -6166,6 +6410,64 @@ function buildZapotrzebowanieSummary(rows) {
     });
 }
 
+function pickPreferredReportSourceRow(currentRow, candidateRow) {
+    const currentComponent = String(currentRow?.component || "").trim();
+    const candidateComponent = String(candidateRow?.component || "").trim();
+    if (!currentComponent && candidateComponent) {
+        return candidateRow;
+    }
+    if (currentComponent && !candidateComponent) {
+        return currentRow;
+    }
+
+    const currentRequiredQty = Number(currentRow?.requiredQty) || 0;
+    const candidateRequiredQty = Number(candidateRow?.requiredQty) || 0;
+    if (candidateRequiredQty !== currentRequiredQty) {
+        return candidateRequiredQty > currentRequiredQty ? candidateRow : currentRow;
+    }
+
+    if (candidateComponent.length !== currentComponent.length) {
+        return candidateComponent.length > currentComponent.length ? candidateRow : currentRow;
+    }
+
+    return String(candidateRow?.code || "").localeCompare(String(currentRow?.code || ""), "pl", {
+        numeric: true,
+        sensitivity: "base",
+    }) >= 0 ? candidateRow : currentRow;
+}
+
+function collapseZapotrzebowanieSourceRows(rows) {
+    const grouped = new Map();
+
+    for (const row of rows || []) {
+        const code = String(row?.code || "").trim();
+        const rodzaj = String(row?.rodzaj || "").trim();
+        const key = `${code.toUpperCase()}::${rodzaj.toUpperCase()}`;
+        const current = grouped.get(key);
+
+        if (!current) {
+            grouped.set(key, {
+                ...row,
+                code,
+                rodzaj,
+                component: String(row?.component || "").trim(),
+                requiredQty: Number(row?.requiredQty) || 0,
+                wmsStock: Number(row?.wmsStock) || 0,
+                status: Number(row?.status) || 0,
+            });
+            continue;
+        }
+
+        const preferredRow = pickPreferredReportSourceRow(current, row);
+        current.requiredQty += Number(row?.requiredQty) || 0;
+        current.wmsStock = Math.max(Number(current?.wmsStock) || 0, Number(row?.wmsStock) || 0);
+        current.status = Math.max(Number(current?.status) || 0, Number(row?.status) || 0);
+        current.component = String(preferredRow?.component || "").trim();
+    }
+
+    return [...grouped.values()];
+}
+
 async function handleApiZapotrzebowanie(req, res) {
     try {
         const body = await readJsonBody(req);
@@ -6183,7 +6485,11 @@ async function handleApiZapotrzebowanie(req, res) {
         }
 
         const sourceData = await getZapotrzebowanieSourceData(rodzajFilter);
-        const sourceRows = Array.isArray(sourceData?.rows) ? sourceData.rows : [];
+        const rawSourceRows = Array.isArray(sourceData?.rows) ? sourceData.rows : [];
+        const sourceRows = collapseZapotrzebowanieSourceRows(rawSourceRows);
+        const storageConfig = getZapotrzebowanieStorageConfig();
+        const reportNotesMap = getReportNotesMap(storageConfig.dbPath);
+        const mesStorageConfig = getMesStorageConfig();
         let inventoryByCode = new Map();
         const warnings = [];
 
@@ -6216,10 +6522,27 @@ async function handleApiZapotrzebowanie(req, res) {
             });
         }
 
-        const rows = sourceRows
+        const sourceRowsForReport = sourceRows.map((item) => {
+            const code = String(item?.code || "").trim();
+            const inventory = inventoryByCode.get(code) || null;
+            const vendoProductName = String(inventory?.productName || "").trim();
+            return {
+                ...item,
+                component: vendoProductName || String(item?.component || "").trim(),
+            };
+        });
+
+        const reportPcsPerPanelByCode = await getReportPcsPerPanelContextByComponent({
+            sourceRows: sourceRowsForReport,
+            rodzajFilter,
+            mesDbPath: mesStorageConfig.dbPath,
+        });
+
+        const rows = sourceRowsForReport
             .map((item) => {
                 const code = String(item?.code || "").trim();
                 const inventory = inventoryByCode.get(code) || {
+                    productName: "",
                     vendoStock: 0,
                     vendoExpected: 0,
                 };
@@ -6228,17 +6551,34 @@ async function handleApiZapotrzebowanie(req, res) {
                 const vendoStock = Number(inventory?.vendoStock) || 0;
                 const vendoExpected = Number(inventory?.vendoExpected) || 0;
                 const toOrder = (wmsStock + vendoStock + vendoExpected) - requiredQty;
+                const normalizedRodzaj = String(item?.rodzaj || "").trim();
+                const savedNote = reportNotesMap.get(buildReportNoteKey(code, normalizedRodzaj));
+                const pcsPerPanelSetting = normalizedRodzaj.toUpperCase() === "PCB"
+                    ? (reportPcsPerPanelByCode.get(code.toUpperCase()) || summarizeReportPcsPerPanelTargets([]))
+                    : summarizeReportPcsPerPanelTargets([]);
+                const vendoProductName = String(inventory?.productName || "").trim();
 
                 return {
                     code,
-                    component: String(item?.component || "").trim(),
-                    rodzaj: String(item?.rodzaj || "").trim(),
+                    component: vendoProductName || String(item?.component || "").trim(),
+                    rodzaj: normalizedRodzaj,
                     status: Number(item?.status) || 0,
                     requiredQty,
                     wmsStock,
                     vendoStock,
                     vendoExpected,
                     toOrder,
+                    pcsPerPanel: pcsPerPanelSetting?.pcsPerPanel ?? null,
+                    pcsPerPanelSource: pcsPerPanelSetting?.pcsPerPanelSource || null,
+                    pcsPerPanelUpdatedAt: pcsPerPanelSetting?.pcsPerPanelUpdatedAt || null,
+                    pcsPerPanelUpdatedBy: pcsPerPanelSetting?.pcsPerPanelUpdatedBy || null,
+                    pcsPerPanelMode: pcsPerPanelSetting?.pcsPerPanelMode || "none",
+                    pcsPerPanelProductCode: pcsPerPanelSetting?.pcsPerPanelProductCode || null,
+                    pcsPerPanelProductName: pcsPerPanelSetting?.pcsPerPanelProductName || null,
+                    pcsPerPanelTargetCount: Number(pcsPerPanelSetting?.pcsPerPanelTargetCount) || 0,
+                    pcsPerPanelTargets: Array.isArray(pcsPerPanelSetting?.targets) ? pcsPerPanelSetting.targets : [],
+                    note: savedNote?.note || "",
+                    noteUpdatedAt: savedNote?.updatedAt || null,
                 };
             })
             .sort((left, right) => {
@@ -6257,6 +6597,8 @@ async function handleApiZapotrzebowanie(req, res) {
                 generatedAt: sourceData?.generatedAt || new Date().toISOString(),
                 rodzajFilter,
                 includeVendo,
+                rawRowCount: rawSourceRows.length,
+                groupedRowCount: sourceRows.length,
                 warnings,
             },
         });
@@ -8600,6 +8942,16 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && req.url === "/api/zapotrzebowanie/vendo/bom-note") {
         await handleApiZapotrzebowanieVendoBomNote(req, res);
+        return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/zapotrzebowanie/report-note") {
+        await handleApiZapotrzebowanieReportNote(req, res);
+        return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/zapotrzebowanie/report-pcs-per-panel") {
+        await handleApiZapotrzebowanieReportPcsPerPanel(req, res);
         return;
     }
 
