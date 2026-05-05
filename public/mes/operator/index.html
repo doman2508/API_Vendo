@@ -19,6 +19,16 @@
 
         <section class="mes-scan-panel">
             <form id="operator-scan-form">
+                <div class="mes-board-side-toggle" role="radiogroup" aria-label="Strona plytki">
+                    <label class="mes-board-side-option">
+                        <input type="radio" name="boardSide" value="top" checked>
+                        <span>Top</span>
+                    </label>
+                    <label class="mes-board-side-option">
+                        <input type="radio" name="boardSide" value="bot">
+                        <span>Bot</span>
+                    </label>
+                </div>
                 <input
                     id="operator-scan-input"
                     name="scan"

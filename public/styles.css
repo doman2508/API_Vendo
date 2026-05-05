@@ -1536,6 +1536,205 @@ body.screen-mode #production-overview-section > .warehouse-panel-header {
     gap: 10px;
 }
 
+.mes-history-heading-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.mes-kkw-table td {
+    background: rgba(255, 255, 255, 0.7);
+}
+
+.mes-kkw-row {
+    cursor: pointer;
+    transition: background-color 160ms ease;
+}
+
+.mes-kkw-row:hover td {
+    background: rgba(12, 122, 106, 0.04);
+}
+
+.mes-kkw-row.selected td {
+    background: rgba(12, 122, 106, 0.08);
+}
+
+.mes-kkw-detail-row td {
+    border-bottom: 0;
+}
+
+.mes-kkw-detail-cell {
+    padding: 0 !important;
+    background: transparent !important;
+}
+
+.mes-kkw-detail-panel {
+    margin: 0 0 14px;
+    padding: 16px;
+    border-radius: 18px;
+    border: 1px solid rgba(12, 122, 106, 0.12);
+    background: rgba(245, 250, 248, 0.78);
+    display: grid;
+    gap: 14px;
+}
+
+.mes-kkw-detail-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.mes-kkw-detail-toolbar strong {
+    display: block;
+    font-size: 18px;
+}
+
+.mes-kkw-detail-toolbar span {
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.mes-entry-row {
+    cursor: pointer;
+    transition: background-color 160ms ease;
+}
+
+.mes-entry-row:hover td {
+    background: rgba(12, 122, 106, 0.04);
+}
+
+.mes-entry-row.selected td {
+    background: rgba(12, 122, 106, 0.1);
+}
+
+.mes-row-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.mes-admin-drawer {
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    pointer-events: none;
+}
+
+.mes-admin-drawer.open {
+    pointer-events: auto;
+}
+
+.mes-admin-overlay {
+    position: absolute;
+    inset: 0;
+    border: 0;
+    padding: 0;
+    background: rgba(35, 29, 23, 0.28);
+    opacity: 0;
+    transition: opacity 160ms ease;
+}
+
+.mes-admin-drawer.open .mes-admin-overlay {
+    opacity: 1;
+}
+
+.mes-admin-drawer-panel {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    bottom: 16px;
+    width: min(420px, calc(100vw - 32px));
+    padding: 22px;
+    border-radius: 24px;
+    border: 1px solid rgba(47, 38, 29, 0.1);
+    background: rgba(255, 251, 245, 0.98);
+    box-shadow: 0 24px 80px rgba(39, 29, 18, 0.22);
+    display: grid;
+    gap: 16px;
+    overflow: auto;
+    transform: translateX(28px);
+    opacity: 0;
+    transition: transform 180ms ease, opacity 180ms ease;
+}
+
+.mes-admin-drawer.open .mes-admin-drawer-panel {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+.mes-admin-drawer-header {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: 14px;
+}
+
+.mes-admin-drawer-header h2 {
+    font-size: 32px;
+    line-height: 0.96;
+}
+
+.mes-admin-drawer-copy {
+    margin: 8px 0 0;
+    color: var(--muted);
+    font-size: 14px;
+}
+
+.mes-admin-preview-note {
+    padding: 12px 14px;
+    border-radius: 16px;
+    background: rgba(12, 122, 106, 0.08);
+    color: var(--accent-strong);
+    font-size: 14px;
+    line-height: 1.45;
+}
+
+.mes-admin-preview-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.mes-admin-preview-card {
+    border-radius: 16px;
+    border: 1px solid rgba(47, 38, 29, 0.08);
+    background: rgba(245, 240, 233, 0.56);
+    padding: 12px 14px;
+    display: grid;
+    gap: 5px;
+}
+
+.mes-admin-preview-card span {
+    color: var(--muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.mes-admin-preview-card strong {
+    font-size: 20px;
+    line-height: 1.15;
+}
+
+.mes-admin-drawer-grid {
+    margin-top: 0;
+}
+
+.mes-admin-drawer-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+}
+
+.mes-admin-drawer-actions button {
+    width: 100%;
+}
+
 .mes-event-checkbox {
     width: 18px;
     height: 18px;
@@ -1547,6 +1746,460 @@ body.screen-mode #production-overview-section > .warehouse-panel-header {
     color: #9f2f2f;
     padding: 8px 12px;
     min-height: 38px;
+}
+
+.mes-admin-page {
+    background:
+        radial-gradient(circle at top left, rgba(12, 122, 106, 0.08), transparent 18%),
+        linear-gradient(180deg, #f7f3eb 0%, #f2ede3 100%);
+}
+
+.mes-admin-page .app-shell {
+    width: min(1540px, calc(100% - 28px));
+    margin: 16px auto 28px;
+    gap: 14px;
+    padding-right: 392px;
+}
+
+.mes-admin-page .hero,
+.mes-admin-page .panel {
+    border-radius: 22px;
+    border: 1px solid rgba(51, 43, 32, 0.1);
+    background: rgba(255, 252, 247, 0.94);
+    box-shadow: 0 24px 80px rgba(69, 48, 24, 0.08);
+}
+
+.mes-admin-page .mes-page-hero {
+    padding: 18px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+}
+
+.mes-admin-page .hero-content {
+    display: grid;
+    gap: 6px;
+}
+
+.mes-admin-page .hero-content .eyebrow {
+    margin-bottom: 0;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+}
+
+.mes-admin-page .hero-content h1 {
+    font-size: 32px;
+    line-height: 1.02;
+    font-weight: 600;
+}
+
+.mes-admin-page .hero-copy {
+    margin: 0;
+    font-size: 14px;
+    color: var(--muted);
+}
+
+.mes-admin-page .hero-actions {
+    margin-top: 0;
+    flex-wrap: nowrap;
+}
+
+.mes-admin-page .hero-actions button {
+    min-height: 40px;
+    padding: 10px 16px;
+}
+
+.mes-admin-page #mes-summary {
+    display: none !important;
+}
+
+.mes-admin-page .panel {
+    padding: 16px 18px;
+}
+
+.mes-admin-page .section-heading {
+    align-items: center;
+    gap: 16px;
+}
+
+.mes-admin-page .section-heading h2 {
+    font-size: 18px;
+    line-height: 1.08;
+}
+
+.mes-admin-page .mes-main-panel,
+.mes-admin-page .mes-events-panel {
+    display: grid;
+    gap: 12px;
+}
+
+.mes-admin-page .mes-history-heading {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 16px;
+}
+
+.mes-admin-page .mes-history-heading-actions {
+    width: auto;
+    justify-content: flex-end;
+}
+
+.mes-admin-page .mes-history-toolbar {
+    grid-template-columns: minmax(360px, 520px) auto auto;
+    gap: 10px;
+    align-items: center;
+    margin: 0;
+}
+
+.mes-admin-page .mes-search-field {
+    display: block;
+}
+
+.mes-admin-page .mes-search-field input,
+.mes-admin-page .mes-advanced-filters input,
+.mes-admin-page .mes-advanced-filters select,
+.mes-admin-page .mes-admin-form input,
+.mes-admin-page .mes-admin-form select {
+    min-height: 42px;
+    border-radius: 14px;
+    border: 1px solid rgba(51, 43, 32, 0.12);
+    background: rgba(255, 255, 255, 0.98);
+    padding: 10px 14px;
+    font-size: 14px;
+}
+
+.mes-admin-page .mes-history-toolbar button,
+.mes-admin-page .mes-events-heading-actions button,
+.mes-admin-page .mes-admin-form button {
+    min-height: 40px;
+    padding: 10px 16px;
+    font-size: 14px;
+}
+
+.mes-admin-page .mes-advanced-filters {
+    display: grid;
+    grid-template-columns: minmax(180px, 240px) auto auto auto;
+    align-items: center;
+    gap: 12px;
+    padding: 0 0 6px;
+}
+
+.mes-admin-page .mes-advanced-filters .checkbox-field {
+    min-height: 42px;
+    margin: 0;
+}
+
+.mes-admin-page .mes-inline-status {
+    margin: 0;
+    font-size: 13px;
+}
+
+.mes-admin-page .table-wrap {
+    border-radius: 18px;
+    border: 1px solid rgba(51, 43, 32, 0.08);
+    background: rgba(255, 255, 255, 0.9);
+    overflow: auto;
+}
+
+.mes-admin-page .mes-events-table th,
+.mes-admin-page .mes-events-table td {
+    padding: 12px 14px;
+    font-size: 13px;
+    border-bottom: 1px solid rgba(51, 43, 32, 0.07);
+}
+
+.mes-admin-page .mes-events-table th {
+    color: #184f4d;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    background: linear-gradient(180deg, rgba(240, 248, 247, 0.98), rgba(236, 245, 244, 0.96));
+}
+
+.mes-admin-page .mes-events-table td strong {
+    font-size: 14px;
+}
+
+.mes-admin-page .mes-events-table small {
+    margin-top: 3px;
+    font-size: 11px;
+    line-height: 1.2;
+}
+
+.mes-admin-page .mes-kkw-row.selected td {
+    background: linear-gradient(180deg, rgba(227, 243, 241, 0.9), rgba(219, 238, 235, 0.9));
+}
+
+.mes-admin-page .mes-kkw-row:hover td,
+.mes-admin-page .mes-entry-row:hover td {
+    background: rgba(12, 122, 106, 0.035);
+}
+
+.mes-admin-page .mes-kkw-detail-panel {
+    margin: 0;
+    padding: 14px;
+    border-radius: 18px;
+    border: 0;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 252, 252, 0.96));
+    gap: 12px;
+}
+
+.mes-admin-page .mes-kkw-detail-toolbar {
+    align-items: end;
+}
+
+.mes-admin-page .mes-kkw-detail-toolbar strong {
+    font-size: 16px;
+    line-height: 1.1;
+}
+
+.mes-admin-page .mes-kkw-detail-toolbar .phase-badge {
+    background: rgba(221, 241, 238, 0.9);
+    color: #0e6d67;
+}
+
+.mes-admin-page .mes-kkw-detail-summary {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 10px 12px 4px;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.mes-admin-page .mes-kkw-detail-summary strong {
+    color: var(--ink);
+    font-size: 13px;
+}
+
+.mes-admin-page .mes-row-actions {
+    justify-content: flex-end;
+}
+
+.mes-admin-page .mes-icon-button {
+    min-width: 38px;
+    min-height: 38px;
+    padding: 0 12px;
+    border-radius: 12px;
+    font-size: 16px;
+    line-height: 1;
+}
+
+.mes-admin-page .mes-events-panel .section-heading {
+    margin-bottom: 2px;
+}
+
+.mes-admin-page .mes-events-title,
+.mes-admin-page #mes-events-title {
+    font-size: 18px;
+}
+
+.mes-admin-page .mes-events-heading-actions {
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.mes-admin-page #mes-events-count {
+    min-width: 36px;
+    justify-content: center;
+}
+
+.mes-admin-page .mes-events-footer {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: -2px;
+}
+
+.mes-admin-page .mes-admin-drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 360px;
+    inset: auto 14px 14px auto;
+    pointer-events: none;
+    z-index: 40;
+}
+
+.mes-admin-page .mes-admin-overlay {
+    display: none;
+}
+
+.mes-admin-page .mes-admin-drawer.open {
+    pointer-events: auto;
+}
+
+.mes-admin-page .mes-admin-drawer-panel {
+    position: relative;
+    top: 0;
+    right: 0;
+    bottom: auto;
+    width: 100%;
+    height: 100%;
+    padding: 18px 18px 20px;
+    border-radius: 22px;
+    border: 1px solid rgba(51, 43, 32, 0.1);
+    background: rgba(255, 252, 247, 0.98);
+    box-shadow: 0 24px 80px rgba(39, 29, 18, 0.18);
+    transform: translateX(108%);
+    opacity: 0;
+}
+
+.mes-admin-page .mes-admin-drawer.open .mes-admin-drawer-panel {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+.mes-admin-page .mes-admin-drawer-header h2 {
+    font-size: 20px;
+    line-height: 1.08;
+}
+
+.mes-admin-page .mes-close-button {
+    min-width: 38px;
+    min-height: 38px;
+    padding: 0;
+    border-radius: 12px;
+}
+
+.mes-admin-page .mes-admin-drawer-copy {
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.mes-admin-page .mes-admin-preview {
+    padding: 14px;
+    border-radius: 18px;
+}
+
+.mes-admin-page .mes-admin-preview-note {
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.mes-admin-page .mes-admin-preview-card {
+    padding: 10px 12px;
+}
+
+.mes-admin-page .mes-admin-preview-card strong {
+    font-size: 16px;
+}
+
+.mes-admin-page .mes-admin-form {
+    gap: 12px;
+}
+
+.mes-admin-page .mes-admin-form label {
+    gap: 6px;
+}
+
+.mes-admin-page .mes-admin-form label span {
+    font-size: 13px;
+    color: var(--ink);
+    font-weight: 700;
+}
+
+.mes-admin-page .mes-admin-form .checkbox-field {
+    align-items: start;
+}
+
+.mes-admin-page .mes-admin-drawer-actions {
+    gap: 8px;
+}
+
+.mes-admin-page .mes-admin-drawer-actions button[type="submit"] {
+    background: linear-gradient(180deg, #13836f, #0b6f60);
+}
+
+.mes-admin-page .mes-admin-drawer-actions .mes-inline-danger {
+    background: transparent;
+}
+
+.mes-admin-page .phase-badge {
+    min-height: 30px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+}
+
+.mes-admin-page .phase-badge.good {
+    background: rgba(218, 242, 231, 0.95);
+    color: #2f7d4c;
+}
+
+.mes-admin-page .phase-badge.neutral {
+    background: rgba(244, 239, 232, 0.95);
+    color: #655444;
+}
+
+.mes-admin-page .note {
+    font-size: 13px;
+}
+
+@media (max-width: 1479px) {
+    .mes-admin-page .app-shell {
+        padding-right: 0;
+    }
+
+    .mes-admin-page .mes-admin-drawer {
+        inset: 0;
+        width: auto;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        pointer-events: none;
+        z-index: 70;
+    }
+
+    .mes-admin-page .mes-admin-overlay {
+        display: block;
+    }
+
+    .mes-admin-page .mes-admin-drawer-panel {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        bottom: 12px;
+        width: min(390px, calc(100vw - 24px));
+        height: auto;
+        border-radius: 22px;
+        transform: translateX(108%);
+    }
+
+    .mes-admin-page .mes-admin-drawer.open .mes-admin-overlay {
+        opacity: 1;
+    }
+}
+
+@media (max-width: 980px) {
+    .mes-admin-page .mes-page-hero {
+        display: grid;
+        grid-template-columns: 1fr;
+        align-items: start;
+    }
+
+    .mes-admin-page .mes-history-heading {
+        grid-template-columns: 1fr;
+    }
+
+    .mes-admin-page .mes-history-heading-actions,
+    .mes-admin-page .mes-events-heading-actions {
+        justify-content: flex-start;
+        width: 100%;
+    }
+
+    .mes-admin-page .mes-history-toolbar {
+        grid-template-columns: 1fr;
+        width: 100%;
+    }
+
+    .mes-admin-page .mes-advanced-filters {
+        grid-template-columns: 1fr;
+        align-items: stretch;
+    }
 }
 
 .mes-batch-row {
@@ -1636,9 +2289,50 @@ body.screen-mode #production-overview-section > .warehouse-panel-header {
 
 .mes-scan-panel form {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 6px;
     align-items: center;
+}
+
+.mes-board-side-toggle {
+    display: inline-grid;
+    grid-auto-flow: column;
+    gap: 4px;
+    align-items: center;
+}
+
+.mes-board-side-option {
+    position: relative;
+    display: inline-flex;
+}
+
+.mes-board-side-option input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.mes-board-side-option span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 46px;
+    min-height: 38px;
+    padding: 0 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(47, 38, 29, 0.12);
+    background: rgba(255, 255, 255, 0.92);
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.mes-board-side-option input:checked + span {
+    border-color: rgba(8, 121, 99, 0.24);
+    background: rgba(8, 121, 99, 0.12);
+    color: var(--accent-strong);
 }
 
 .mes-scan-panel input {
@@ -1668,8 +2362,15 @@ body.screen-mode #production-overview-section > .warehouse-panel-header {
 }
 
 .mes-operator-shell.has-active-batch .mes-scan-panel form {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 6px;
+}
+
+.mes-operator-shell.has-active-batch .mes-board-side-option span {
+    min-width: 42px;
+    min-height: 34px;
+    padding-inline: 8px;
+    font-size: 11px;
 }
 
 .mes-operator-shell.has-active-batch .mes-scan-panel input {
@@ -1955,14 +2656,27 @@ body.screen-mode #production-overview-section > .warehouse-panel-header {
 
 @media (max-width: 680px) {
     .mes-history-toolbar,
-    .mes-admin-grid,
     .mes-admin-info-grid,
-    .mes-admin-stat-grid {
+    .mes-admin-stat-grid,
+    .mes-admin-preview-grid {
         grid-template-columns: 1fr;
     }
 
     .mes-events-heading-actions {
         justify-content: flex-start;
+    }
+
+    .mes-history-heading-actions,
+    .mes-kkw-detail-toolbar {
+        justify-content: flex-start;
+    }
+
+    .mes-admin-drawer-panel {
+        top: 8px;
+        right: 8px;
+        bottom: 8px;
+        width: calc(100vw - 16px);
+        padding: 18px;
     }
 
     .mes-scan-panel form,
@@ -1972,7 +2686,7 @@ body.screen-mode #production-overview-section > .warehouse-panel-header {
 
     .mes-operator-page .mes-scan-panel form,
     .mes-operator-page .mes-pcs-form {
-        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-columns: auto minmax(0, 1fr) auto;
     }
 }
 
@@ -2023,8 +2737,15 @@ body.screen-mode #production-overview-section > .warehouse-panel-header {
 
     .mes-scan-panel form,
     .mes-pcs-form {
-        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-columns: auto minmax(0, 1fr) auto;
         gap: 6px;
+    }
+
+    .mes-board-side-option span {
+        min-width: 40px;
+        min-height: 34px;
+        padding-inline: 8px;
+        font-size: 11px;
     }
 
     .mes-scan-panel input {
@@ -2551,6 +3272,805 @@ body.ultrawide-mode .dashboard-progress {
     }
 }
 
+body.mes-admin-page {
+    background:
+        radial-gradient(circle at top left, rgba(10, 126, 110, 0.12), transparent 16%),
+        radial-gradient(circle at bottom right, rgba(10, 126, 110, 0.08), transparent 18%),
+        linear-gradient(180deg, #f8f5ed 0%, #f1ecdf 100%);
+}
+
+body.mes-admin-page .app-shell.mes-admin-shell {
+    width: calc(100vw - 28px);
+    max-width: none;
+    margin: 12px auto 18px;
+    padding: 0;
+    display: block;
+}
+
+body.mes-admin-page .mes-layout {
+    display: grid;
+    grid-template-columns: 92px minmax(0, 1fr) 332px;
+    gap: 20px;
+    align-items: start;
+}
+
+body.mes-admin-page .mes-side-rail {
+    position: sticky;
+    top: 12px;
+    min-height: calc(100vh - 24px);
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    gap: 18px;
+    padding: 16px 12px;
+    border: 1px solid rgba(46, 39, 31, 0.08);
+    border-radius: 28px;
+    background: rgba(255, 252, 248, 0.92);
+    box-shadow: 0 22px 64px rgba(66, 48, 25, 0.08);
+}
+
+body.mes-admin-page .mes-rail-brand {
+    display: grid;
+    justify-items: center;
+    gap: 8px;
+}
+
+body.mes-admin-page .mes-rail-brand-icon {
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    border-radius: 14px;
+    background: linear-gradient(180deg, #e3f3ee, #d7ece6);
+    color: var(--accent-strong);
+    font-size: 22px;
+    font-weight: 700;
+}
+
+body.mes-admin-page .mes-rail-brand-copy {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent-strong);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+body.mes-admin-page .mes-rail-nav {
+    display: grid;
+    gap: 8px;
+    align-content: start;
+}
+
+body.mes-admin-page .mes-rail-link {
+    display: grid;
+    justify-items: center;
+    gap: 8px;
+    min-height: 78px;
+    padding: 12px 8px;
+    border-radius: 18px;
+    color: #3b342d;
+    text-decoration: none;
+    border: 1px solid transparent;
+    background: transparent;
+}
+
+body.mes-admin-page .mes-rail-link-button {
+    font: inherit;
+    cursor: pointer;
+}
+
+body.mes-admin-page .mes-rail-link:hover,
+body.mes-admin-page .mes-rail-link.active {
+    background: linear-gradient(180deg, rgba(221, 241, 238, 0.96), rgba(230, 246, 244, 0.96));
+    border-color: rgba(10, 126, 110, 0.12);
+}
+
+body.mes-admin-page .mes-rail-icon {
+    font-size: 22px;
+    line-height: 1;
+}
+
+body.mes-admin-page .mes-rail-link span:last-child {
+    font-size: 12px;
+    font-weight: 700;
+    text-align: center;
+}
+
+body.mes-admin-page .mes-rail-footer {
+    display: grid;
+    gap: 10px;
+    align-content: end;
+}
+
+body.mes-admin-page .mes-rail-refresh {
+    min-height: 42px;
+    border-radius: 14px;
+    border: 1px solid rgba(46, 39, 31, 0.12);
+    background: white;
+    color: var(--ink);
+}
+
+body.mes-admin-page .mes-rail-meta {
+    font-size: 12px;
+    color: var(--muted);
+    text-align: center;
+}
+
+body.mes-admin-page .mes-workspace {
+    display: grid;
+    gap: 18px;
+    min-width: 0;
+}
+
+body.mes-admin-page .mes-hero-card,
+body.mes-admin-page .mes-surface,
+body.mes-admin-page .mes-admin-drawer-panel {
+    border: 1px solid rgba(46, 39, 31, 0.08);
+    border-radius: 26px;
+    background: rgba(255, 252, 248, 0.94);
+    box-shadow: 0 24px 72px rgba(66, 48, 25, 0.08);
+}
+
+body.mes-admin-page .mes-hero-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    gap: 18px;
+    padding: 22px 28px;
+}
+
+body.mes-admin-page .mes-hero-copy {
+    display: grid;
+    gap: 8px;
+}
+
+body.mes-admin-page .mes-hero-copy .eyebrow {
+    margin: 0;
+    font-size: 12px;
+    letter-spacing: 0.18em;
+}
+
+body.mes-admin-page .mes-hero-copy h1 {
+    font-size: clamp(34px, 3vw, 54px);
+    line-height: 0.98;
+}
+
+body.mes-admin-page .mes-hero-copy p:last-child {
+    margin: 0;
+    color: var(--muted);
+    font-size: 16px;
+}
+
+body.mes-admin-page .mes-hero-actions {
+    display: flex;
+    gap: 10px;
+}
+
+body.mes-admin-page .mes-hero-actions button {
+    min-height: 46px;
+    padding: 10px 20px;
+    border-radius: 16px;
+}
+
+body.mes-admin-page #mes-summary {
+    display: none !important;
+}
+
+body.mes-admin-page .mes-surface {
+    padding: 18px 18px 16px;
+    display: grid;
+    gap: 14px;
+}
+
+body.mes-admin-page .mes-surface-header {
+    display: grid;
+    gap: 14px;
+}
+
+body.mes-admin-page .mes-surface-header-main {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+}
+
+body.mes-admin-page .mes-surface-title-block {
+    display: grid;
+    gap: 6px;
+}
+
+body.mes-admin-page .mes-surface-title-block .eyebrow {
+    margin: 0;
+    font-size: 11px;
+}
+
+body.mes-admin-page .mes-surface-title-block h2,
+body.mes-admin-page #mes-events-title {
+    font-size: 20px;
+    line-height: 1.08;
+}
+
+body.mes-admin-page .mes-search-toolbar {
+    display: grid;
+    grid-template-columns: minmax(340px, 520px) auto auto;
+    gap: 12px;
+    align-items: center;
+    margin: 0;
+}
+
+body.mes-admin-page .mes-search-box {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    min-height: 48px;
+    padding: 0 14px;
+    border: 1px solid rgba(46, 39, 31, 0.12);
+    border-radius: 16px;
+    background: white;
+}
+
+body.mes-admin-page .mes-search-box input {
+    min-height: 46px;
+    border: 0;
+    padding: 0;
+    background: transparent;
+}
+
+body.mes-admin-page .mes-search-box input:focus {
+    outline: none;
+    border: 0;
+}
+
+body.mes-admin-page .mes-search-icon {
+    font-size: 18px;
+    color: var(--muted);
+}
+
+body.mes-admin-page .mes-search-toolbar button,
+body.mes-admin-page .mes-events-heading-actions button,
+body.mes-admin-page .mes-admin-form button {
+    min-height: 46px;
+    border-radius: 16px;
+    padding: 10px 18px;
+}
+
+body.mes-admin-page .mes-filters-popover {
+    display: grid;
+    grid-template-columns: minmax(180px, 220px) auto auto auto;
+    gap: 12px;
+    align-items: center;
+    padding: 12px 14px;
+    border: 1px solid rgba(46, 39, 31, 0.08);
+    border-radius: 18px;
+    background: rgba(244, 249, 248, 0.9);
+}
+
+body.mes-admin-page .mes-filters-popover input,
+body.mes-admin-page .mes-admin-form input,
+body.mes-admin-page .mes-admin-form select {
+    min-height: 44px;
+    border-radius: 14px;
+    border: 1px solid rgba(46, 39, 31, 0.12);
+    background: white;
+    padding: 10px 14px;
+    font-size: 14px;
+}
+
+body.mes-admin-page .mes-inline-status,
+body.mes-admin-page .mes-updated-note {
+    margin: 0;
+    font-size: 13px;
+}
+
+body.mes-admin-page .mes-kkw-wrap,
+body.mes-admin-page .mes-events-wrap,
+body.mes-admin-page .mes-kkw-detail-panel .table-wrap {
+    margin-top: 0;
+    border-radius: 20px;
+    border: 1px solid rgba(46, 39, 31, 0.08);
+    background: white;
+    overflow: auto;
+}
+
+body.mes-admin-page .mes-events-table {
+    min-width: 980px;
+}
+
+body.mes-admin-page .mes-events-table th {
+    background: linear-gradient(180deg, #eff8f7, #e7f4f2);
+    color: #18534f;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: none;
+}
+
+body.mes-admin-page .mes-events-table td {
+    background: rgba(255, 255, 255, 0.98);
+    font-size: 14px;
+}
+
+body.mes-admin-page .mes-events-table td strong {
+    font-size: 15px;
+}
+
+body.mes-admin-page .mes-events-table small {
+    display: block;
+    margin-top: 4px;
+    color: var(--muted);
+}
+
+body.mes-admin-page .mes-kkw-row,
+body.mes-admin-page .mes-entry-row {
+    cursor: pointer;
+}
+
+body.mes-admin-page .mes-kkw-row.selected td,
+body.mes-admin-page .mes-entry-row.selected td {
+    background: linear-gradient(180deg, rgba(223, 243, 239, 0.96), rgba(214, 237, 232, 0.96));
+}
+
+body.mes-admin-page .mes-kkw-row:hover td,
+body.mes-admin-page .mes-entry-row:hover td {
+    background: rgba(10, 126, 110, 0.04);
+}
+
+body.mes-admin-page .mes-kkw-table td:first-child,
+body.mes-admin-page .mes-entry-table td:first-child {
+    white-space: nowrap;
+}
+
+body.mes-admin-page .mes-kkw-table td:last-child,
+body.mes-admin-page .mes-entry-table td:last-child {
+    width: 112px;
+}
+
+body.mes-admin-page .mes-row-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: nowrap;
+}
+
+body.mes-admin-page .mes-icon-button {
+    min-width: 40px;
+    min-height: 40px;
+    padding: 0;
+    border-radius: 14px;
+    display: inline-grid;
+    place-items: center;
+    font-size: 18px;
+    line-height: 1;
+}
+
+body.mes-admin-page .mes-kkw-detail-cell {
+    padding: 10px 12px 16px !important;
+    background: transparent !important;
+}
+
+body.mes-admin-page .mes-kkw-detail-row td {
+    border-bottom: 0;
+}
+
+body.mes-admin-page .mes-kkw-detail-shell {
+    padding: 12px;
+    border-radius: 22px;
+    border: 1px solid rgba(10, 126, 110, 0.16);
+    background:
+        linear-gradient(180deg, rgba(240, 249, 247, 0.98), rgba(249, 252, 251, 0.98));
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.65);
+}
+
+body.mes-admin-page .mes-kkw-detail-panel {
+    display: grid;
+    gap: 16px;
+    margin: 0;
+    padding: 16px;
+    border: 1px solid rgba(10, 126, 110, 0.08);
+    border-radius: 22px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(248, 252, 251, 0.99));
+    box-shadow: 0 14px 28px rgba(34, 89, 78, 0.06);
+}
+
+body.mes-admin-page .mes-kkw-detail-intro {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding-bottom: 6px;
+    border-bottom: 1px dashed rgba(10, 126, 110, 0.18);
+}
+
+body.mes-admin-page .mes-kkw-detail-kicker {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(221, 241, 238, 0.92);
+    color: #0f6f67;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+body.mes-admin-page .mes-kkw-detail-path {
+    color: var(--muted);
+    font-size: 13px;
+}
+
+body.mes-admin-page .mes-kkw-detail-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: end;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+body.mes-admin-page .mes-kkw-detail-toolbar strong {
+    font-size: 18px;
+}
+
+body.mes-admin-page .mes-kkw-detail-toolbar span {
+    color: var(--muted);
+    font-size: 13px;
+}
+
+body.mes-admin-page .mes-entry-table thead th {
+    background: linear-gradient(180deg, #eaf6f4, #e2f0ee);
+}
+
+body.mes-admin-page .mes-entry-row td {
+    background: rgba(255, 255, 255, 0.98);
+}
+
+body.mes-admin-page .mes-entry-row:nth-child(even) td {
+    background: rgba(244, 251, 249, 0.98);
+}
+
+body.mes-admin-page .mes-kkw-detail-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    padding: 12px 14px 4px;
+    border-top: 1px dashed rgba(10, 126, 110, 0.16);
+    background: rgba(241, 249, 247, 0.9);
+    border-radius: 16px;
+    color: var(--muted);
+}
+
+body.mes-admin-page .mes-kkw-detail-summary strong {
+    color: var(--ink);
+    font-size: 14px;
+}
+
+body.mes-admin-page .phase-badge {
+    min-height: 32px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+}
+
+body.mes-admin-page .phase-badge.good {
+    background: rgba(219, 242, 227, 0.96);
+    color: #327b4f;
+}
+
+body.mes-admin-page .phase-badge.neutral {
+    background: rgba(244, 239, 232, 0.98);
+    color: #685646;
+}
+
+body.mes-admin-page .mes-events-heading-main {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+body.mes-admin-page .mes-events-heading-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+body.mes-admin-page .mes-events-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding-top: 4px;
+}
+
+body.mes-admin-page .mes-events-footer-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+body.mes-admin-page .mes-events-pager {
+    display: flex;
+    gap: 6px;
+}
+
+body.mes-admin-page .mes-events-pager .mes-icon-button {
+    min-width: 34px;
+    min-height: 34px;
+    font-size: 14px;
+}
+
+body.mes-admin-page .mes-admin-drawer {
+    position: sticky;
+    top: 12px;
+    align-self: start;
+    width: 100%;
+    pointer-events: auto;
+    z-index: 2;
+}
+
+body.mes-admin-page .mes-admin-overlay {
+    display: none;
+}
+
+body.mes-admin-page .mes-admin-drawer-panel {
+    position: relative;
+    width: 100%;
+    max-height: calc(100vh - 24px);
+    overflow: auto;
+    padding: 20px 20px 22px;
+    display: grid;
+    gap: 16px;
+    transform: none;
+    opacity: 1;
+}
+
+body.mes-admin-page .mes-admin-drawer:not(.open) .mes-admin-drawer-panel {
+    opacity: 0;
+    transform: translateX(24px);
+    pointer-events: none;
+}
+
+body.mes-admin-page .mes-admin-drawer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    gap: 14px;
+}
+
+body.mes-admin-page .mes-admin-drawer-header h2 {
+    font-size: 24px;
+    line-height: 1.04;
+}
+
+body.mes-admin-page .mes-close-button {
+    min-width: 40px;
+    min-height: 40px;
+    padding: 0;
+    border-radius: 14px;
+    font-size: 28px;
+    line-height: 1;
+}
+
+body.mes-admin-page .mes-admin-drawer-copy {
+    margin: 6px 0 0;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+body.mes-admin-page .mes-admin-preview {
+    padding: 0;
+    background: transparent;
+    border: 0;
+}
+
+body.mes-admin-page .mes-admin-preview-note {
+    padding: 12px 14px;
+    border-radius: 16px;
+    background: rgba(221, 241, 238, 0.96);
+    color: #0f6f67;
+    font-size: 13px;
+    line-height: 1.35;
+}
+
+body.mes-admin-page .mes-admin-preview-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+}
+
+body.mes-admin-page .mes-admin-preview-card {
+    padding: 10px 12px;
+    border-radius: 16px;
+    border: 1px solid rgba(46, 39, 31, 0.08);
+    background: rgba(247, 243, 236, 0.9);
+}
+
+body.mes-admin-page .mes-admin-preview-card span {
+    display: block;
+    color: var(--muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+body.mes-admin-page .mes-admin-preview-card strong {
+    display: block;
+    margin-top: 6px;
+    font-size: 18px;
+    line-height: 1.08;
+}
+
+body.mes-admin-page .mes-admin-form {
+    display: grid;
+    gap: 14px;
+    padding: 0;
+    background: transparent;
+    border: 0;
+}
+
+body.mes-admin-page .mes-admin-form label {
+    display: grid;
+    gap: 6px;
+}
+
+body.mes-admin-page .mes-admin-form label span {
+    color: var(--ink);
+    font-size: 13px;
+    font-weight: 700;
+}
+
+body.mes-admin-page .mes-admin-drawer-grid {
+    margin: 0;
+    gap: 14px;
+    grid-template-columns: 1fr;
+}
+
+body.mes-admin-page .mes-admin-form-footer {
+    display: grid;
+    gap: 12px;
+}
+
+body.mes-admin-page .mes-admin-drawer-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+}
+
+body.mes-admin-page .mes-admin-drawer-actions button {
+    width: 100%;
+}
+
+body.mes-admin-page .mes-admin-drawer-actions button[type="submit"] {
+    background: linear-gradient(180deg, #13836f, #0b6f60);
+}
+
+body.mes-admin-page .mes-inline-danger {
+    border-color: rgba(159, 47, 47, 0.18);
+    color: #9f2f2f;
+}
+
+body.mes-admin-page .mes-event-checkbox {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}
+
+@media (max-width: 1420px) {
+    body.mes-admin-page .mes-layout {
+        grid-template-columns: 82px minmax(0, 1fr);
+    }
+
+    body.mes-admin-page .mes-admin-drawer {
+        position: fixed;
+        inset: 0;
+        width: auto;
+        pointer-events: none;
+        z-index: 70;
+    }
+
+    body.mes-admin-page .mes-admin-drawer.open {
+        pointer-events: auto;
+    }
+
+    body.mes-admin-page .mes-admin-overlay {
+        display: block;
+        position: absolute;
+        inset: 0;
+        border: 0;
+        padding: 0;
+        background: rgba(35, 29, 23, 0.28);
+        opacity: 0;
+    }
+
+    body.mes-admin-page .mes-admin-drawer.open .mes-admin-overlay {
+        opacity: 1;
+    }
+
+    body.mes-admin-page .mes-admin-drawer-panel {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        bottom: 12px;
+        width: min(390px, calc(100vw - 24px));
+        max-height: none;
+        transform: translateX(108%);
+        opacity: 0;
+    }
+
+    body.mes-admin-page .mes-admin-drawer.open .mes-admin-drawer-panel {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@media (max-width: 1080px) {
+    body.mes-admin-page .mes-layout {
+        grid-template-columns: 1fr;
+    }
+
+    body.mes-admin-page .mes-side-rail {
+        position: static;
+        min-height: 0;
+        grid-template-rows: auto auto;
+        gap: 12px;
+        padding: 14px;
+    }
+
+    body.mes-admin-page .mes-rail-nav {
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+
+    body.mes-admin-page .mes-rail-link {
+        min-height: 0;
+        padding: 10px 6px;
+    }
+
+    body.mes-admin-page .mes-rail-footer {
+        grid-template-columns: 1fr auto;
+        align-items: center;
+    }
+
+    body.mes-admin-page .mes-surface-header-main,
+    body.mes-admin-page .mes-events-footer {
+        grid-template-columns: 1fr;
+    }
+
+    body.mes-admin-page .mes-search-toolbar,
+    body.mes-admin-page .mes-filters-popover {
+        grid-template-columns: 1fr;
+    }
+
+    body.mes-admin-page .mes-events-heading-actions {
+        justify-content: flex-start;
+    }
+}
+
+@media (max-width: 720px) {
+    body.mes-admin-page .app-shell.mes-admin-shell {
+        width: calc(100vw - 14px);
+        margin: 8px auto 14px;
+    }
+
+    body.mes-admin-page .mes-hero-card,
+    body.mes-admin-page .mes-surface {
+        padding: 16px 14px;
+        border-radius: 20px;
+    }
+
+    body.mes-admin-page .mes-hero-card {
+        grid-template-columns: 1fr;
+        display: grid;
+    }
+
+    body.mes-admin-page .mes-rail-nav {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
 @media (max-width: 1100px) {
     body.tv-mode .dashboard-grid,
     body.tv-mode .summary {
@@ -2596,5 +4116,815 @@ body.ultrawide-mode .dashboard-progress {
 
     .switch-button-screen {
         margin-left: 0;
+    }
+}
+
+/* MES compact operations layout */
+body.mes-admin-page .app-shell.mes-admin-shell {
+    width: min(calc(100vw - 14px), 1920px);
+    max-width: none;
+    margin: 8px auto 16px;
+    gap: 8px;
+    padding-right: 0;
+}
+
+body.mes-admin-page .mes-ops-screen,
+body.mes-admin-page .mes-ops-screen input,
+body.mes-admin-page .mes-ops-screen select,
+body.mes-admin-page .mes-ops-screen button,
+body.mes-admin-page .mes-ops-screen table {
+    font-family: "Segoe UI", Tahoma, sans-serif;
+}
+
+body.mes-admin-page .mes-ops-screen {
+    display: grid;
+    gap: 10px;
+    color: #0f172a;
+}
+
+body.mes-admin-page .mes-ops-header {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 4px 0;
+}
+
+body.mes-admin-page .mes-ops-title {
+    display: grid;
+    gap: 2px;
+}
+
+body.mes-admin-page .mes-ops-title h1 {
+    margin: 0;
+    font-size: 16px;
+    line-height: 1.15;
+    font-weight: 700;
+}
+
+body.mes-admin-page .mes-ops-title p {
+    margin: 0;
+    color: #64748b;
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+body.mes-admin-page .mes-ops-toolbar,
+body.mes-admin-page .mes-inline-filters,
+body.mes-admin-page .mes-summary-strip,
+body.mes-admin-page .mes-ops-card,
+body.mes-admin-page .mes-ops-screen .mes-admin-drawer-panel {
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
+}
+
+body.mes-admin-page .mes-ops-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: end;
+    gap: 10px;
+    padding: 8px 10px;
+}
+
+body.mes-admin-page .mes-toolbar-actions,
+body.mes-admin-page .mes-toolbar-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+body.mes-admin-page .mes-toolbar-meta {
+    justify-content: flex-end;
+    white-space: nowrap;
+}
+
+body.mes-admin-page .mes-toolbar-meta-label,
+body.mes-admin-page .mes-compact-field span {
+    color: #475569;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+body.mes-admin-page .mes-compact-field {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+}
+
+body.mes-admin-page .mes-compact-field-search {
+    min-width: min(560px, 100%);
+}
+
+body.mes-admin-page .mes-inline-filters {
+    display: grid;
+    grid-template-columns: minmax(220px, 280px);
+    gap: 10px;
+    padding: 8px 10px;
+}
+
+body.mes-admin-page .mes-inline-filters.hidden,
+body.mes-admin-page .mes-summary-strip.hidden,
+body.mes-admin-page .hidden {
+    display: none !important;
+}
+
+body.mes-admin-page .mes-ops-screen input,
+body.mes-admin-page .mes-ops-screen select {
+    min-height: 36px;
+    border-radius: 10px;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    background: #fff;
+    padding: 7px 10px;
+    font-size: 13px;
+    line-height: 1.2;
+    color: #0f172a;
+}
+
+body.mes-admin-page .mes-ops-screen input:focus,
+body.mes-admin-page .mes-ops-screen select:focus {
+    outline: none;
+    border-color: rgba(15, 118, 110, 0.55);
+    box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
+}
+
+body.mes-admin-page .mes-ops-screen button,
+body.mes-admin-page .mes-ops-screen .nav-link {
+    min-height: 36px;
+    border-radius: 10px;
+    padding: 0 14px;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+body.mes-admin-page .mes-ops-screen .nav-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+}
+
+body.mes-admin-page .mes-summary-strip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding: 8px 10px;
+}
+
+body.mes-admin-page .mes-summary-pill,
+body.mes-admin-page .mes-mini-pill,
+body.mes-admin-page .mes-selection-pill {
+    display: inline-grid;
+    gap: 2px;
+    padding: 5px 9px;
+    border-radius: 10px;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    background: rgba(248, 250, 252, 0.96);
+}
+
+body.mes-admin-page .mes-summary-pill span,
+body.mes-admin-page .mes-selection-pill small {
+    color: #64748b;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.1;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+body.mes-admin-page .mes-summary-pill strong,
+body.mes-admin-page .mes-mini-pill,
+body.mes-admin-page .mes-selection-pill strong {
+    color: #0f172a;
+    font-size: 12px;
+    line-height: 1.15;
+    font-weight: 700;
+}
+
+body.mes-admin-page .mes-mini-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 28px;
+    padding: 0 10px;
+}
+
+body.mes-admin-page .mes-ops-main-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 10px;
+}
+
+body.mes-admin-page .mes-detail-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.02fr) minmax(420px, 0.98fr);
+    align-items: start;
+    gap: 10px;
+}
+
+body.mes-admin-page .mes-ops-card {
+    overflow: hidden;
+}
+
+body.mes-admin-page .mes-kkw-card {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-height: 420px;
+    max-height: 560px;
+}
+
+body.mes-admin-page .mes-kkw-card .mes-compact-wrap,
+body.mes-admin-page .mes-detail-card .mes-compact-wrap {
+    min-height: 0;
+    overflow: auto;
+}
+
+body.mes-admin-page .mes-detail-card {
+    display: grid;
+    min-height: 330px;
+    max-height: 385px;
+}
+
+body.mes-admin-page .mes-detail-card:not(.mes-events-card) {
+    grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+body.mes-admin-page .mes-events-card {
+    grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+body.mes-admin-page .mes-card-header {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 10px 7px;
+    border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+body.mes-admin-page .mes-card-header h2 {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.2;
+    font-weight: 700;
+}
+
+body.mes-admin-page .mes-card-meta {
+    margin: 2px 0 0;
+    color: #64748b;
+    font-size: 10px;
+    line-height: 1.35;
+}
+
+body.mes-admin-page .mes-card-header-events,
+body.mes-admin-page .mes-events-heading-actions {
+    align-items: center;
+}
+
+body.mes-admin-page .mes-events-heading-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+body.mes-admin-page .mes-selection-strip {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding: 6px 10px;
+    border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+    background: rgba(248, 250, 252, 0.88);
+}
+
+body.mes-admin-page .mes-compact-wrap {
+    overflow: auto;
+}
+
+body.mes-admin-page .mes-events-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+}
+
+body.mes-admin-page .mes-events-table th {
+    padding: 6px 8px;
+    background: rgba(240, 248, 247, 0.95);
+    border-bottom: 1px solid rgba(15, 118, 110, 0.12);
+    color: #0f766e;
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1.1;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    text-align: left;
+    white-space: nowrap;
+}
+
+body.mes-admin-page .mes-events-table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+    color: #0f172a;
+    font-size: 12px;
+    line-height: 1.15;
+    vertical-align: middle;
+}
+
+body.mes-admin-page .mes-events-table td strong {
+    display: block;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+body.mes-admin-page .mes-events-table td small {
+    display: block;
+    margin-top: 1px;
+    color: #64748b;
+    font-size: 10px;
+    line-height: 1.25;
+}
+
+body.mes-admin-page .mes-kkw-row,
+body.mes-admin-page .mes-entry-row {
+    cursor: pointer;
+}
+
+body.mes-admin-page .mes-kkw-row:hover,
+body.mes-admin-page .mes-entry-row:hover {
+    background: rgba(240, 253, 250, 0.92);
+}
+
+body.mes-admin-page .mes-kkw-row.selected,
+body.mes-admin-page .mes-entry-row.selected {
+    background: rgba(222, 245, 241, 0.98);
+}
+
+body.mes-admin-page .mes-kkw-row.selected td,
+body.mes-admin-page .mes-entry-row.selected td {
+    border-bottom-color: rgba(15, 118, 110, 0.16);
+}
+
+body.mes-admin-page .mes-row-actions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    flex-wrap: nowrap;
+}
+
+body.mes-admin-page .mes-icon-button {
+    min-width: 28px;
+    min-height: 28px;
+    padding: 0 8px;
+    border-radius: 9px;
+    font-size: 13px;
+    line-height: 1;
+}
+
+body.mes-admin-page .phase-badge {
+    min-height: 22px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+body.mes-admin-page .phase-badge.good {
+    background: rgba(220, 252, 231, 0.96);
+    color: #166534;
+}
+
+body.mes-admin-page .phase-badge.neutral {
+    background: rgba(241, 245, 249, 0.96);
+    color: #475569;
+}
+
+body.mes-admin-page .mes-events-table code {
+    display: inline-block;
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #334155;
+    font-size: 10px;
+}
+
+body.mes-admin-page .mes-events-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 10px;
+    border-top: 1px solid rgba(15, 23, 42, 0.06);
+    background: rgba(248, 250, 252, 0.88);
+}
+
+body.mes-admin-page .mes-ops-screen .mes-admin-drawer {
+    position: relative;
+    inset: auto;
+    width: auto;
+    pointer-events: auto;
+    z-index: 2;
+}
+
+body.mes-admin-page .mes-ops-screen .mes-admin-overlay {
+    display: none;
+}
+
+body.mes-admin-page .mes-ops-screen .mes-admin-drawer-panel {
+    position: relative;
+    top: 0;
+    right: 0;
+    bottom: auto;
+    width: 100%;
+    padding: 10px;
+    display: grid;
+    gap: 10px;
+    transform: none;
+    opacity: 1;
+}
+
+body.mes-admin-page .mes-ops-screen .mes-admin-drawer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    gap: 10px;
+}
+
+body.mes-admin-page .mes-ops-screen .mes-admin-drawer-header h2 {
+    margin: 0;
+    font-size: 18px;
+    line-height: 1.04;
+    font-weight: 800;
+}
+
+body.mes-admin-page .mes-ops-screen .mes-admin-drawer-copy {
+    margin: 2px 0 0;
+    color: #64748b;
+    font-size: 10px;
+    line-height: 1.35;
+}
+
+body.mes-admin-page .mes-ops-screen .mes-close-button {
+    min-width: 28px;
+    min-height: 28px;
+    padding: 0;
+    border-radius: 9px;
+    font-size: 16px;
+}
+
+body.mes-admin-page .mes-admin-placeholder {
+    display: grid;
+    gap: 6px;
+    padding: 10px 12px;
+    border: 1px dashed rgba(148, 163, 184, 0.48);
+    border-radius: 12px;
+    background: rgba(248, 250, 252, 0.8);
+}
+
+body.mes-admin-page .mes-ops-screen .mes-admin-preview-note {
+    padding: 8px 10px;
+    border-radius: 12px;
+    background: rgba(220, 252, 231, 0.65);
+    color: #166534;
+    font-size: 10px;
+    line-height: 1.35;
+}
+
+body.mes-admin-page .mes-ops-screen .mes-admin-preview-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    margin-top: 6px;
+}
+
+body.mes-admin-page .mes-ops-screen .mes-admin-preview-card {
+    padding: 7px 8px;
+    border-radius: 9px;
+    border: 1px solid rgba(226, 232, 240, 0.9);
+    background: rgba(248, 250, 252, 0.88);
+}
+
+body.mes-admin-page .mes-ops-screen .mes-admin-preview-card span {
+    display: block;
+    color: #64748b;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+body.mes-admin-page .mes-ops-screen .mes-admin-preview-card strong {
+    display: block;
+    margin-top: 3px;
+    font-size: 12px;
+    line-height: 1.15;
+    font-weight: 800;
+}
+
+body.mes-admin-page .mes-ops-screen .mes-admin-form {
+    display: grid;
+    gap: 8px;
+}
+
+body.mes-admin-page .mes-ops-screen .mes-admin-drawer-grid {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: 1fr;
+    margin: 0;
+}
+
+body.mes-admin-page .mes-ops-screen .mes-admin-form label {
+    display: grid;
+    gap: 3px;
+}
+
+body.mes-admin-page .mes-ops-screen .mes-admin-form label span {
+    color: #334155;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+body.mes-admin-page .mes-ops-screen .mes-admin-drawer-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 6px;
+}
+
+body.mes-admin-page .mes-ops-screen .mes-admin-drawer-actions button {
+    width: 100%;
+}
+
+body.mes-admin-page .mes-ops-screen .mes-admin-drawer-actions button[type="submit"] {
+    background: linear-gradient(180deg, #13836f, #0b6f60);
+}
+
+body.mes-admin-page .mes-ops-screen .mes-inline-danger {
+    background: transparent;
+    border-color: rgba(220, 38, 38, 0.22);
+    color: #dc2626;
+}
+
+body.mes-admin-page .mes-ops-screen .mes-admin-status {
+    font-size: 10px;
+    line-height: 1.35;
+}
+
+body.mes-admin-page .mes-ops-screen .mes-history-checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 28px;
+    padding: 0 2px;
+    font-size: 12px;
+}
+
+body.mes-admin-page .mes-ops-screen .mes-event-checkbox {
+    width: 16px;
+    height: 16px;
+}
+
+@media (min-width: 1500px) {
+    body.mes-admin-page .app-shell.mes-admin-shell {
+        padding-right: 320px;
+    }
+
+    body.mes-admin-page .mes-ops-screen .mes-admin-drawer {
+        position: fixed;
+        top: 68px;
+        right: 8px;
+        bottom: 8px;
+        width: 300px;
+        inset: auto 8px 8px auto;
+        z-index: 30;
+    }
+
+    body.mes-admin-page .mes-ops-screen .mes-admin-drawer-panel {
+        max-height: none;
+        height: 100%;
+        overflow: auto;
+    }
+
+    body.mes-admin-page .mes-ops-screen .mes-close-button {
+        display: none;
+    }
+}
+
+@media (max-width: 1499px) {
+    body.mes-admin-page .mes-ops-screen .mes-admin-drawer {
+        position: fixed;
+        inset: 0;
+        width: auto;
+        pointer-events: none;
+        z-index: 70;
+    }
+
+    body.mes-admin-page .mes-ops-screen .mes-admin-drawer.open {
+        pointer-events: auto;
+    }
+
+    body.mes-admin-page .mes-ops-screen .mes-admin-overlay {
+        display: block;
+        position: absolute;
+        inset: 0;
+        border: 0;
+        padding: 0;
+        background: rgba(15, 23, 42, 0.26);
+        opacity: 0;
+    }
+
+    body.mes-admin-page .mes-ops-screen .mes-admin-drawer.open .mes-admin-overlay {
+        opacity: 1;
+    }
+
+    body.mes-admin-page .mes-ops-screen .mes-admin-drawer-panel {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        bottom: 10px;
+        width: min(390px, calc(100vw - 20px));
+        overflow: auto;
+        transform: translateX(108%);
+        opacity: 0;
+    }
+
+    body.mes-admin-page .mes-ops-screen .mes-admin-drawer.open .mes-admin-drawer-panel {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@media (max-width: 1120px) {
+    body.mes-admin-page .mes-detail-grid {
+        grid-template-columns: 1fr;
+    }
+
+    body.mes-admin-page .mes-detail-card {
+        max-height: none;
+        min-height: 0;
+    }
+}
+
+@media (max-width: 980px) {
+    body.mes-admin-page .mes-ops-toolbar {
+        grid-template-columns: 1fr;
+    }
+
+    body.mes-admin-page .mes-toolbar-meta {
+        justify-content: flex-start;
+    }
+
+    body.mes-admin-page .mes-inline-filters {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 720px) {
+    body.mes-admin-page .app-shell.mes-admin-shell {
+        width: calc(100vw - 8px);
+        margin: 6px auto 10px;
+    }
+
+    body.mes-admin-page .mes-ops-header {
+        padding: 2px 2px 0;
+    }
+
+    body.mes-admin-page .mes-ops-title h1 {
+        font-size: 15px;
+    }
+
+    body.mes-admin-page .mes-ops-screen .mes-events-table th,
+    body.mes-admin-page .mes-ops-screen .mes-events-table td {
+        padding: 7px 8px;
+    }
+
+    body.mes-admin-page .mes-ops-screen .mes-admin-drawer-panel {
+        width: calc(100vw - 12px);
+        top: 6px;
+        right: 6px;
+        bottom: 6px;
+        padding: 10px;
+    }
+}
+
+/* MES overlay editor override */
+body.mes-admin-page {
+    background: #f5f3ee !important;
+}
+
+body.mes-admin-page .app-shell.mes-admin-shell {
+    padding-right: 0 !important;
+}
+
+body.mes-admin-page .mes-ops-screen.mes-ops-overlay-editor .mes-ops-main-grid {
+    grid-template-columns: 1fr;
+}
+
+body.mes-admin-page .mes-ops-screen.mes-ops-overlay-editor .mes-detail-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+body.mes-admin-page .mes-ops-screen.mes-ops-overlay-editor .mes-admin-drawer {
+    position: fixed !important;
+    inset: 0 !important;
+    width: auto !important;
+    pointer-events: none !important;
+    visibility: hidden;
+    z-index: 120 !important;
+}
+
+body.mes-admin-page .mes-ops-screen.mes-ops-overlay-editor .mes-admin-drawer.open {
+    pointer-events: auto !important;
+    visibility: visible;
+}
+
+body.mes-admin-page .mes-ops-screen.mes-ops-overlay-editor .mes-admin-overlay {
+    display: block !important;
+    position: absolute !important;
+    inset: 0 !important;
+    border: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-height: 0 !important;
+    width: auto !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    appearance: none !important;
+    background: transparent !important;
+    opacity: 1 !important;
+    transition: none !important;
+}
+
+body.mes-admin-page .mes-ops-screen.mes-ops-overlay-editor .mes-admin-drawer-panel {
+    position: absolute !important;
+    top: 48px !important;
+    right: 10px !important;
+    bottom: 10px !important;
+    left: auto !important;
+    width: min(360px, calc(100vw - 20px)) !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: auto !important;
+    padding: 10px !important;
+    transform: translateX(calc(100% + 24px)) !important;
+    opacity: 0 !important;
+    visibility: visible !important;
+    box-shadow: 0 22px 60px rgba(15, 23, 42, 0.18);
+}
+
+body.mes-admin-page .mes-ops-screen.mes-ops-overlay-editor .mes-admin-drawer.open .mes-admin-drawer-panel {
+    transform: translateX(0) !important;
+    opacity: 1 !important;
+}
+
+body.mes-admin-page .mes-ops-screen.mes-ops-overlay-editor .mes-close-button {
+    display: inline-grid;
+    place-items: center;
+}
+
+body.mes-admin-page .mes-ops-screen.mes-ops-overlay-editor .mes-kkw-card {
+    max-height: 520px;
+}
+
+body.mes-admin-page .mes-ops-screen.mes-ops-overlay-editor .mes-detail-card {
+    max-height: 360px;
+}
+
+body.mes-admin-page .mes-ops-screen.mes-ops-overlay-editor .mes-events-table th,
+body.mes-admin-page .mes-ops-screen.mes-ops-overlay-editor .mes-events-table td {
+    white-space: nowrap;
+}
+
+body.mes-admin-page .mes-ops-screen.mes-ops-overlay-editor .mes-events-table td:nth-child(3),
+body.mes-admin-page .mes-ops-screen.mes-ops-overlay-editor .mes-events-table td:nth-child(4),
+body.mes-admin-page .mes-ops-screen.mes-ops-overlay-editor .mes-events-table td:nth-child(5) {
+    white-space: normal;
+}
+
+@media (max-width: 1180px) {
+    body.mes-admin-page .mes-ops-screen.mes-ops-overlay-editor .mes-detail-grid {
+        grid-template-columns: 1fr;
+    }
+
+    body.mes-admin-page .mes-ops-screen.mes-ops-overlay-editor .mes-detail-card {
+        max-height: none;
+        min-height: 0;
+    }
+}
+
+@media (max-width: 720px) {
+    body.mes-admin-page .mes-ops-screen.mes-ops-overlay-editor .mes-admin-drawer-panel {
+        top: 44px !important;
+        right: 6px !important;
+        bottom: 6px !important;
+        width: calc(100vw - 12px) !important;
+        padding: 10px !important;
     }
 }
