@@ -22,6 +22,12 @@ const headerMaterialFilter = document.getElementById("header-material-filter");
 const refreshHeadersButton = document.getElementById("refresh-headers");
 const resetHeaderFiltersButton = document.getElementById("reset-header-filters");
 const headersRefreshStatus = document.getElementById("headers-refresh-status");
+const headerSelectionToolbar = document.getElementById("header-selection-toolbar");
+const headerSelectionCount = document.getElementById("header-selection-count");
+const headerSelectionPreviewButton = document.getElementById("header-selection-preview");
+const headerSelectionPrintSmdButton = document.getElementById("header-selection-print-smd");
+const headerSelectionPrintThtButton = document.getElementById("header-selection-print-tht");
+const headerSelectionClearButton = document.getElementById("header-selection-clear");
 const headerSortButtons = Array.from(document.querySelectorAll("[data-header-sort]"));
 const headerDetailSection = document.getElementById("header-detail-section");
 const headerDetailTitle = document.getElementById("header-detail-title");
@@ -44,6 +50,18 @@ const bomComponentViewerSummary = document.getElementById("bom-component-viewer-
 const bomComponentViewerError = document.getElementById("bom-component-viewer-error");
 const bomComponentViewerBody = document.getElementById("bom-component-viewer-body");
 const bomComponentViewerCloseButton = document.getElementById("bom-component-viewer-close");
+const headerPrintViewer = document.getElementById("header-print-viewer");
+const headerPrintViewerTitle = document.getElementById("header-print-viewer-title");
+const headerPrintViewerMeta = document.getElementById("header-print-viewer-meta");
+const headerPrintViewerSummary = document.getElementById("header-print-viewer-summary");
+const headerPrintViewerError = document.getElementById("header-print-viewer-error");
+const headerPrintViewerHeadersBody = document.getElementById("header-print-viewer-headers-body");
+const headerPrintViewerBomTitle = document.getElementById("header-print-viewer-bom-title");
+const headerPrintViewerBomBody = document.getElementById("header-print-viewer-bom-body");
+const headerPrintViewerPrintButton = document.getElementById("header-print-viewer-print");
+const headerPrintViewerCloseButton = document.getElementById("header-print-viewer-close");
+const headerPrintScopeSmdButton = document.getElementById("header-print-scope-smd");
+const headerPrintScopeThtButton = document.getElementById("header-print-scope-tht");
 const bomZwViewer = document.getElementById("bom-zw-viewer");
 const bomZwViewerTitle = document.getElementById("bom-zw-viewer-title");
 const bomZwViewerMeta = document.getElementById("bom-zw-viewer-meta");
@@ -90,7 +108,7 @@ const numberFormatter = new Intl.NumberFormat("pl-PL", { minimumFractionDigits: 
 const dateFormatter = new Intl.DateTimeFormat("pl-PL", { year: "numeric", month: "2-digit", day: "2-digit" });
 const dateTimeFormatter = new Intl.DateTimeFormat("pl-PL", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 const timeFormatter = new Intl.DateTimeFormat("pl-PL", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-const OPERATIONAL_AUTO_REFRESH_MS = 90 * 1000;
+const OPERATIONAL_AUTO_REFRESH_MS = 30 * 60 * 1000;
 const NOTE_AUTOSAVE_DELAY_MS = 900;
 const noteAutosaveTimers = new WeakMap();
 
@@ -98,6 +116,7 @@ let activeView = "operations";
 let operationalPayload = null;
 let operationalDetailPayload = null;
 let selectedHeaderId = null;
+let selectedHeaderIds = new Set();
 let selectedBomRowKey = "";
 let selectedDetailKey = "";
 let detailRequestToken = 0;
@@ -109,6 +128,10 @@ let operationalAutoRefreshTimer = null;
 let lastOperationalRefreshAt = null;
 let bomNoteSaveInFlight = false;
 let operationalBomComponentRequestToken = 0;
+let headerPrintPreviewRequestToken = 0;
+let headerPrintPreviewPayload = null;
+let headerPrintPreviewSelectionKey = "";
+let headerPrintScope = "SMD";
 let operationalBomZwRequestToken = 0;
 let operationalBomZwDocumentRequestToken = 0;
 let operationalHeaderSort = { key: "sourceCreatedAt", direction: "asc" };
@@ -398,6 +421,7 @@ function setActiveView(view) {
     if (view !== "operations") {
         closeHeaderNoteViewer();
         closeBomComponentViewer();
+        closeHeaderPrintViewer();
         closeBomZwViewer();
         closeBomZwDocumentViewer();
     }
@@ -430,9 +454,14 @@ function isReportDetailViewerOpen() {
     return Boolean(detailSection && !detailSection.classList.contains("hidden"));
 }
 
+function isHeaderPrintViewerOpen() {
+    return Boolean(headerPrintViewer && !headerPrintViewer.classList.contains("hidden"));
+}
+
 function syncModalOpenState() {
     const hasOpenModal = isHeaderNoteViewerOpen()
         || isBomComponentViewerOpen()
+        || isHeaderPrintViewerOpen()
         || isBomZwViewerOpen()
         || isBomZwDocumentViewerOpen()
         || isReportDetailViewerOpen();
@@ -452,6 +481,7 @@ function getOperationalAutoRefreshBlockReason() {
     if (bomNoteSaveInFlight) return "Auto: zapis uwagi";
     if (isHeaderNoteViewerOpen()) return "Auto: podglad uwagi";
     if (isBomComponentViewerOpen()) return "Auto: modal komponentu";
+    if (isHeaderPrintViewerOpen()) return "Auto: podglad wydruku";
     if (isBomZwViewerOpen()) return "Auto: modal ZW";
     if (isBomZwDocumentViewerOpen()) return "Auto: pozycje ZW";
     if (document.activeElement?.closest(".bom-note-editor")) return "Auto: edycja uwagi";
@@ -473,7 +503,7 @@ function updateOperationalRefreshStatus({ loading = false } = {}) {
     } else if (blockedReason) {
         parts.push(blockedReason);
     } else {
-        parts.push(`Auto: co ${Math.round(OPERATIONAL_AUTO_REFRESH_MS / 1000)} s`);
+        parts.push(`Auto: co ${Math.round(OPERATIONAL_AUTO_REFRESH_MS / 60000)} min`);
     }
 
     if (lastOperationalRefreshAt) {
@@ -720,8 +750,135 @@ function getFilteredHeaders(headers) {
     }).sort(compareHeadersBySort);
 }
 
+function buildSelectedHeadersKey(ids) {
+    return [...new Set((ids || [])
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value) && value > 0))]
+        .sort((left, right) => left - right)
+        .join("::");
+}
+
+function getSelectedOperationalHeaders() {
+    const headers = Array.isArray(operationalPayload?.headers) ? operationalPayload.headers : [];
+    return headers
+        .filter((header) => selectedHeaderIds.has(Number(header?.id)))
+        .sort(compareHeadersBySort);
+}
+
+function invalidateHeaderPrintPreview({ closeViewer = false } = {}) {
+    headerPrintPreviewPayload = null;
+    headerPrintPreviewSelectionKey = "";
+    if (closeViewer) {
+        closeHeaderPrintViewer();
+    }
+}
+
+function syncSelectedHeaderIdsWithHeaders(headers) {
+    const availableIds = new Set((headers || [])
+        .map((item) => Number(item?.id))
+        .filter((value) => Number.isFinite(value) && value > 0));
+    const nextSelectedIds = new Set(
+        [...selectedHeaderIds].filter((value) => availableIds.has(Number(value)))
+    );
+    const changed = buildSelectedHeadersKey([...nextSelectedIds]) !== buildSelectedHeadersKey([...selectedHeaderIds]);
+    selectedHeaderIds = nextSelectedIds;
+    if (changed) {
+        invalidateHeaderPrintPreview({ closeViewer: true });
+    }
+    updateHeaderSelectionToolbar();
+}
+
+function updateHeaderSelectionToolbar() {
+    const selectedCount = selectedHeaderIds.size;
+    if (headerSelectionCount) {
+        headerSelectionCount.textContent = `Zaznaczone: ${selectedCount}`;
+    }
+    if (headerSelectionToolbar) {
+        headerSelectionToolbar.classList.toggle("hidden", selectedCount === 0);
+    }
+    if (headerSelectionPreviewButton) {
+        headerSelectionPreviewButton.disabled = selectedCount === 0;
+    }
+    if (headerSelectionPrintSmdButton) {
+        headerSelectionPrintSmdButton.disabled = selectedCount === 0;
+    }
+    if (headerSelectionPrintThtButton) {
+        headerSelectionPrintThtButton.disabled = selectedCount === 0;
+    }
+    if (headerSelectionClearButton) {
+        headerSelectionClearButton.disabled = selectedCount === 0;
+    }
+}
+
+function normalizeHeaderPrintScope(scope) {
+    return String(scope || "").trim().toUpperCase() === "THT" ? "THT" : "SMD";
+}
+
+function getHeaderPrintScopeLabel(scope) {
+    return normalizeHeaderPrintScope(scope) === "THT" ? "THT" : "SMD + PCB";
+}
+
+function getHeaderPrintButtonLabel(scope) {
+    return normalizeHeaderPrintScope(scope) === "THT" ? "Drukuj THT" : "Drukuj SMD";
+}
+
+function updateHeaderPrintScopeButtons() {
+    const normalizedScope = normalizeHeaderPrintScope(headerPrintScope);
+    if (headerPrintScopeSmdButton) {
+        const isActive = normalizedScope === "SMD";
+        headerPrintScopeSmdButton.classList.toggle("is-active", isActive);
+        headerPrintScopeSmdButton.setAttribute("aria-pressed", isActive ? "true" : "false");
+    }
+    if (headerPrintScopeThtButton) {
+        const isActive = normalizedScope === "THT";
+        headerPrintScopeThtButton.classList.toggle("is-active", isActive);
+        headerPrintScopeThtButton.setAttribute("aria-pressed", isActive ? "true" : "false");
+    }
+}
+
+function setHeaderPrintScope(scope, { rerender = true } = {}) {
+    const normalizedScope = normalizeHeaderPrintScope(scope);
+    if (headerPrintScope === normalizedScope && !rerender) {
+        return;
+    }
+    headerPrintScope = normalizedScope;
+    updateHeaderPrintScopeButtons();
+    if (rerender && headerPrintPreviewPayload && isHeaderPrintViewerOpen()) {
+        renderHeaderPrintViewerContent(headerPrintPreviewPayload, headerPrintScope);
+    }
+}
+
+function toggleHeaderSelection(headerId, isSelected) {
+    const normalizedId = Number(headerId);
+    if (!Number.isFinite(normalizedId) || normalizedId <= 0) {
+        return;
+    }
+
+    if (isSelected) {
+        selectedHeaderIds.add(normalizedId);
+    } else {
+        selectedHeaderIds.delete(normalizedId);
+    }
+
+    invalidateHeaderPrintPreview({ closeViewer: true });
+    updateHeaderSelectionToolbar();
+    renderOperationalHeaders();
+}
+
+function clearSelectedHeaders() {
+    if (!selectedHeaderIds.size) {
+        return;
+    }
+
+    selectedHeaderIds = new Set();
+    invalidateHeaderPrintPreview({ closeViewer: true });
+    updateHeaderSelectionToolbar();
+    renderOperationalHeaders();
+}
+
 function clearOperationalDetailPanel({ hide = true, message = "Kliknij rekord w tabeli naglowkow, aby zobaczyc pozycje BOM." } = {}) {
     closeBomComponentViewer();
+    closeHeaderPrintViewer();
     closeBomZwViewer();
     selectedHeaderId = hide ? null : selectedHeaderId;
     selectedBomRowKey = "";
@@ -1422,6 +1579,546 @@ async function loadBomZwViewer(item) {
     }
 }
 
+function openHeaderPrintViewer() {
+    if (!headerPrintViewer) {
+        return;
+    }
+
+    headerPrintViewer.classList.remove("hidden");
+    headerPrintViewer.setAttribute("aria-hidden", "false");
+    syncModalOpenState();
+}
+
+function closeHeaderPrintViewer() {
+    headerPrintPreviewRequestToken += 1;
+    if (!headerPrintViewer) {
+        return;
+    }
+
+    headerPrintViewer.classList.add("hidden");
+    headerPrintViewer.setAttribute("aria-hidden", "true");
+    if (headerPrintViewerSummary) {
+        headerPrintViewerSummary.classList.add("hidden");
+        headerPrintViewerSummary.innerHTML = "";
+    }
+    if (headerPrintViewerError) {
+        headerPrintViewerError.classList.add("hidden");
+        headerPrintViewerError.textContent = "";
+    }
+    if (headerPrintViewerHeadersBody) {
+        headerPrintViewerHeadersBody.innerHTML = `
+            <tr>
+                <td colspan="7" class="empty-state">Zaznacz naglowki, aby przygotowac wydruk.</td>
+            </tr>
+        `;
+    }
+    if (headerPrintViewerBomBody) {
+        headerPrintViewerBomBody.innerHTML = `
+            <tr>
+                <td colspan="9" class="empty-state">Zaznacz naglowki, aby zsumowac pozycje BOM.</td>
+            </tr>
+        `;
+    }
+    syncModalOpenState();
+}
+
+function renderHeaderPrintViewerLoadingState() {
+    if (headerPrintViewerTitle) {
+        headerPrintViewerTitle.textContent = "Laczone zlecenia";
+    }
+    if (headerPrintViewerMeta) {
+        headerPrintViewerMeta.textContent = "Ladowanie sumarycznej listy komponentow dla zaznaczonych naglowkow...";
+    }
+    if (headerPrintViewerSummary) {
+        headerPrintViewerSummary.classList.add("hidden");
+        headerPrintViewerSummary.innerHTML = "";
+    }
+    if (headerPrintViewerError) {
+        headerPrintViewerError.classList.add("hidden");
+        headerPrintViewerError.textContent = "";
+    }
+    if (headerPrintViewerHeadersBody) {
+        headerPrintViewerHeadersBody.innerHTML = `
+            <tr>
+                <td colspan="7" class="empty-state">Ladowanie wybranych naglowkow...</td>
+            </tr>
+        `;
+    }
+    if (headerPrintViewerBomBody) {
+        headerPrintViewerBomBody.innerHTML = `
+            <tr>
+                <td colspan="9" class="empty-state">Ladowanie zsumowanych pozycji BOM...</td>
+            </tr>
+        `;
+    }
+}
+
+async function fetchOperationalHeaderDetailPayloadById(headerId) {
+    const normalizedHeaderId = Number(headerId);
+    const isVendoSource = operationalPayload?.meta?.source === "vendo";
+    return postJson(
+        isVendoSource
+            ? "/api/zapotrzebowanie/vendo/header-details"
+            : "/api/zapotrzebowanie/operational/header-details",
+        {
+            ...(isVendoSource ? { planPositionId: normalizedHeaderId } : { headerId: normalizedHeaderId }),
+            ...getConnectionPayload(),
+            materialOwnershipFilter: headerMaterialFilter?.value || "MSX_OR_EMPTY",
+        }
+    );
+}
+
+function choosePreferredAggregateName(currentName, nextName) {
+    const currentLength = String(currentName || "").trim().length;
+    const nextLength = String(nextName || "").trim().length;
+    if (!currentLength) return String(nextName || "").trim();
+    if (!nextLength) return String(currentName || "").trim();
+    return nextLength > currentLength ? String(nextName || "").trim() : String(currentName || "").trim();
+}
+
+function buildHeaderPrintPreviewPayload({ headers, detailPayloads, warnings = [] }) {
+    const componentMap = new Map();
+
+    (detailPayloads || []).forEach((payload) => {
+        const bomItems = Array.isArray(payload?.bomItems) ? payload.bomItems : [];
+        bomItems.forEach((item) => {
+            const componentCode = String(item?.componentCode || "").trim();
+            if (!componentCode) {
+                return;
+            }
+
+            const codeKey = componentCode.toUpperCase();
+            const current = componentMap.get(codeKey) || {
+                componentCode,
+                componentName: "",
+                typeName: "",
+                unitQty: 0,
+                requiredQty: 0,
+                wmsStock: 0,
+                vendoStock: 0,
+                zwQty: 0,
+                toOrder: 0,
+            };
+
+            current.componentCode = componentCode;
+            current.componentName = choosePreferredAggregateName(current.componentName, item?.componentName);
+            current.typeName = String(current.typeName || item?.typeName || "").trim();
+            current.unitQty += Number(item?.unitQty) || 0;
+            current.requiredQty += Number(item?.requiredQty) || 0;
+            current.wmsStock = Math.max(current.wmsStock, Number(item?.wmsStock) || 0);
+            current.vendoStock = Math.max(current.vendoStock, Number(item?.vendoStock) || 0);
+            current.zwQty = Math.max(current.zwQty, Number(item?.zwQty) || 0);
+            componentMap.set(codeKey, current);
+        });
+    });
+
+    const bomRows = [...componentMap.values()]
+        .map((row) => ({
+            ...row,
+            toOrder: Math.max((Number(row?.requiredQty) || 0) - ((Number(row?.wmsStock) || 0) + (Number(row?.vendoStock) || 0)), 0),
+        }))
+        .sort((left, right) => String(left?.componentCode || "").localeCompare(String(right?.componentCode || ""), "pl", {
+            numeric: true,
+            sensitivity: "base",
+        }));
+
+    const summary = bomRows.reduce((result, row) => {
+        result.totalComponents += 1;
+        result.requiredQty += Number(row?.requiredQty) || 0;
+        result.shortageItems += (Number(row?.toOrder) || 0) > 0 ? 1 : 0;
+        result.shortageQty += Number(row?.toOrder) || 0;
+        result.zwQty += Number(row?.zwQty) || 0;
+        return result;
+    }, {
+        totalHeaders: (headers || []).length,
+        totalComponents: 0,
+        requiredQty: 0,
+        shortageItems: 0,
+        shortageQty: 0,
+        zwQty: 0,
+    });
+
+    return {
+        headers: headers || [],
+        bomRows,
+        summary,
+        warnings: [...new Set((warnings || []).filter(Boolean))],
+        generatedAt: new Date().toISOString(),
+    };
+}
+
+function buildHeaderPrintScopePayload(payload, scope = headerPrintScope) {
+    const normalizedScope = normalizeHeaderPrintScope(scope);
+    const headers = Array.isArray(payload?.headers) ? payload.headers : [];
+    const allBomRows = Array.isArray(payload?.bomRows) ? payload.bomRows : [];
+    const scopedBomRows = allBomRows.filter((row) => {
+        const typeName = String(row?.typeName || "").trim().toUpperCase();
+        if (normalizedScope === "THT") {
+            return typeName === "THT";
+        }
+        return typeName === "SMD" || typeName === "PCB";
+    });
+    const summary = scopedBomRows.reduce((result, row) => {
+        result.totalHeaders = headers.length;
+        result.totalComponents += 1;
+        result.requiredQty += Number(row?.requiredQty) || 0;
+        result.shortageItems += (Number(row?.toOrder) || 0) > 0 ? 1 : 0;
+        result.shortageQty += Number(row?.toOrder) || 0;
+        result.zwQty += Number(row?.zwQty) || 0;
+        return result;
+    }, {
+        totalHeaders: headers.length,
+        totalComponents: 0,
+        requiredQty: 0,
+        shortageItems: 0,
+        shortageQty: 0,
+        zwQty: 0,
+    });
+
+    return {
+        ...payload,
+        scope: normalizedScope,
+        bomRows: scopedBomRows,
+        summary,
+    };
+}
+
+async function ensureHeaderPrintPreviewPayload({ forceRefresh = false } = {}) {
+    const selectedIds = [...selectedHeaderIds]
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value) && value > 0);
+    const selectionKey = buildSelectedHeadersKey(selectedIds);
+
+    if (!selectedIds.length) {
+        throw new Error("Zaznacz co najmniej jeden naglowek do wydruku.");
+    }
+
+    if (!forceRefresh && headerPrintPreviewPayload && headerPrintPreviewSelectionKey === selectionKey) {
+        return headerPrintPreviewPayload;
+    }
+
+    const headers = getSelectedOperationalHeaders();
+    const detailResults = await Promise.allSettled(
+        selectedIds.map((headerId) => fetchOperationalHeaderDetailPayloadById(headerId))
+    );
+
+    const detailPayloads = [];
+    const warnings = [];
+    detailResults.forEach((result, index) => {
+        if (result.status === "fulfilled") {
+            const payload = result.value;
+            detailPayloads.push(payload);
+            const payloadWarnings = Array.isArray(payload?.meta?.warnings) ? payload.meta.warnings.filter(Boolean) : [];
+            if (payloadWarnings.length) {
+                warnings.push(...payloadWarnings.map((warning) => `${selectedIds[index]}: ${warning}`));
+            }
+            return;
+        }
+
+        warnings.push(`Nie udalo sie pobrac BOM dla naglowka ${selectedIds[index]}: ${result.reason?.message || "blad"}`);
+    });
+
+    if (!detailPayloads.length) {
+        throw new Error("Nie udalo sie pobrac zadnych pozycji BOM dla zaznaczonych naglowkow.");
+    }
+
+    headerPrintPreviewPayload = buildHeaderPrintPreviewPayload({
+        headers,
+        detailPayloads,
+        warnings,
+    });
+    headerPrintPreviewSelectionKey = selectionKey;
+    return headerPrintPreviewPayload;
+}
+
+function renderHeaderPrintViewerContent(payload, scope = headerPrintScope) {
+    const scopedPayload = buildHeaderPrintScopePayload(payload, scope);
+    const headers = Array.isArray(scopedPayload?.headers) ? scopedPayload.headers : [];
+    const bomRows = Array.isArray(scopedPayload?.bomRows) ? scopedPayload.bomRows : [];
+    const summary = scopedPayload?.summary || {};
+    const warnings = Array.isArray(scopedPayload?.warnings) ? scopedPayload.warnings.filter(Boolean) : [];
+    const normalizedScope = normalizeHeaderPrintScope(scope);
+    const scopeLabel = getHeaderPrintScopeLabel(scope);
+
+    if (headerPrintViewerTitle) {
+        headerPrintViewerTitle.textContent = `Laczone zlecenia (${headers.length})`;
+    }
+    if (headerPrintViewerMeta) {
+        headerPrintViewerMeta.textContent = `Podglad wydruku ${scopeLabel} wygenerowany ${formatDateTime(payload?.generatedAt)}.`;
+    }
+    if (headerPrintViewerBomTitle) {
+        headerPrintViewerBomTitle.textContent = `Komponenty do kompletacji ${scopeLabel}`;
+    }
+    if (headerPrintViewerPrintButton) {
+        headerPrintViewerPrintButton.textContent = getHeaderPrintButtonLabel(scope);
+    }
+    if (headerPrintViewerSummary) {
+        headerPrintViewerSummary.innerHTML = buildSummaryPills([
+            ["Naglowki", headers.length],
+            ["Komponenty", summary.totalComponents ?? 0],
+            ["Suma wym.", formatNumber(summary.requiredQty)],
+            ["Pozycje z brakiem", summary.shortageItems ?? 0],
+            ["Zakres", scopeLabel],
+        ]);
+        headerPrintViewerSummary.classList.remove("hidden");
+    }
+    if (headerPrintViewerError) {
+        if (warnings.length) {
+            headerPrintViewerError.textContent = warnings.join(" | ");
+            headerPrintViewerError.classList.remove("hidden");
+        } else {
+            headerPrintViewerError.classList.add("hidden");
+            headerPrintViewerError.textContent = "";
+        }
+    }
+    if (headerPrintViewerHeadersBody) {
+        headerPrintViewerHeadersBody.innerHTML = headers.length
+            ? headers.map((header, index) => `
+                <tr>
+                    <td class="align-right">${escapeHtml(index + 1)}</td>
+                    <td>${escapeHtml(header.kkwNumber || "-")}</td>
+                    <td>${escapeHtml(header.productIndex || "-")}</td>
+                    <td>${escapeHtml(header.productName || "-")}</td>
+                    <td>${escapeHtml(header.clientName || "-")}</td>
+                    <td class="align-right">${escapeHtml(formatNumber(header.orderQty))}</td>
+                    <td>${escapeHtml(formatDate(header.termDate))}</td>
+                </tr>
+            `).join("")
+            : `
+                <tr>
+                    <td colspan="7" class="empty-state">Brak naglowkow do wydruku.</td>
+                </tr>
+            `;
+    }
+      if (headerPrintViewerBomBody) {
+          headerPrintViewerBomBody.innerHTML = bomRows.length
+              ? bomRows.map((row) => `
+                  <tr>
+                      <td>${escapeHtml(row.componentCode || "-")}</td>
+                      <td>${escapeHtml(row.componentName || "-")}</td>
+                      <td>${escapeHtml(row.typeName || "-")}</td>
+                      <td class="align-right">${escapeHtml(formatNumber(row.requiredQty))}</td>
+                  </tr>
+              `).join("")
+              : `
+                  <tr>
+                        <td colspan="4" class="empty-state">Brak pozycji ${escapeHtml(scopeLabel)} do wydruku.</td>
+                  </tr>
+              `;
+      }
+}
+
+function buildHeaderPrintDocumentHtml(payload, scope = headerPrintScope) {
+    const scopedPayload = buildHeaderPrintScopePayload(payload, scope);
+    const headers = Array.isArray(scopedPayload?.headers) ? scopedPayload.headers : [];
+    const bomRows = Array.isArray(scopedPayload?.bomRows) ? scopedPayload.bomRows : [];
+    const summary = scopedPayload?.summary || {};
+    const warnings = Array.isArray(scopedPayload?.warnings) ? scopedPayload.warnings.filter(Boolean) : [];
+    const normalizedScope = normalizeHeaderPrintScope(scope);
+    const scopeLabel = getHeaderPrintScopeLabel(scope);
+
+    return `<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<title>Laczone zlecenia ${scopeLabel}</title>
+<style>
+    body { font-family: Inter, "Segoe UI", Arial, sans-serif; margin: 24px; color: #0f172a; }
+    h1 { margin: 0 0 6px; font-size: 28px; }
+    .meta { margin: 0 0 16px; color: #475569; font-size: 13px; }
+    .summary { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
+    .summary-item { border: 1px solid #cbd5e1; border-radius: 999px; padding: 6px 12px; font-size: 13px; background: #f8fafc; }
+    .section { margin-bottom: 20px; }
+    .section h2 { margin: 0 0 10px; font-size: 18px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { padding: 6px 8px; border-bottom: 1px solid #dbe2ea; vertical-align: top; }
+    th { text-align: left; color: #475569; font-weight: 700; }
+    td.num, th.num { text-align: right; white-space: nowrap; }
+    tbody tr:nth-child(even) { background: #f8fafc; }
+    .shortage { background: #fecaca; color: #991b1b; font-weight: 700; }
+    .warnings { margin-top: 10px; padding: 10px 12px; border: 1px solid #fbbf24; background: #fffbeb; color: #92400e; border-radius: 10px; font-size: 12px; }
+</style>
+</head>
+<body>
+    <h1>Laczone zlecenia ${escapeHtml(scopeLabel)}</h1>
+    <p class="meta">Wydruk kompletacyjny wygenerowany ${escapeHtml(formatDateTime(payload?.generatedAt))}.</p>
+    <div class="summary">
+        <div class="summary-item">Naglowki: <strong>${escapeHtml(headers.length)}</strong></div>
+        <div class="summary-item">Komponenty: <strong>${escapeHtml(summary.totalComponents ?? 0)}</strong></div>
+        <div class="summary-item">Suma wym.: <strong>${escapeHtml(formatNumber(summary.requiredQty))}</strong></div>
+        <div class="summary-item">Pozycje z brakiem: <strong>${escapeHtml(summary.shortageItems ?? 0)}</strong></div>
+        <div class="summary-item">Zakres: <strong>${escapeHtml(scopeLabel)}</strong></div>
+    </div>
+
+    <section class="section">
+        <h2>Wybrane naglowki</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th class="num">#</th>
+                    <th>KKW</th>
+                    <th>Indeks</th>
+                    <th>Produkt</th>
+                    <th>Klient</th>
+                    <th class="num">Ilosc</th>
+                    <th>Termin</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${headers.map((header, index) => `
+                    <tr>
+                        <td class="num">${escapeHtml(index + 1)}</td>
+                        <td>${escapeHtml(header.kkwNumber || "-")}</td>
+                        <td>${escapeHtml(header.productIndex || "-")}</td>
+                        <td>${escapeHtml(header.productName || "-")}</td>
+                        <td>${escapeHtml(header.clientName || "-")}</td>
+                        <td class="num">${escapeHtml(formatNumber(header.orderQty))}</td>
+                        <td>${escapeHtml(formatDate(header.termDate))}</td>
+                    </tr>
+                `).join("")}
+            </tbody>
+        </table>
+    </section>
+
+    <section class="section">
+        <h2>Komponenty do kompletacji ${escapeHtml(scopeLabel)}</h2>
+        <table>
+                <thead>
+                    <tr>
+                        <th>Kod</th>
+                        <th>Komponent</th>
+                        <th>Rodzaj</th>
+                        <th class="num">Suma wym.</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${bomRows.map((row) => `
+                        <tr>
+                            <td>${escapeHtml(row.componentCode || "-")}</td>
+                            <td>${escapeHtml(row.componentName || "-")}</td>
+                            <td>${escapeHtml(row.typeName || "-")}</td>
+                            <td class="num">${escapeHtml(formatNumber(row.requiredQty))}</td>
+                        </tr>
+                    `).join("")}
+                </tbody>
+        </table>
+    </section>
+
+    ${warnings.length ? `<div class="warnings">${escapeHtml(warnings.join(" | "))}</div>` : ""}
+</body>
+</html>`;
+}
+
+function printHeaderPreviewPayload(payload, scope = headerPrintScope) {
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.setAttribute("aria-hidden", "true");
+    document.body.appendChild(iframe);
+
+    const iframeDocument = iframe.contentWindow?.document;
+    if (!iframeDocument || !iframe.contentWindow) {
+        iframe.remove();
+        setStatus("error", "Wydruk");
+        return false;
+    }
+
+    iframeDocument.open();
+    iframeDocument.write(buildHeaderPrintDocumentHtml(payload, scope));
+    iframeDocument.close();
+
+    const cleanup = () => {
+        setTimeout(() => iframe.remove(), 800);
+    };
+
+    setTimeout(() => {
+        try {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+        } catch {
+            // ignore print dialog failures
+        } finally {
+            cleanup();
+        }
+    }, 250);
+    return true;
+}
+
+async function openHeaderPrintPreview() {
+    if (!selectedHeaderIds.size) {
+        setStatus("error", "Wydruk");
+        return;
+    }
+
+    const requestToken = headerPrintPreviewRequestToken + 1;
+    headerPrintPreviewRequestToken = requestToken;
+    openHeaderPrintViewer();
+    renderHeaderPrintViewerLoadingState();
+    setStatus("loading", "Wydruk");
+
+    try {
+        const payload = await ensureHeaderPrintPreviewPayload();
+        if (requestToken !== headerPrintPreviewRequestToken) {
+            return;
+        }
+        renderHeaderPrintViewerContent(payload, headerPrintScope);
+        renderCurrentModuleMeta();
+        setStatus("success", "Wydruk");
+    } catch (error) {
+        if (requestToken !== headerPrintPreviewRequestToken) {
+            return;
+        }
+        if (headerPrintViewerError) {
+            headerPrintViewerError.textContent = error.message || "Nie udalo sie przygotowac wydruku.";
+            headerPrintViewerError.classList.remove("hidden");
+        }
+        if (headerPrintViewerHeadersBody) {
+            headerPrintViewerHeadersBody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="empty-state">Brak danych dla zaznaczonych naglowkow.</td>
+                </tr>
+            `;
+        }
+        if (headerPrintViewerBomBody) {
+            headerPrintViewerBomBody.innerHTML = `
+                <tr>
+                    <td colspan="9" class="empty-state">Nie udalo sie zbudowac listy komponentow do wydruku.</td>
+                </tr>
+            `;
+        }
+        setStatus("error", "Wydruk");
+    }
+}
+
+async function printSelectedHeaders(scope = headerPrintScope) {
+    const normalizedScope = normalizeHeaderPrintScope(scope);
+    if (!selectedHeaderIds.size) {
+        setStatus("error", "Wydruk");
+        return;
+    }
+
+    setStatus("loading", "Wydruk");
+
+    try {
+        const payload = await ensureHeaderPrintPreviewPayload();
+        const printed = printHeaderPreviewPayload(payload, normalizedScope);
+        if (printed) {
+            setHeaderPrintScope(normalizedScope, { rerender: false });
+            setStatus("success", "Wydruk");
+        }
+    } catch (error) {
+        setStatus("error", "Wydruk");
+        if (headerPrintViewerError && isHeaderPrintViewerOpen()) {
+            headerPrintViewerError.textContent = error.message || "Nie udalo sie przygotowac wydruku.";
+            headerPrintViewerError.classList.remove("hidden");
+        }
+    }
+}
+
 function renderHeaderNoteCell(header) {
     const noteText = String(header?.notes || "").trim();
     if (!noteText) {
@@ -1446,7 +2143,7 @@ function renderHeadersTable(rows, totalRows) {
     if (!rows.length) {
         headersBody.innerHTML = `
             <tr>
-                <td colspan="12" class="empty-state">Brak naglowkow dla wybranych filtrow lub snapshot nie zostal jeszcze zaladowany.</td>
+                <td colspan="13" class="empty-state">Brak naglowkow dla wybranych filtrow lub snapshot nie zostal jeszcze zaladowany.</td>
             </tr>
         `;
         if (headersTableWrap) {
@@ -1457,6 +2154,16 @@ function renderHeadersTable(rows, totalRows) {
 
     headersBody.innerHTML = rows.map((header) => `
         <tr class="operations-header-row${selectedHeaderId === header.id ? " is-selected" : ""}" data-header-row-id="${escapeHtml(header.id)}">
+            <td class="selection-column-cell">
+                <input
+                    type="checkbox"
+                    class="header-selection-checkbox"
+                    data-header-select
+                    data-header-id="${escapeHtml(header.id)}"
+                    ${selectedHeaderIds.has(Number(header.id)) ? "checked" : ""}
+                    aria-label="Zaznacz naglowek ${escapeHtml(header.productIndex || header.id)} do wydruku"
+                >
+            </td>
             <td>${escapeHtml(formatDate(header.termDate))}</td>
             <td>${escapeHtml(header.kkwNumber || "-")}</td>
             <td>
@@ -1518,6 +2225,13 @@ function updateHeaderSummaryFromDetails(payload) {
             openBomCount: summary.openBomItems ?? item.openBomCount ?? 0,
             shortageBomCount: summary.shortageBomItems ?? item.shortageBomCount ?? 0,
             shortageQty: summary.shortageQty ?? item.shortageQty ?? 0,
+            stageKey: header.stageKey || item.stageKey || null,
+            stageLabel: header.stageLabel || item.stageLabel || null,
+            statusNames: Array.isArray(header.statusNames) ? header.statusNames : item.statusNames,
+            statusFlags: header.statusFlags || item.statusFlags,
+            includeInDemand: typeof header.includeInDemand === "boolean" ? header.includeInDemand : item.includeInDemand,
+            smdDone: typeof header.smdDone === "boolean" ? header.smdDone : item.smdDone,
+            thtDone: typeof header.thtDone === "boolean" ? header.thtDone : item.thtDone,
             summaryPending: false,
         };
     });
@@ -1983,6 +2697,7 @@ async function loadOperationalOverview({ preserveSelection = true, silentStatus 
             }
 
             operationalPayload = payload;
+            syncSelectedHeaderIdsWithHeaders(Array.isArray(payload?.headers) ? payload.headers : []);
             operationalDetailPayload = null;
             lastOperationalRefreshAt = new Date().toISOString();
             renderOperationalSummary(payload);
@@ -2014,7 +2729,7 @@ async function loadOperationalOverview({ preserveSelection = true, silentStatus 
             operationsError.classList.remove("hidden");
             headersBody.innerHTML = `
                 <tr>
-                    <td colspan="12" class="empty-state">Brak danych dashboardu operacyjnego.</td>
+                    <td colspan="13" class="empty-state">Brak danych dashboardu operacyjnego.</td>
                 </tr>
             `;
             renderCurrentModuleMeta();
@@ -2803,6 +3518,24 @@ if (headerSortButtons.length) {
     });
 }
 if (refreshHeadersButton) refreshHeadersButton.addEventListener("click", refreshOperationalHeaders);
+if (headerSelectionPreviewButton) {
+    headerSelectionPreviewButton.addEventListener("click", () => {
+        void openHeaderPrintPreview();
+    });
+}
+if (headerSelectionPrintSmdButton) {
+    headerSelectionPrintSmdButton.addEventListener("click", () => {
+        void printSelectedHeaders("SMD");
+    });
+}
+if (headerSelectionPrintThtButton) {
+    headerSelectionPrintThtButton.addEventListener("click", () => {
+        void printSelectedHeaders("THT");
+    });
+}
+if (headerSelectionClearButton) {
+    headerSelectionClearButton.addEventListener("click", clearSelectedHeaders);
+}
 if (headerDetailSearchInput) {
     headerDetailSearchInput.addEventListener("input", () => {
         if (operationalDetailPayload) {
@@ -2819,7 +3552,20 @@ if (resetHeaderFiltersButton) resetHeaderFiltersButton.addEventListener("click",
 if (vendoPilotForm) vendoPilotForm.addEventListener("submit", loadVendoPilot);
 
 if (headersBody) {
+    headersBody.addEventListener("change", (event) => {
+        const selectTrigger = event.target.closest("[data-header-select]");
+        if (!selectTrigger) {
+            return;
+        }
+
+        toggleHeaderSelection(selectTrigger.dataset.headerId, selectTrigger.checked);
+    });
+
     headersBody.addEventListener("click", (event) => {
+        if (event.target.closest("[data-header-select]")) {
+            return;
+        }
+
         const noteTrigger = event.target.closest("[data-header-note]");
         if (noteTrigger) {
             const headers = Array.isArray(operationalPayload?.headers) ? operationalPayload.headers : [];
@@ -2848,9 +3594,44 @@ if (headerNoteViewer) {
     });
 }
 
+if (headerPrintViewerCloseButton) {
+    headerPrintViewerCloseButton.addEventListener("click", closeHeaderPrintViewer);
+}
+
+if (headerPrintViewerPrintButton) {
+    headerPrintViewerPrintButton.addEventListener("click", () => {
+        void printSelectedHeaders(headerPrintScope);
+    });
+}
+
+if (headerPrintScopeSmdButton) {
+    headerPrintScopeSmdButton.addEventListener("click", () => {
+        setHeaderPrintScope("SMD");
+    });
+}
+
+if (headerPrintScopeThtButton) {
+    headerPrintScopeThtButton.addEventListener("click", () => {
+        setHeaderPrintScope("THT");
+    });
+}
+
+if (headerPrintViewer) {
+    headerPrintViewer.addEventListener("click", (event) => {
+        if (event.target.closest("[data-header-print-close]")) {
+            closeHeaderPrintViewer();
+        }
+    });
+}
+
 document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && headerNoteViewer && !headerNoteViewer.classList.contains("hidden")) {
         closeHeaderNoteViewer();
+        return;
+    }
+
+    if (event.key === "Escape" && headerPrintViewer && !headerPrintViewer.classList.contains("hidden")) {
+        closeHeaderPrintViewer();
         return;
     }
 
@@ -3121,4 +3902,5 @@ setActiveView("operations");
 renderCurrentModuleMeta();
 setStatus("idle", "Gotowe");
 updateOperationalRefreshStatus();
+updateHeaderSelectionToolbar();
 loadOperationalOverview();

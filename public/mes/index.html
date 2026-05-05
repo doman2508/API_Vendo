@@ -7,95 +7,201 @@
     <link rel="stylesheet" href="/styles.css">
     <link rel="stylesheet" href="/core/shell.css">
 </head>
-<body data-app-module="mes" data-app-layout="standard">
-    <main class="app-shell">
-        <section class="hero">
-            <div class="hero-content">
-                <p class="eyebrow">MES online</p>
-                <h1>Diagnostyka KKW na piecu</h1>
-                <p class="hero-copy">
-                    Podglad partii KKW, wykonanych paneli, pojedynczych PCB i historii przejazdu przez piec.
-                </p>
-            </div>
-            <div class="hero-actions">
-                <a class="button" href="/mes/operator">Tryb operatora</a>
-            </div>
-        </section>
-
-        <section id="mes-summary" class="summary hidden"></section>
-
-        <section class="panel">
-            <div class="section-heading">
-                <div>
-                    <p class="eyebrow">KKW / partie</p>
-                    <h2>Historia partii na piecu</h2>
+<body class="mes-admin-page" data-app-module="mes" data-app-layout="standard">
+    <main class="app-shell mes-admin-shell">
+        <section class="mes-ops-screen mes-ops-overlay-editor">
+            <div class="mes-ops-header">
+                <div class="mes-ops-title">
+                    <h1>MES pieca</h1>
+                    <p>Widok operacyjny KKW, wejsc na piec i impulsow MES.</p>
                 </div>
-                <span id="mes-selected-batch" class="phase-badge neutral">Wybierz partie</span>
+                <div class="mes-ops-header-actions">
+                    <button id="mes-refresh" class="ghost" type="button">Odswiez</button>
+                </div>
             </div>
-            <form id="mes-form" class="mes-history-toolbar">
-                <label>
-                    <span>Device ID</span>
-                    <input name="deviceId" value="reflow_1" autocomplete="off">
+
+            <form id="mes-form" class="mes-ops-toolbar" autocomplete="off">
+                <input name="deviceId" type="hidden" value="reflow_1">
+                <label class="mes-compact-field mes-compact-field-search">
+                    <span>Wyszukaj KKW</span>
+                    <input name="kkwNumber" autocomplete="off" placeholder="KKW, produkt lub kod">
                 </label>
-                <label>
-                    <span>KKW</span>
-                    <input name="kkwNumber" autocomplete="off" placeholder="np. 258/25">
-                </label>
-                <label class="checkbox-field mes-history-checkbox">
-                    <input id="mes-auto-refresh" type="checkbox" checked>
-                    <span>Auto-refresh 5s</span>
-                </label>
-                <button type="submit">Szukaj / odswiez</button>
+                <div class="mes-toolbar-actions">
+                    <button id="mes-toggle-filters" class="ghost" type="button">Filtry</button>
+                    <button type="submit">Szukaj</button>
+                    <button id="mes-jump-active" class="ghost" type="button">Aktywne KKW</button>
+                    <a class="ghost nav-link" href="/mes/operator">Tryb operatora</a>
+                </div>
+                <div class="mes-toolbar-meta">
+                    <span class="mes-toolbar-meta-label">Auto:</span>
+                    <label class="checkbox-field mes-history-checkbox">
+                        <input id="mes-auto-refresh" type="checkbox" checked>
+                        <span>5 s</span>
+                    </label>
+                </div>
             </form>
-            <p id="mes-status" class="note mes-inline-status">Gotowe.</p>
-            <div class="table-wrap">
-                <table class="mes-events-table">
-                    <thead>
-                        <tr>
-                            <th>KKW</th>
-                              <th>Produkt</th>
-                              <th>Start</th>
-                              <th>Koniec</th>
-                              <th>Wyjscia partii</th>
-                              <th>PCB partii</th>
-                              <th>PCB KKW / plan</th>
-                              <th>Status</th>
-                              <th>Akcje</th>
-                        </tr>
-                    </thead>
-                    <tbody id="mes-batches-body">
-                        <tr>
-                            <td colspan="9">Brak danych.</td>
-                        </tr>
-                    </tbody>
-                </table>
+
+            <div id="mes-advanced-filters" class="mes-inline-filters hidden">
+                <label class="mes-compact-field">
+                    <span>Device ID</span>
+                    <input name="deviceIdMirror" value="reflow_1" autocomplete="off">
+                </label>
+            </div>
+
+            <div id="mes-summary" class="mes-summary-strip hidden"></div>
+
+            <div class="mes-ops-main-grid">
+                <section class="mes-ops-card mes-kkw-card">
+                    <div class="mes-card-header">
+                        <div>
+                            <h2>1. KKW na piecu</h2>
+                            <p id="mes-status" class="mes-card-meta">Gotowe.</p>
+                        </div>
+                    </div>
+                    <div class="table-wrap mes-compact-wrap">
+                        <table class="mes-events-table mes-kkw-table">
+                            <thead>
+                                <tr>
+                                    <th>KKW</th>
+                                    <th>Strona</th>
+                                    <th>Produkt</th>
+                                    <th>Plan</th>
+                                    <th>Wyk.</th>
+                                    <th>Pozostalo</th>
+                                    <th>Wejscia</th>
+                                    <th>Aktywne</th>
+                                    <th>Ostatnia aktywnosc</th>
+                                    <th>Status</th>
+                                    <th>Akcje</th>
+                                </tr>
+                            </thead>
+                            <tbody id="mes-batches-body">
+                                <tr>
+                                    <td colspan="11">Brak danych.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+            </div>
+
+            <div class="mes-detail-grid">
+                <section class="mes-ops-card mes-detail-card">
+                    <div class="mes-card-header">
+                        <div>
+                            <h2 id="mes-entries-title">2. Wejscia na piec</h2>
+                            <p id="mes-entries-meta" class="mes-card-meta">Wybierz KKW z tabeli powyzej.</p>
+                        </div>
+                    </div>
+                    <div id="mes-selected-kkw" class="mes-selection-strip hidden"></div>
+                    <div class="table-wrap mes-compact-wrap">
+                        <table class="mes-events-table mes-entry-table">
+                            <thead>
+                                <tr>
+                                    <th>Wejscie</th>
+                                    <th>Start</th>
+                                    <th>Koniec</th>
+                                    <th>Czas</th>
+                                    <th>PCB/panel</th>
+                                    <th>Wejscia</th>
+                                    <th>Wyjscia</th>
+                                    <th>W piecu</th>
+                                    <th>PCB</th>
+                                    <th>Sr. czas</th>
+                                    <th>Predkosc</th>
+                                    <th>Status</th>
+                                    <th>Akcje</th>
+                                </tr>
+                            </thead>
+                            <tbody id="mes-entries-body">
+                                <tr>
+                                    <td colspan="13">Wybierz KKW z tabeli powyzej.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section id="mes-events-panel" class="mes-ops-card mes-detail-card mes-events-card">
+                    <div class="mes-card-header mes-card-header-events">
+                        <div>
+                            <h2 id="mes-events-title">3. Impulsy dla wybranego wejscia</h2>
+                            <p id="mes-updated-at" class="mes-card-meta">-</p>
+                        </div>
+                        <div class="mes-events-heading-actions">
+                            <span id="mes-selected-entry" class="mes-mini-pill">Wybierz wejscie</span>
+                            <span id="mes-events-count" class="mes-mini-pill">0</span>
+                            <label class="checkbox-field mes-history-checkbox">
+                                <input id="mes-show-unassigned" type="checkbox">
+                                <span>Nieprzypisane</span>
+                            </label>
+                            <span id="mes-selected-pulses" class="mes-mini-pill">0 zaznaczonych</span>
+                            <button id="mes-events-refresh" class="ghost" type="button">Odswiez</button>
+                            <button id="mes-assign-pulses" type="button">Przypisz</button>
+                            <button id="mes-delete-pulses" class="ghost mes-inline-danger" type="button">Usun</button>
+                        </div>
+                    </div>
+                    <div class="table-wrap mes-compact-wrap">
+                        <table class="mes-events-table mes-unassigned-table">
+                            <thead>
+                                <tr>
+                                    <th></th>
+                                    <th>Czas</th>
+                                    <th>Sensor</th>
+                                    <th>Urzadzenie</th>
+                                    <th>Batch</th>
+                                    <th>Payload</th>
+                                </tr>
+                            </thead>
+                            <tbody id="mes-events-body">
+                                <tr>
+                                    <td colspan="6">Brak danych.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="mes-events-footer">
+                        <span id="mes-events-selection-footer" class="mes-card-meta">Zaznaczonych: 0</span>
+                        <span id="mes-events-range" class="mes-card-meta">0-0 z 0</span>
+                    </div>
+                </section>
             </div>
         </section>
 
-        <section class="panel mes-admin-panel">
-            <div class="section-heading">
-                <div>
-                    <p class="eyebrow">Admin MES</p>
-                    <h2>Wybrana partia i korekta danych</h2>
+        <aside id="mes-admin-drawer" class="mes-admin-drawer mes-admin-side" aria-hidden="true">
+            <button id="mes-admin-overlay" class="mes-admin-overlay" type="button" aria-label="Zamknij panel edycji"></button>
+            <div class="mes-admin-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="mes-admin-title">
+                <div class="mes-admin-drawer-header">
+                    <div>
+                        <h2 id="mes-admin-title">Edytuj KKW</h2>
+                        <p id="mes-admin-subtitle" class="mes-admin-drawer-copy">Wybierz KKW z tabeli, aby otworzyc edycje.</p>
+                    </div>
+                    <button id="mes-admin-close" class="ghost mes-close-button" type="button">X</button>
                 </div>
-                <button id="mes-jump-active" class="ghost" type="button">Aktywna partia</button>
-            </div>
-            <div class="mes-admin-grid">
                 <div id="mes-admin-preview" class="mes-admin-preview">
                     <div class="mes-admin-placeholder">
-                        <strong>Wybierz partie z tabeli</strong>
-                        <span>Tutaj pojawi sie podglad administracyjny i formularz korekty danych partii MES.</span>
+                        <strong>Wybierz KKW</strong>
+                        <span>Tutaj pojawi sie podsumowanie KKW i formularz edycji.</span>
                     </div>
                 </div>
                 <form id="mes-admin-form" class="mes-admin-form">
                     <input type="hidden" name="batchId">
-                    <div class="subform-grid">
+                    <div class="subform-grid mes-admin-drawer-grid">
                         <label>
                             <span>KKW</span>
                             <input name="kkwNumber" autocomplete="off" placeholder="np. 258/25">
                         </label>
                         <label>
-                            <span>Planowana ilosc PCB</span>
+                            <span>Strona</span>
+                            <select name="boardSide">
+                                <option value="">-</option>
+                                <option value="top">Top</option>
+                                <option value="bot">Bot</option>
+                            </select>
+                        </label>
+                        <label>
+                            <span>Plan PCB</span>
                             <input name="plannedQuantity" type="number" min="1" step="1" inputmode="numeric" placeholder="np. 120">
                         </label>
                         <label>
@@ -120,55 +226,16 @@
                             <input id="mes-save-for-product" name="saveForProduct" type="checkbox" checked>
                             <span>Zapisz PCB/panel jako domyslne dla produktu</span>
                         </label>
-                        <div class="actions mes-admin-actions">
-                            <button type="submit">Zapisz zmiany partii</button>
-                            <button id="mes-delete-batch" class="ghost" type="button">Usun pozycje KKW</button>
+                        <div class="actions mes-admin-actions mes-admin-drawer-actions">
+                            <button type="submit">Zapisz</button>
+                            <button id="mes-delete-batch" class="ghost" type="button">Usun KKW</button>
                             <button id="mes-delete-batch-with-pulses" class="ghost mes-inline-danger" type="button">Usun KKW + impulsy</button>
                         </div>
                     </div>
-                    <p id="mes-admin-status" class="note">Wybierz partie, aby edytowac jej dane.</p>
+                    <p id="mes-admin-status" class="note">Wybierz KKW, aby edytowac jego dane.</p>
                 </form>
             </div>
-        </section>
-
-        <section class="panel">
-            <div class="section-heading">
-                <div>
-                    <p class="eyebrow">Event log</p>
-                    <h2>Impulsy dla wybranej partii</h2>
-                </div>
-                <div class="mes-events-heading-actions">
-                    <label class="checkbox-field mes-history-checkbox">
-                        <input id="mes-show-unassigned" type="checkbox">
-                        <span>Nieprzypisane impulsy</span>
-                    </label>
-                    <span id="mes-selected-pulses" class="phase-badge neutral">0 zaznaczonych</span>
-                    <button id="mes-assign-pulses" class="ghost" type="button">Przypisz zaznaczone do wybranego KKW</button>
-                    <button id="mes-delete-pulses" class="ghost" type="button">Usun zaznaczone impulsy</button>
-                    <span id="mes-updated-at" class="phase-badge neutral">-</span>
-                </div>
-            </div>
-            <div class="table-wrap">
-                <table class="mes-events-table">
-                    <thead>
-                        <tr>
-                            <th></th>
-                            <th>ID</th>
-                            <th>Device</th>
-                            <th>Sensor</th>
-                            <th>Batch</th>
-                            <th>Czas</th>
-                            <th>Payload</th>
-                        </tr>
-                    </thead>
-                    <tbody id="mes-events-body">
-                        <tr>
-                            <td colspan="7">Brak danych.</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </section>
+        </aside>
     </main>
 
     <script src="/core/modules.js"></script>

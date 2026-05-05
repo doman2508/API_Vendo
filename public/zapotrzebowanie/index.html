@@ -68,7 +68,20 @@
                             </div>
                             <div class="results-toolbar-meta">
                                 <span id="headers-count" class="results-count">Widoczne: 0 z 0</span>
-                                <span id="headers-refresh-status" class="results-meta-hint">Auto: 90 s</span>
+                                <span id="headers-refresh-status" class="results-meta-hint">Auto: co 30 min</span>
+                            </div>
+                        </div>
+
+                        <div id="header-selection-toolbar" class="selection-toolbar hidden">
+                            <div class="selection-toolbar-summary">
+                                <strong id="header-selection-count">Zaznaczone: 0</strong>
+                                <span class="results-meta-hint">Laczenie zlecen do wydruku kompletacyjnego.</span>
+                            </div>
+                            <div class="selection-toolbar-actions">
+                                <button type="button" id="header-selection-preview" class="btn btn-secondary">Podglad wydruku</button>
+                                <button type="button" id="header-selection-print-smd" class="btn btn-primary">Drukuj SMD</button>
+                                <button type="button" id="header-selection-print-tht" class="btn btn-secondary">Drukuj THT</button>
+                                <button type="button" id="header-selection-clear" class="btn btn-ghost">Wyczysc</button>
                             </div>
                         </div>
 
@@ -76,6 +89,7 @@
                             <table>
                                     <thead>
                                         <tr>
+                                            <th class="selection-column">Druk</th>
                                             <th><button type="button" class="column-sort-button" data-header-sort="termDate">Termin <span class="sort-indicator" aria-hidden="true"></span></button></th>
                                             <th><button type="button" class="column-sort-button" data-header-sort="kkwNumber">KKW <span class="sort-indicator" aria-hidden="true"></span></button></th>
                                             <th><button type="button" class="column-sort-button" data-header-sort="productIndex">Indeks <span class="sort-indicator" aria-hidden="true"></span></button></th>
@@ -92,7 +106,7 @@
                                     </thead>
                                 <tbody id="headers-body">
                                     <tr>
-                                        <td colspan="12" class="empty-state">Ladowanie dashboardu operacyjnego...</td>
+                                        <td colspan="13" class="empty-state">Ladowanie dashboardu operacyjnego...</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -194,6 +208,74 @@
                                         </tr>
                                     </tbody>
                                 </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="header-print-viewer" class="note-viewer hidden" aria-hidden="true">
+                        <div class="note-viewer-backdrop" data-header-print-close></div>
+                        <div class="note-viewer-card header-print-viewer-card" role="dialog" aria-modal="true" aria-labelledby="header-print-viewer-title">
+                            <div class="table-section-header detail-section-header note-viewer-header">
+                                <div>
+                                    <h3 id="header-print-viewer-title">Laczone zlecenia</h3>
+                                    <p id="header-print-viewer-meta">Podglad wydruku kompletacyjnego dla zaznaczonych naglowkow.</p>
+                                </div>
+                                <div class="note-viewer-actions">
+                                    <div class="scope-switch" role="tablist" aria-label="Zakres wydruku">
+                                        <button type="button" id="header-print-scope-smd" class="scope-switch-button is-active">SMD</button>
+                                        <button type="button" id="header-print-scope-tht" class="scope-switch-button">THT</button>
+                                    </div>
+                                    <button type="button" id="header-print-viewer-print" class="btn btn-primary">Drukuj</button>
+                                    <button type="button" id="header-print-viewer-close" class="btn btn-ghost note-viewer-close">Zamknij</button>
+                                </div>
+                            </div>
+                            <div id="header-print-viewer-summary" class="detail-summary bom-component-viewer-summary hidden"></div>
+                            <div id="header-print-viewer-error" class="error-box bom-component-viewer-error hidden"></div>
+                            <div class="header-print-viewer-sections">
+                                <section class="header-print-section">
+                                    <h4>Wybrane naglowki</h4>
+                                    <div class="table-wrap header-print-viewer-table-wrap">
+                                        <table>
+                                            <thead>
+                                                <tr>
+                                                    <th>#</th>
+                                                    <th>KKW</th>
+                                                    <th>Indeks</th>
+                                                    <th>Produkt</th>
+                                                    <th>Klient</th>
+                                                    <th>Ilosc</th>
+                                                    <th>Termin</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="header-print-viewer-headers-body">
+                                                <tr>
+                                                    <td colspan="7" class="empty-state">Zaznacz naglowki, aby przygotowac wydruk.</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </section>
+
+                                <section class="header-print-section">
+                                    <h4 id="header-print-viewer-bom-title">Komponenty do kompletacji SMD</h4>
+                                    <div class="table-wrap header-print-viewer-table-wrap">
+                                        <table>
+                                                <thead>
+                                                    <tr>
+                                                        <th>Kod</th>
+                                                        <th>Komponent</th>
+                                                        <th>Rodzaj</th>
+                                                        <th>Suma wym.</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="header-print-viewer-bom-body">
+                                                    <tr>
+                                                        <td colspan="4" class="empty-state">Zaznacz naglowki, aby zsumowac pozycje BOM.</td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </section>
                             </div>
                         </div>
                     </div>

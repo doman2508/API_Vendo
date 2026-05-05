@@ -3,6 +3,7 @@ const operatorShell = document.querySelector(".mes-operator-shell");
 const scanForm = document.getElementById("operator-scan-form");
 const scanInput = document.getElementById("operator-scan-input");
 const scanSubmitButton = scanForm?.querySelector('button[type="submit"]') || null;
+const boardSideInputs = Array.from(document.querySelectorAll('input[name="boardSide"]'));
 const messageBox = document.getElementById("operator-message");
 const activeBatchPanel = document.getElementById("operator-active-batch");
 const endBatchButton = document.getElementById("operator-end-batch");
@@ -10,6 +11,7 @@ const refreshState = document.getElementById("operator-refresh-state");
 
 let refreshTimer = null;
 let currentSummary = null;
+const BOARD_SIDE_STORAGE_KEY = "mes-operator-board-side";
 
 const numberFormatter = new Intl.NumberFormat("pl-PL", {
     minimumFractionDigits: 0,
@@ -64,6 +66,64 @@ function formatPanelCount(value) {
     return value === null || value === undefined
         ? "-"
         : formatNumber(value, " paneli");
+}
+
+function normalizeBoardSide(value) {
+    const side = String(value || "").trim().toLowerCase();
+    if (side === "top") {
+        return "top";
+    }
+
+    if (side === "bot") {
+        return "bot";
+    }
+
+    return null;
+}
+
+function getBoardSideLabel(value) {
+    const normalized = normalizeBoardSide(value);
+    if (normalized === "top") {
+        return "Top";
+    }
+
+    if (normalized === "bot") {
+        return "Bot";
+    }
+
+    return "Brak";
+}
+
+function getSelectedBoardSide() {
+    const checkedInput = boardSideInputs.find((input) => input.checked);
+    return normalizeBoardSide(checkedInput?.value) || "top";
+}
+
+function setSelectedBoardSide(value) {
+    const normalized = normalizeBoardSide(value) || "top";
+    boardSideInputs.forEach((input) => {
+        input.checked = input.value === normalized;
+    });
+}
+
+function persistSelectedBoardSide(value) {
+    const normalized = normalizeBoardSide(value) || "top";
+    try {
+        localStorage.setItem(BOARD_SIDE_STORAGE_KEY, normalized);
+    } catch (_error) {
+        // Ignore storage errors and keep the in-memory selection only.
+    }
+}
+
+function restoreSelectedBoardSide() {
+    let storedValue = null;
+    try {
+        storedValue = localStorage.getItem(BOARD_SIDE_STORAGE_KEY);
+    } catch (_error) {
+        storedValue = null;
+    }
+
+    setSelectedBoardSide(storedValue || "top");
 }
 
 function formatDurationSeconds(value) {
@@ -152,6 +212,18 @@ function syncOperatorLayout(summary) {
     }
 }
 
+function wireBoardSideSelector() {
+    restoreSelectedBoardSide();
+
+    boardSideInputs.forEach((input) => {
+        input.addEventListener("change", () => {
+            if (input.checked) {
+                persistSelectedBoardSide(input.value);
+            }
+        });
+    });
+}
+
 function getPcsPerPanelStatus(batch) {
     if (!batch?.pcsPerPanel) {
         return "Brak ustawienia";
@@ -208,6 +280,10 @@ function renderActiveBatch(summary) {
     const status = summary?.status || "-";
     syncOperatorLayout(summary);
 
+    if (batch?.boardSide) {
+        setSelectedBoardSide(batch.boardSide);
+    }
+
     if (!batch) {
         activeBatchPanel.innerHTML = `
             <div class="mes-empty-state">
@@ -229,6 +305,7 @@ function renderActiveBatch(summary) {
     const productTitle = [batch.productCode, batch.productName].filter(Boolean).join(" - ");
     const orderLabel = batch.orderNumber ? `Zlecenie: ${batch.orderNumber}` : "";
     const pcsPerPanelLabel = batch.pcsPerPanel ? formatNumber(batch.pcsPerPanel, " PCB") : "Brak";
+    const boardSideLabel = getBoardSideLabel(batch.boardSide);
     const pcsStatus = getPcsPerPanelStatus(batch);
     const saveHint = batch.productCode
         ? `Wartosc zapisze sie dla tej partii i produktu ${escapeHtml(batch.productCode)}.`
@@ -270,6 +347,7 @@ function renderActiveBatch(summary) {
             </div>
             <div class="mes-operator-meta-strip">
                 <span class="mes-operator-chip">${escapeHtml(productMeta || "Brak danych produktu")}</span>
+                <span class="mes-operator-chip">${escapeHtml(`Strona: ${boardSideLabel}`)}</span>
                 <span class="mes-operator-chip">${escapeHtml(`Plan: ${plannedQuantityLabel}`)}</span>
                 <span class="mes-operator-chip">${escapeHtml(`PCB/panel: ${pcsPerPanelLabel}`)}</span>
             </div>
@@ -364,7 +442,7 @@ async function loadOperatorState() {
     } else if (data.plannedQuantityLookup?.warning) {
         setMessage(data.plannedQuantityLookup.warning, "warning");
     } else if (data.summary?.activeBatch) {
-        setMessage(`Aktywna partia ${data.summary.activeBatch.kkwNumber}.`, "success");
+        setMessage(`Aktywna partia ${data.summary.activeBatch.kkwNumber} (${getBoardSideLabel(data.summary.activeBatch.boardSide)}).`, "success");
     } else if (!data.summary?.activeBatch) {
         setMessage("Zeskanuj KKW.", "info");
     }
@@ -385,6 +463,7 @@ async function startBatch(scanValue) {
         body: JSON.stringify({
             device_id: operatorDeviceId,
             scan,
+            board_side: getSelectedBoardSide(),
             source: "scan",
         }),
     });
@@ -398,9 +477,9 @@ async function startBatch(scanValue) {
         : " Ustaw PCB na panel, aby liczyc pojedyncze sztuki.";
 
     if (data.closedBatch) {
-        setMessage(`Zamknieto poprzednia partie ${data.closedBatch.kkwNumber} i rozpoczeto ${data.batch.kkwNumber}.${plannedQuantityLabel}${pcsPerPanelLabel}${lookupWarning ? ` ${lookupWarning}` : ""}`, lookupWarning ? "warning" : "success");
+        setMessage(`Zamknieto poprzednia partie ${data.closedBatch.kkwNumber} i rozpoczeto ${data.batch.kkwNumber} (${getBoardSideLabel(data.batch?.boardSide)}).${plannedQuantityLabel}${pcsPerPanelLabel}${lookupWarning ? ` ${lookupWarning}` : ""}`, lookupWarning ? "warning" : "success");
     } else {
-        setMessage(`Rozpoczeto partie ${data.batch.kkwNumber}.${plannedQuantityLabel}${pcsPerPanelLabel}${lookupWarning ? ` ${lookupWarning}` : ""}`, lookupWarning ? "warning" : "success");
+        setMessage(`Rozpoczeto partie ${data.batch.kkwNumber} (${getBoardSideLabel(data.batch?.boardSide)}).${plannedQuantityLabel}${pcsPerPanelLabel}${lookupWarning ? ` ${lookupWarning}` : ""}`, lookupWarning ? "warning" : "success");
     }
 
     scanInput.value = "";
@@ -520,6 +599,8 @@ if (scanForm) {
         });
     });
 }
+
+wireBoardSideSelector();
 
 if (endBatchButton) {
     endBatchButton.addEventListener("click", () => {

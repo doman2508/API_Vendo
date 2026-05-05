@@ -1801,6 +1801,91 @@ function buildObjectStatusesHistoryModel({ objectIds, dataType, pageSize }) {
     };
 }
 
+async function resolveVendoStatuses(connection, accessToken, {
+    dataType,
+    objectIds,
+    pageSize,
+    maxPages = 10,
+    warnings = null,
+    warningLabel = "obiektow",
+} = {}) {
+    const normalizedIds = [...new Set((objectIds || [])
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0))];
+
+    if (!normalizedIds.length) {
+        return {
+            dictionary: [],
+            records: [],
+            byObjectId: new Map(),
+        };
+    }
+
+    let dictionary = [];
+    try {
+        const dictionaryResponse = await vendoPost(connection.baseUrl, "/Statusy/Statusy/StatusyDlaTypuDanych", {
+            Token: accessToken,
+            Model: buildStatusDictionaryModel({ dataType }),
+        });
+        dictionary = getVendoListResult(dictionaryResponse);
+    } catch (error) {
+        if (Array.isArray(warnings)) {
+            warnings.push(`Nie udalo sie pobrac slownika statusow Vendo dla ${warningLabel}: ${error.message}`);
+        }
+    }
+
+    let records = [];
+    try {
+        const idChunks = [];
+        const chunkSize = 50;
+        for (let index = 0; index < normalizedIds.length; index += chunkSize) {
+            idChunks.push(normalizedIds.slice(index, index + chunkSize));
+        }
+
+        const chunkResults = await mapWithConcurrency(idChunks, 3, async (chunkIds) => {
+            const chunkPageSize = Number.isFinite(pageSize)
+                ? pageSize
+                : Math.max(chunkIds.length * 4, 50);
+
+            return fetchAllCursorRecords(
+                connection,
+                accessToken,
+                "/Statusy/Statusy/StatusyObiektu",
+                buildObjectStatusesHistoryModel({
+                    objectIds: chunkIds,
+                    dataType,
+                    pageSize: chunkPageSize,
+                }),
+                {
+                    pageSize: chunkPageSize,
+                    maxPages,
+                }
+            );
+        });
+
+        records = chunkResults.flat();
+    } catch (error) {
+        if (Array.isArray(warnings)) {
+            warnings.push(`Nie udalo sie pobrac statusow Vendo dla ${warningLabel}: ${error.message}`);
+        }
+    }
+
+    const byObjectId = new Map();
+    for (const record of records) {
+        const objectId = Number(record?.ObiektID);
+        if (!Number.isInteger(objectId) || objectId <= 0) continue;
+        const bucket = byObjectId.get(objectId) || [];
+        bucket.push(record);
+        byObjectId.set(objectId, bucket);
+    }
+
+    return {
+        dictionary,
+        records,
+        byObjectId,
+    };
+}
+
 function buildDocumentsLookupByOrderIdsModel({ orderIds, pageSize }) {
     return {
         Cursor: true,
@@ -1943,8 +2028,22 @@ function getVendoBoolWeight(value) {
 function getVendoStatusIdentity(record) {
     const nestedStatus = record?.Status && typeof record.Status === "object" ? record.Status : null;
     return {
-        id: Number(record?.ID ?? record?.StatusID ?? record?.StatusId ?? nestedStatus?.ID ?? record?.Status) || null,
-        name: String(record?.Nazwa ?? record?.StatusNazwa ?? record?.StatusName ?? nestedStatus?.Nazwa ?? "").trim(),
+        id: Number(
+            record?.StatusID
+            ?? record?.StatusId
+            ?? nestedStatus?.ID
+            ?? nestedStatus?.Id
+            ?? record?.Status
+            ?? record?.ID
+        ) || null,
+        name: String(
+            record?.StatusNazwa
+            ?? record?.StatusName
+            ?? nestedStatus?.Nazwa
+            ?? nestedStatus?.Name
+            ?? record?.Nazwa
+            ?? ""
+        ).trim(),
     };
 }
 
@@ -2342,20 +2441,20 @@ async function getVendoOperationalHeadersContext({
         );
     }
 
-    let statusDictionary = [];
-    try {
-        const statusDictionaryResponse = await vendoPost(connection.baseUrl, "/Statusy/Statusy/StatusyDlaTypuDanych", {
-            Token: accessToken,
-            Model: buildStatusDictionaryModel({ dataType: "PlanZlecenia" }),
-        });
-        statusDictionary = getVendoListResult(statusDictionaryResponse);
-    } catch (error) {
-        warnings.push(`Nie udalo sie pobrac slownika statusow Vendo: ${error.message}`);
-    }
-
     const positionIds = positions
         .map((item) => Number(item?.ID))
         .filter((value) => Number.isInteger(value) && value > 0);
+
+    const positionStatusesBundle = await resolveVendoStatuses(connection, accessToken, {
+        dataType: "PlanZlecenia",
+        objectIds: positionIds,
+        pageSize: Math.max(positionIds.length * 4, 50),
+        maxPages: 10,
+        warnings,
+        warningLabel: "pozycji ZLP",
+    });
+    let statusDictionary = [...(positionStatusesBundle.dictionary || [])];
+
     let planningPositionById = new Map();
     if (positionIds.length) {
         try {
@@ -2375,32 +2474,7 @@ async function getVendoOperationalHeadersContext({
         }
     }
 
-    const statusesByPositionId = new Map();
-    if (positionIds.length) {
-        try {
-            const statusRecords = await fetchAllCursorRecords(
-                connection,
-                accessToken,
-                "/Statusy/Statusy/StatusyObiektu",
-                buildObjectStatusesHistoryModel({
-                    objectIds: positionIds,
-                    dataType: "PlanZlecenia",
-                    pageSize: Math.max(positionIds.length * 4, 50),
-                }),
-                { pageSize: Math.max(positionIds.length * 4, 50), maxPages: 10 }
-            );
-
-            for (const record of statusRecords) {
-                const positionId = Number(record?.ObiektID);
-                if (!Number.isInteger(positionId) || positionId <= 0) continue;
-                const bucket = statusesByPositionId.get(positionId) || [];
-                bucket.push(record);
-                statusesByPositionId.set(positionId, bucket);
-            }
-        } catch (error) {
-            warnings.push(`Nie udalo sie pobrac aktualnych statusow pozycji ZLP: ${error.message}`);
-        }
-    }
+    const statusesByPositionId = positionStatusesBundle.byObjectId || new Map();
 
     const kkwByPositionId = new Map();
     if (positionIds.length) {
@@ -2428,16 +2502,44 @@ async function getVendoOperationalHeadersContext({
         }
     }
 
+    const kkwIds = [...new Set(
+        [...kkwByPositionId.values()]
+            .flat()
+            .map((item) => Number(item?.ID))
+            .filter((value) => Number.isInteger(value) && value > 0)
+    )];
+    const kkwStatusesBundle = await resolveVendoStatuses(connection, accessToken, {
+        dataType: "KKW",
+        objectIds: kkwIds,
+        pageSize: Math.max(kkwIds.length * 4, 50),
+        maxPages: 10,
+        warnings,
+        warningLabel: "KKW",
+    });
+    const statusesByKkwId = kkwStatusesBundle.byObjectId || new Map();
+    if (Array.isArray(kkwStatusesBundle.dictionary) && kkwStatusesBundle.dictionary.length) {
+        statusDictionary = [...statusDictionary, ...kkwStatusesBundle.dictionary];
+    }
+
     const headerContexts = positions
-        .map((position) => buildVendoOperationalHeaderContext({
-            position,
-            positionDetails: planningPositionById.get(Number(position?.ID)) || null,
-            planningOrder: planningOrderById.get(Number(position?.ZlecenieID) || 0) || null,
-            objectStatuses: statusesByPositionId.get(Number(position?.ID) || 0) || [],
-            statusDictionary,
-            kkwRecords: kkwByPositionId.get(Number(position?.ID) || 0) || [],
-            generatedAt,
-        }))
+        .map((position) => {
+            const positionId = Number(position?.ID) || 0;
+            const kkwRecords = kkwByPositionId.get(positionId) || [];
+            const mergedStatuses = [
+                ...(statusesByPositionId.get(positionId) || []),
+                ...kkwRecords.flatMap((record) => statusesByKkwId.get(Number(record?.ID) || 0) || []),
+            ];
+
+            return buildVendoOperationalHeaderContext({
+                position,
+                positionDetails: planningPositionById.get(positionId) || null,
+                planningOrder: planningOrderById.get(Number(position?.ZlecenieID) || 0) || null,
+                objectStatuses: mergedStatuses,
+                statusDictionary,
+                kkwRecords,
+                generatedAt,
+            });
+        })
         .filter((context) => {
             const header = context?.header || {};
             if (!isAllowedOperationalSeries(header.planningSeries)) return false;
@@ -3583,6 +3685,14 @@ async function computeVendoOperationalHeaderSummaries({
             totalBomItems: bomContext.normalizedBomItems.length,
             openBomItems: bomContext.scopedBomItems.length,
         });
+        const effectiveScope = context?.statusScope || {
+            excludeSmd: Boolean(context?.header?.statusFlags?.excludeSmd),
+            excludeTht: Boolean(context?.header?.statusFlags?.excludeTht),
+            includeSmd: Boolean(context?.header?.statusFlags?.includeSmd),
+            includeTht: Boolean(context?.header?.statusFlags?.includeTht),
+            hasDemandScope: Boolean(context?.header?.includeInDemand),
+        };
+        const effectiveStage = getVendoStageFromScope(effectiveScope, Boolean(context?.header?.isClosed));
 
         return {
             ...context.header,
@@ -3590,6 +3700,20 @@ async function computeVendoOperationalHeaderSummaries({
             openBomCount: summary.openBomItems,
             shortageBomCount: summary.shortageBomItems,
             shortageQty: summary.shortageQty,
+            stageKey: effectiveStage?.key || context?.header?.stageKey || null,
+            stageLabel: effectiveStage?.label || context?.header?.stageLabel || null,
+            statusFlags: {
+                ...(context?.header?.statusFlags || {}),
+                smd: Boolean(effectiveScope?.excludeSmd),
+                tht: Boolean(effectiveScope?.excludeTht),
+                excludeSmd: Boolean(effectiveScope?.excludeSmd),
+                excludeTht: Boolean(effectiveScope?.excludeTht),
+                includeSmd: Boolean(effectiveScope?.includeSmd),
+                includeTht: Boolean(effectiveScope?.includeTht),
+            },
+            smdDone: Boolean(effectiveScope?.excludeSmd),
+            thtDone: Boolean(effectiveScope?.excludeTht),
+            includeInDemand: !Boolean(context?.header?.isClosed) && Boolean(effectiveScope?.hasDemandScope),
             summaryPending: false,
         };
     });
@@ -5307,6 +5431,7 @@ async function handleApiMesOvenBatchStart(req, res) {
         const result = startOvenBatch(storageConfig.dbPath, {
             deviceId: body.device_id || body.deviceId || "reflow_1",
             kkwNumber: body.kkw_number || body.kkwNumber || body.scan || "",
+            boardSide: body.board_side || body.boardSide || body.side || "",
             plannedQuantity,
             orderNumber: plannedQuantityLookup?.kkw?.orderNumber,
             productCode: plannedQuantityLookup?.kkw?.productCode,
@@ -5398,19 +5523,25 @@ async function handleApiMesOvenBatchUpdate(req, res) {
         const body = await readJsonBody(req);
         const storageConfig = getMesStorageConfig();
         const rawSaveForProduct = body.save_for_product ?? body.saveForProduct;
+        const rawApplyToRelated = body.apply_to_related ?? body.applyToRelated ?? body.scope === "kkw";
         const saveForProduct = rawSaveForProduct === undefined
             ? true
             : !["false", "0", "no", "off"].includes(String(rawSaveForProduct).trim().toLowerCase());
+        const applyToRelated = rawApplyToRelated === undefined
+            ? false
+            : ["1", "true", "yes", "on"].includes(String(rawApplyToRelated).trim().toLowerCase());
 
         let batch = updateOvenBatchDetails(storageConfig.dbPath, {
             batchId: body.batch_id || body.batchId || null,
             kkwNumber: body.kkw_number || body.kkwNumber || "",
+            boardSide: body.board_side || body.boardSide || body.side || "",
             plannedQuantity: body.planned_quantity ?? body.plannedQuantity ?? null,
             orderNumber: body.order_number || body.orderNumber || "",
             productCode: body.product_code || body.productCode || "",
             productName: body.product_name || body.productName || "",
             pcsPerPanel: body.pcs_per_panel ?? body.pcsPerPanel ?? null,
             pcsPerPanelSource: body.pcs_per_panel ? (body.pcs_per_panel_source || body.pcsPerPanelSource || "admin_panel") : "",
+            applyToRelated,
         });
 
         let pcsPerPanelSave = null;
@@ -5422,6 +5553,7 @@ async function handleApiMesOvenBatchUpdate(req, res) {
                 operator: body.operator || body.operatorName || "",
                 source: body.source || "admin_panel",
                 saveForProduct,
+                applyToRelated,
             });
             batch = pcsPerPanelSave.batch || batch;
         }
@@ -5870,27 +6002,16 @@ async function handleApiZapotrzebowanieVendoHeaderDetails(req, res) {
                 .find((item) => Number(item?.ID) === planningOrderId) || null;
         }
 
-        let statusDictionary = [];
-        let objectStatuses = [];
-        try {
-            const statusDictionaryResponse = await vendoPost(connection.baseUrl, "/Statusy/Statusy/StatusyDlaTypuDanych", {
-                Token: accessToken,
-                Model: buildStatusDictionaryModel({ dataType: "PlanZlecenia" }),
-            });
-            statusDictionary = getVendoListResult(statusDictionaryResponse);
-
-            const objectStatusesResponse = await vendoPost(connection.baseUrl, "/Statusy/Statusy/StatusyObiektu", {
-                Token: accessToken,
-                Model: buildObjectStatusesHistoryModel({
-                    objectIds: [planPositionId],
-                    dataType: "PlanZlecenia",
-                    pageSize: 20,
-                }),
-            });
-            objectStatuses = getVendoListResult(objectStatusesResponse);
-        } catch (error) {
-            warnings.push(`Nie udalo sie pobrac statusow Vendo dla pozycji ${planPositionId}: ${error.message}`);
-        }
+        const planPositionStatusesBundle = await resolveVendoStatuses(connection, accessToken, {
+            dataType: "PlanZlecenia",
+            objectIds: [planPositionId],
+            pageSize: 20,
+            maxPages: 10,
+            warnings,
+            warningLabel: `pozycji ZLP ${planPositionId}`,
+        });
+        let statusDictionary = [...(planPositionStatusesBundle.dictionary || [])];
+        let objectStatuses = [...(planPositionStatusesBundle.records || [])];
 
         const kkwRecords = await fetchAllCursorRecords(
             connection,
@@ -5900,12 +6021,29 @@ async function handleApiZapotrzebowanieVendoHeaderDetails(req, res) {
             { pageSize: 50, maxPages: 10 }
         );
 
+        const kkwIds = kkwRecords
+            .map((item) => Number(item?.ID))
+            .filter((value) => Number.isInteger(value) && value > 0);
+        if (kkwIds.length) {
+            const kkwStatusesBundle = await resolveVendoStatuses(connection, accessToken, {
+                dataType: "KKW",
+                objectIds: kkwIds,
+                pageSize: Math.max(kkwIds.length * 4, 20),
+                maxPages: 10,
+                warnings,
+                warningLabel: `KKW pozycji ZLP ${planPositionId}`,
+            });
+            if (Array.isArray(kkwStatusesBundle.dictionary) && kkwStatusesBundle.dictionary.length) {
+                statusDictionary = [...statusDictionary, ...kkwStatusesBundle.dictionary];
+            }
+            if (Array.isArray(kkwStatusesBundle.records) && kkwStatusesBundle.records.length) {
+                objectStatuses = [...objectStatuses, ...kkwStatusesBundle.records];
+            }
+        }
+
         let bomSource = null;
         let materialRows = [];
         if (kkwRecords.length) {
-            const kkwIds = kkwRecords
-                .map((item) => Number(item?.ID))
-                .filter((value) => Number.isInteger(value) && value > 0);
             const kkwNumberById = new Map(
                 kkwRecords
                     .filter((item) => Number.isInteger(Number(item?.ID)))

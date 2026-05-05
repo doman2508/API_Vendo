@@ -1,11 +1,29 @@
-const mesForm = document.getElementById("mes-form");
+﻿const mesForm = document.getElementById("mes-form");
 const mesSummary = document.getElementById("mes-summary");
 const mesBatchesBody = document.getElementById("mes-batches-body");
+const mesEntriesBody = document.getElementById("mes-entries-body");
+const mesEntriesTitle = document.getElementById("mes-entries-title");
+const mesEntriesMeta = document.getElementById("mes-entries-meta");
+const mesSelectedKkw = document.getElementById("mes-selected-kkw");
 const mesEventsBody = document.getElementById("mes-events-body");
+const mesEventsTitle = document.getElementById("mes-events-title");
+const mesEventsCount = document.getElementById("mes-events-count");
 const mesStatus = document.getElementById("mes-status");
 const mesUpdatedAt = document.getElementById("mes-updated-at");
 const mesSelectedBatch = document.getElementById("mes-selected-batch");
+const mesSelectedEntry = document.getElementById("mes-selected-entry");
+const mesRefreshButton = document.getElementById("mes-refresh");
+const mesEventsRefreshButton = document.getElementById("mes-events-refresh");
+const mesToggleFiltersButton = document.getElementById("mes-toggle-filters");
+const mesAdvancedFilters = document.getElementById("mes-advanced-filters");
+const mesDeviceIdMirror = document.querySelector('input[name="deviceIdMirror"]');
 const mesAutoRefreshInput = document.getElementById("mes-auto-refresh");
+const mesAdminDrawer = document.getElementById("mes-admin-drawer");
+const mesAdminOverlay = document.getElementById("mes-admin-overlay");
+const mesAdminPanel = mesAdminDrawer?.querySelector(".mes-admin-drawer-panel") || null;
+const mesAdminCloseButton = document.getElementById("mes-admin-close");
+const mesAdminTitle = document.getElementById("mes-admin-title");
+const mesAdminSubtitle = document.getElementById("mes-admin-subtitle");
 const mesAdminPreview = document.getElementById("mes-admin-preview");
 const mesAdminForm = document.getElementById("mes-admin-form");
 const mesAdminStatus = document.getElementById("mes-admin-status");
@@ -15,12 +33,19 @@ const mesDeleteBatchWithPulsesButton = document.getElementById("mes-delete-batch
 const mesAssignPulsesButton = document.getElementById("mes-assign-pulses");
 const mesDeletePulsesButton = document.getElementById("mes-delete-pulses");
 const mesSelectedPulses = document.getElementById("mes-selected-pulses");
+const mesEventsSelectionFooter = document.getElementById("mes-events-selection-footer");
+const mesEventsRange = document.getElementById("mes-events-range");
 const mesShowUnassignedInput = document.getElementById("mes-show-unassigned");
 
 let mesRefreshTimer = null;
 let selectedBatchId = null;
-let latestSummary = null;
+let selectedGroupKey = "";
+let latestSummaryPayload = null;
+let latestBatchRows = [];
+let latestGroups = [];
 let selectedPulseIds = new Set();
+let drawerOpen = false;
+let drawerDismissed = false;
 
 const numberFormatter = new Intl.NumberFormat("pl-PL", {
     minimumFractionDigits: 0,
@@ -111,6 +136,11 @@ function formatDurationSeconds(value) {
     return `${seconds} s`;
 }
 
+function getSortTimestamp(value) {
+    const timestamp = Date.parse(value || "");
+    return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
 async function fetchJson(url, options = {}) {
     const response = await fetch(url, options);
     const rawText = await response.text();
@@ -160,6 +190,19 @@ function getBatchTitle(batch) {
     return product || batch.kkwNumber || "-";
 }
 
+function getBoardSideLabel(value) {
+    const side = String(value || "").trim().toLowerCase();
+    if (side === "top") {
+        return "Top";
+    }
+
+    if (side === "bot") {
+        return "Bot";
+    }
+
+    return "Brak";
+}
+
 function getPcsPerPanelLabel(batch) {
     if (!batch?.pcsPerPanel) {
         return "Brak ustawienia";
@@ -181,18 +224,276 @@ function getPcsPerPanelLabel(batch) {
     return baseLabel;
 }
 
+function buildKkwSummaryLine(batch) {
+    if (!batch) {
+        return "";
+    }
+
+    return [
+        `Wejscia ${formatNumber(batch.inputCount ?? 0)}`,
+        `Wyjscia ${formatNumber(batch.outputCount ?? 0)}`,
+        `W piecu ${formatNumber(batch.inOvenCount ?? 0)}`,
+        `PCB ${formatNumber(batch.pcbCount ?? 0)}`,
+    ].join(" | ");
+}
+
 function setAdminFormDisabled(disabled) {
     if (!mesAdminForm) {
         return;
     }
 
-    mesAdminForm.querySelectorAll("input, button").forEach((element) => {
+    mesAdminForm.querySelectorAll("input, select, button").forEach((element) => {
         if (element.type === "hidden") {
             return;
         }
 
         element.disabled = disabled;
     });
+}
+
+function setAdminStatus(message, type = "info") {
+    if (!mesAdminStatus) {
+        return;
+    }
+
+    mesAdminStatus.textContent = message;
+    mesAdminStatus.className = `note mes-admin-status mes-admin-status-${type}`;
+}
+
+function shouldPinDrawer() {
+    return false;
+}
+
+function applyAdminDrawerLayout(open) {
+    if (!mesAdminDrawer || !mesAdminOverlay || !mesAdminPanel) {
+        return;
+    }
+
+    const inset = window.innerWidth <= 720 ? 6 : 10;
+    const topOffset = window.innerWidth <= 720 ? 44 : 48;
+    const maxWidth = window.innerWidth <= 720
+        ? Math.max(280, window.innerWidth - 12)
+        : Math.min(380, window.innerWidth - 20);
+
+    Object.assign(mesAdminDrawer.style, {
+        display: open ? "block" : "none",
+        position: "fixed",
+        inset: "0",
+        width: "auto",
+        zIndex: "9999",
+        pointerEvents: open ? "auto" : "none",
+        visibility: open ? "visible" : "hidden",
+    });
+
+    Object.assign(mesAdminOverlay.style, {
+        display: "block",
+        position: "fixed",
+        inset: "0",
+        background: "transparent",
+        opacity: "1",
+        transition: "none",
+    });
+
+    Object.assign(mesAdminPanel.style, {
+        display: "grid",
+        position: "fixed",
+        top: `${topOffset}px`,
+        right: `${inset}px`,
+        bottom: `${inset}px`,
+        left: "auto",
+        width: `${maxWidth}px`,
+        maxWidth: `calc(100vw - ${inset * 2}px)`,
+        height: "auto",
+        maxHeight: "none",
+        overflow: "auto",
+        opacity: open ? "1" : "0",
+        visibility: "visible",
+        transform: open ? "translateX(0)" : "translateX(calc(100% + 24px))",
+        transition: "transform 180ms ease, opacity 180ms ease",
+        pointerEvents: "auto",
+    });
+}
+
+function openAdminDrawer() {
+    if (!mesAdminDrawer || !selectedBatchId) {
+        return;
+    }
+
+    drawerDismissed = false;
+    drawerOpen = true;
+    mesAdminDrawer.hidden = false;
+    mesAdminDrawer.classList.add("open");
+    mesAdminDrawer.setAttribute("aria-hidden", "false");
+    applyAdminDrawerLayout(true);
+}
+
+function closeAdminDrawer({ dismissed = true } = {}) {
+    if (!mesAdminDrawer) {
+        return;
+    }
+
+    drawerDismissed = dismissed;
+    drawerOpen = false;
+    mesAdminDrawer.classList.remove("open");
+    mesAdminDrawer.setAttribute("aria-hidden", "true");
+    mesAdminDrawer.hidden = true;
+    applyAdminDrawerLayout(false);
+}
+
+function scrollToEventLog() {
+    const target = mesEventsBody?.closest(".mes-events-card");
+    if (!target) {
+        return;
+    }
+
+    target.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+    });
+}
+
+function getGroupKey(batch) {
+    return [
+        String(batch?.deviceId || "").trim(),
+        String(batch?.kkwNumber || "").trim(),
+        String(batch?.boardSide || "").trim().toLowerCase(),
+    ].join("::");
+}
+
+function getFirstFilledValue(entries, fieldName) {
+    for (const entry of entries) {
+        const value = String(entry?.[fieldName] || "").trim();
+        if (value) {
+            return value;
+        }
+    }
+
+    return "";
+}
+
+function getLatestEntry(entries = []) {
+    return [...entries].sort((left, right) => {
+        const diff = getSortTimestamp(right?.startedAt) - getSortTimestamp(left?.startedAt);
+        if (diff !== 0) {
+            return diff;
+        }
+        return (Number(right?.id) || 0) - (Number(left?.id) || 0);
+    })[0] || null;
+}
+
+function buildKkwGroups(batches = []) {
+    const grouped = new Map();
+
+    for (const batch of Array.isArray(batches) ? batches : []) {
+        const key = getGroupKey(batch);
+        if (!grouped.has(key)) {
+            grouped.set(key, {
+                key,
+                entries: [],
+            });
+        }
+
+        grouped.get(key).entries.push(batch);
+    }
+
+    return [...grouped.values()].map((group) => {
+        const entries = [...group.entries]
+            .sort((left, right) => {
+                const diff = getSortTimestamp(left?.startedAt) - getSortTimestamp(right?.startedAt);
+                if (diff !== 0) {
+                    return diff;
+                }
+                return (Number(left?.id) || 0) - (Number(right?.id) || 0);
+            })
+            .map((entry, index) => ({
+                ...entry,
+                entryOrdinal: index + 1,
+            }));
+
+        const activeEntry = entries.find((entry) => entry.status === "active") || null;
+        const latestEntry = getLatestEntry(entries);
+        const representative = activeEntry || latestEntry || entries[entries.length - 1] || null;
+        const latestActivityAt = entries.reduce((latest, entry) => {
+            const candidate = entry?.endedAt || entry?.startedAt || null;
+            return getSortTimestamp(candidate) > getSortTimestamp(latest) ? candidate : latest;
+        }, null);
+
+        return {
+            key: group.key,
+            entries,
+            representative,
+            latestEntry,
+            activeEntry,
+            activeEntryOrdinal: activeEntry ? entries.find((entry) => Number(entry.id) === Number(activeEntry.id))?.entryOrdinal || null : null,
+            latestActivityAt,
+            entryCount: entries.length,
+            kkwNumber: representative?.kkwNumber || "",
+            boardSide: representative?.boardSide || "",
+            productCode: representative?.productCode || getFirstFilledValue(entries, "productCode"),
+            productName: representative?.productName || getFirstFilledValue(entries, "productName"),
+            plannedQuantity: representative?.plannedQuantity ?? null,
+            pcbCount: representative?.pcbCount ?? null,
+            remainingQuantity: representative?.remainingQuantity ?? null,
+            progressPercent: representative?.progressPercent ?? null,
+            status: activeEntry ? "active" : "closed",
+            pcsPerPanelMissing: Boolean(representative?.pcsPerPanelMissing),
+        };
+    }).sort((left, right) => {
+        const diff = getSortTimestamp(right?.latestActivityAt || right?.latestEntry?.startedAt)
+            - getSortTimestamp(left?.latestActivityAt || left?.latestEntry?.startedAt);
+        if (diff !== 0) {
+            return diff;
+        }
+
+        return (Number(right?.representative?.id) || 0) - (Number(left?.representative?.id) || 0);
+    });
+}
+
+function getDefaultEntryForGroup(group) {
+    return group?.activeEntry || group?.latestEntry || group?.entries?.[group.entries.length - 1] || null;
+}
+
+function resolveSelection(groups = []) {
+    if (!groups.length) {
+        selectedGroupKey = "";
+        selectedBatchId = null;
+        return {
+            selectedGroup: null,
+            selectedBatch: null,
+        };
+    }
+
+    let selectedGroup = groups.find((group) => group.entries.some((entry) => Number(entry.id) === Number(selectedBatchId))) || null;
+
+    if (!selectedGroup && selectedGroupKey) {
+        selectedGroup = groups.find((group) => group.key === selectedGroupKey) || null;
+    }
+
+    if (!selectedGroup) {
+        selectedGroup = groups[0];
+    }
+
+    selectedGroupKey = selectedGroup?.key || "";
+    let selectedBatch = selectedGroup.entries.find((entry) => Number(entry.id) === Number(selectedBatchId)) || null;
+    if (!selectedBatch) {
+        selectedBatch = getDefaultEntryForGroup(selectedGroup);
+    }
+
+    selectedBatchId = selectedBatch?.id || null;
+
+    return {
+        selectedGroup,
+        selectedBatch,
+    };
+}
+
+function getEntryLabel(group, batch) {
+    if (!group || !batch) {
+        return "-";
+    }
+
+    const selectedEntry = group.entries.find((entry) => Number(entry.id) === Number(batch.id));
+    return selectedEntry ? `Wejscie #${selectedEntry.entryOrdinal}` : "-";
 }
 
 function updateSelectedPulsesBadge() {
@@ -202,6 +503,9 @@ function updateSelectedPulsesBadge() {
 
     const count = selectedPulseIds.size;
     mesSelectedPulses.textContent = `${count} zaznaczonych`;
+    if (mesEventsSelectionFooter) {
+        mesEventsSelectionFooter.textContent = `Zaznaczonych: ${count}`;
+    }
     const hasSelectedBatch = Boolean(mesAdminForm?.batchId?.value || selectedBatchId);
     const canAssign = count > 0 && shouldShowUnassignedEvents() && hasSelectedBatch;
 
@@ -214,27 +518,6 @@ function updateSelectedPulsesBadge() {
     }
 }
 
-function setAdminStatus(message, type = "info") {
-    if (!mesAdminStatus) {
-        return;
-    }
-
-    mesAdminStatus.textContent = message;
-    mesAdminStatus.className = `note mes-admin-status mes-admin-status-${type}`;
-}
-
-function scrollToAdminPanel() {
-    const target = mesAdminPreview?.closest(".mes-admin-panel");
-    if (!target) {
-        return;
-    }
-
-    target.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-    });
-}
-
 function populateAdminForm(batch) {
     if (!mesAdminForm) {
         return;
@@ -243,6 +526,7 @@ function populateAdminForm(batch) {
     mesAdminForm.batchId.value = batch?.id || "";
     mesAdminForm.kkwNumber.value = batch?.kkwNumber || "";
     mesAdminForm.plannedQuantity.value = batch?.plannedQuantity ?? "";
+    mesAdminForm.boardSide.value = batch?.boardSide || "";
     mesAdminForm.orderNumber.value = batch?.orderNumber || "";
     mesAdminForm.productCode.value = batch?.productCode || "";
     mesAdminForm.productName.value = batch?.productName || "";
@@ -250,21 +534,23 @@ function populateAdminForm(batch) {
     mesAdminForm.saveForProduct.checked = true;
 }
 
-function renderAdminPreview(batch, summary) {
-    if (!mesAdminPreview) {
+function renderAdminPreview(group, batch) {
+    if (!mesAdminPreview || !mesAdminTitle || !mesAdminSubtitle) {
         return;
     }
 
-    if (!batch) {
+    if (!batch || !group) {
+        mesAdminTitle.textContent = "Edytuj KKW";
+        mesAdminSubtitle.textContent = "Wybierz KKW z tabeli, aby otworzyc edycje.";
         mesAdminPreview.innerHTML = `
             <div class="mes-admin-placeholder">
-                <strong>Wybierz partie z tabeli</strong>
-                <span>Tutaj pojawi sie podglad administracyjny i formularz korekty danych partii MES.</span>
+                <strong>Wybierz KKW</strong>
+                <span>Tutaj pojawi sie podsumowanie KKW i formularz edycji.</span>
             </div>
         `;
-        setAdminFormDisabled(true);
         populateAdminForm(null);
-        setAdminStatus("Wybierz partie, aby edytowac jej dane.", "info");
+        setAdminFormDisabled(true);
+        setAdminStatus("Wybierz KKW, aby edytowac jego dane.", "info");
         if (mesDeleteBatchButton) {
             mesDeleteBatchButton.disabled = true;
         }
@@ -274,69 +560,35 @@ function renderAdminPreview(batch, summary) {
         return;
     }
 
-    const statusClass = batch.status === "active" ? "good" : "neutral";
-      const infoItems = [
-          ["Device", batch.deviceId || "-"],
-          ["Status", batch.status === "active" ? "Aktywna" : "Zamknieta"],
-          ["Start", formatDateTime(batch.startedAt)],
-          ["Koniec", formatDateTime(batch.endedAt)],
-          ["Odleglosc czujnikow", formatDistanceCm(batch.sensorDistanceCm ?? summary?.sensorDistanceCm)],
-          ["Zrodlo", batch.source || "-"],
-          ["Rozpoczal", batch.startedBy || "-"],
-          ["Zakonczyl", batch.endedBy || "-"],
-          ["Ostatnie wejscie", formatDateTime(summary?.lastEntryPulse?.ts)],
-          ["Ostatnie wyjscie", formatDateTime(summary?.lastExitPulse?.ts)],
-      ];
-      const statItems = [
-          ["PCB KKW", formatPcbCount(batch.pcbCount)],
-          ["Wejscia KKW", formatPanelCount(batch.inputCount)],
-          ["Wyjscia KKW", formatPanelCount(batch.outputCount ?? batch.panelCount ?? batch.pulseCount)],
-          ["W piecu KKW", formatPanelCount(batch.inOvenCount)],
-          ["PCB partii", formatPcbCount(batch.batchPcbCount)],
-          ["Wejscia partii", formatPanelCount(batch.batchInputCount)],
-          ["Wyjscia partii", formatPanelCount(batch.batchOutputCount ?? batch.batchPanelCount ?? batch.batchPulseCount)],
-          ["W piecu partii", formatPanelCount(batch.batchInOvenCount)],
-          ["Sr. czas pieca", formatDurationSeconds(batch.batchAverageOvenTimeSeconds ?? batch.averageOvenTimeSeconds)],
-          ["Sr. predkosc pieca", formatSpeedMetersPerMinute(batch.batchAverageOvenSpeedMetersPerMinute ?? batch.averageOvenSpeedMetersPerMinute)],
-          ["Takt wejsc partii", formatDurationSeconds(batch.batchAverageEntryTaktSeconds ?? batch.averageEntryTaktSeconds)],
-          ["Takt wyjsc partii", formatDurationSeconds(batch.batchAverageExitTaktSeconds ?? batch.averageExitTaktSeconds)],
-          ["Odstep wejsc partii", formatDistanceCm(batch.batchAverageEntrySpacingCm ?? batch.averageEntrySpacingCm)],
-          ["Odstep wyjsc partii", formatDistanceCm(batch.batchAverageExitSpacingCm ?? batch.averageExitSpacingCm)],
-          ["Plan", batch.plannedQuantity ? formatNumber(batch.plannedQuantity, " szt.") : "-"],
-          ["Realizacja", batch.progressPercent === null || batch.progressPercent === undefined ? "-" : formatNumber(batch.progressPercent, "%")],
-          ["PCB/panel", getPcsPerPanelLabel(batch)],
-          ["Pozostalo", batch.remainingQuantity === null || batch.remainingQuantity === undefined ? "-" : formatNumber(batch.remainingQuantity, " szt.")],
-      ];
+    mesAdminTitle.textContent = `${batch.kkwNumber || "Brak KKW"} / ${getBoardSideLabel(batch.boardSide)}`;
+    mesAdminSubtitle.textContent = `${getBatchTitle(batch)} | ${group.entryCount} wejscia na piec`;
+
+    const previewItems = [
+        ["Wykonano", formatPcbCount(group.pcbCount)],
+        ["Plan", batch.plannedQuantity ? formatNumber(batch.plannedQuantity, " szt.") : "-"],
+        ["Pozostalo", batch.remainingQuantity === null || batch.remainingQuantity === undefined ? "-" : formatNumber(batch.remainingQuantity, " szt.")],
+        ["Wejscia", formatNumber(group.entryCount)],
+        ["Wybrane wejscie", getEntryLabel(group, batch)],
+        ["Status", batch.status === "active" ? "Aktywne" : "Zamkniete"],
+        ["PCB/panel", batch.pcsPerPanel ? formatNumber(batch.pcsPerPanel) : "-"],
+        ["Ostatnia aktywnosc", formatDateTime(group.latestActivityAt)],
+    ];
 
     mesAdminPreview.innerHTML = `
-        <article class="mes-admin-card">
-            <div class="mes-admin-card-header">
-                <div>
-                    <p class="eyebrow">Partia #${escapeHtml(batch.id)}</p>
-                    <h3>${escapeHtml(batch.kkwNumber || "Brak KKW")}</h3>
-                    <p class="mes-admin-card-copy">${escapeHtml(getBatchTitle(batch))}</p>
+        <div class="mes-admin-preview-note">
+            Zmiany ponizej obejma cale KKW i wszystkie jego wejscia na piec dla strony ${escapeHtml(getBoardSideLabel(batch.boardSide))}.
+        </div>
+        <div class="mes-admin-preview-grid">
+            ${previewItems.map(([label, value]) => `
+                <div class="mes-admin-preview-card">
+                    <span>${escapeHtml(label)}</span>
+                    <strong>${escapeHtml(value)}</strong>
                 </div>
-                <span class="phase-badge ${statusClass}">${batch.status === "active" ? "Aktywna" : "Zamknieta"}</span>
-            </div>
-            <div class="mes-admin-stat-grid">
-                ${statItems.map(([label, value]) => `
-                    <div class="mes-admin-stat-card">
-                        <span>${escapeHtml(label)}</span>
-                        <strong>${escapeHtml(value)}</strong>
-                    </div>
-                `).join("")}
-            </div>
-            <div class="mes-admin-info-grid">
-                ${infoItems.map(([label, value]) => `
-                    <div class="mes-admin-info-row">
-                        <span>${escapeHtml(label)}</span>
-                        <strong>${escapeHtml(value)}</strong>
-                    </div>
-                `).join("")}
-            </div>
-        </article>
+            `).join("")}
+        </div>
     `;
 
+    populateAdminForm(batch);
     setAdminFormDisabled(false);
     if (mesDeleteBatchButton) {
         mesDeleteBatchButton.disabled = false;
@@ -344,127 +596,242 @@ function renderAdminPreview(batch, summary) {
     if (mesDeleteBatchWithPulsesButton) {
         mesDeleteBatchWithPulsesButton.disabled = false;
     }
-    populateAdminForm(batch);
     setAdminStatus(
         batch.pcsPerPanelMissing
-            ? "Wybrana partia nie ma ustawionego PCB na panel. Mozesz to poprawic ponizej."
-            : `Edytujesz partie ${batch.kkwNumber}.`,
+            ? "Wybrane KKW nie ma ustawionego PCB na panel. Popraw to tutaj, a zmiana obejmie wszystkie wejscia."
+            : `Edytujesz KKW ${batch.kkwNumber}.`,
         batch.pcsPerPanelMissing ? "warning" : "info"
     );
 }
 
+function updateContextBadges(selection) {
+    if (mesSelectedBatch) {
+        mesSelectedBatch.textContent = selection.selectedGroup
+            ? `${selection.selectedGroup.kkwNumber} / ${getBoardSideLabel(selection.selectedGroup.boardSide)}`
+            : "Wybierz KKW";
+    }
+
+    if (mesSelectedEntry) {
+        mesSelectedEntry.textContent = shouldShowUnassignedEvents()
+            ? "Nieprzypisane impulsy"
+            : selection.selectedBatch && selection.selectedGroup
+                ? getEntryLabel(selection.selectedGroup, selection.selectedBatch)
+                : "Wybierz wejscie";
+    }
+}
+
 function renderSummary(payload) {
     const summary = payload?.summary || {};
-    latestSummary = summary;
+    latestSummaryPayload = payload;
     const activeBatch = summary.activeBatch || null;
-      const activeTitle = activeBatch ? `${activeBatch.kkwNumber} | ${getBatchTitle(activeBatch)}` : "Brak aktywnej partii";
-      const cards = [
-          ["Aktywne KKW", activeTitle],
-          ["Wyszlo PCB / plan", activeBatch ? `${formatPcbCount(activeBatch.pcbCount)} / ${activeBatch.plannedQuantity ? formatNumber(activeBatch.plannedQuantity, " szt.") : "-"}` : "-"],
-          ["Wejscia KKW", activeBatch ? formatPanelCount(activeBatch.inputCount) : "-"],
-          ["Wyjscia KKW", activeBatch ? formatPanelCount(activeBatch.outputCount ?? activeBatch.panelCount ?? activeBatch.pulseCount) : "-"],
-          ["W piecu teraz", activeBatch ? formatPanelCount(activeBatch.inOvenCount) : formatPanelCount(summary.inOvenCount)],
-          ["PCB na panel", activeBatch ? getPcsPerPanelLabel(activeBatch) : "-"],
-          ["Ta partia PCB", activeBatch ? formatPcbCount(activeBatch.batchPcbCount) : "-"],
-          ["Ta partia wejscia", activeBatch ? formatPanelCount(activeBatch.batchInputCount) : "-"],
-          ["Ta partia wyjscia", activeBatch ? formatPanelCount(activeBatch.batchOutputCount ?? activeBatch.batchPanelCount ?? activeBatch.batchPulseCount) : "-"],
-          ["Sr. czas pieca", formatDurationSeconds(activeBatch?.averageOvenTimeSeconds ?? summary.averageOvenTimeSeconds)],
-          ["Predkosc pieca", formatSpeedMetersPerMinute(activeBatch?.batchAverageOvenSpeedMetersPerMinute ?? activeBatch?.averageOvenSpeedMetersPerMinute ?? summary.averageOvenSpeedMetersPerMinute)],
-          ["Odstep wyjsc", formatDistanceCm(activeBatch?.batchAverageExitSpacingCm ?? activeBatch?.averageExitSpacingCm ?? summary.averageExitSpacingCm)],
-          ["Realizacja", activeBatch?.progressPercent === null || activeBatch?.progressPercent === undefined ? "-" : formatNumber(activeBatch.progressPercent, "%")],
-          ["Status pieca", summary.status || "-"],
-          ["Ostatnie wejscie", formatDateTime(summary.lastEntryPulse?.ts)],
-          ["Ostatnie wyjscie", formatDateTime(summary.lastExitPulse?.ts)],
-          ["Takt wyjscia", formatDurationSeconds(summary.averageExitTaktSeconds)],
-          ["Dzisiaj wyjscia", formatPanelCount(summary.counts?.today || 0)],
-      ];
+    if (mesSummary) {
+        const items = [
+            ["Status", summary.status || "Brak danych"],
+            ["Aktywne KKW", activeBatch?.kkwNumber ? `${activeBatch.kkwNumber} / ${getBoardSideLabel(activeBatch.boardSide)}` : "-"],
+            ["W piecu", formatPanelCount(summary.inOvenCount)],
+            ["Wejscia dzis", formatPanelCount(summary.entryCounts?.today ?? 0)],
+            ["Wyjscia dzis", formatPanelCount(summary.counts?.today ?? 0)],
+            ["Sr. czas pieca", formatDurationSeconds(summary.averageOvenTimeSeconds)],
+            ["Predkosc", formatSpeedMetersPerMinute(summary.averageOvenSpeedMetersPerMinute)],
+        ].filter(([, value]) => value && value !== "-");
 
-    mesSummary.innerHTML = cards.map(([label, value]) => `
-        <article class="summary-card">
-            <span>${escapeHtml(label)}</span>
-            <strong>${escapeHtml(value)}</strong>
-        </article>
-    `).join("");
-    mesSummary.classList.remove("hidden");
+        mesSummary.innerHTML = items.map(([label, value]) => `
+            <div class="mes-summary-pill">
+                <span>${escapeHtml(label)}</span>
+                <strong>${escapeHtml(value)}</strong>
+            </div>
+        `).join("");
+
+        mesSummary.classList.toggle("hidden", items.length === 0);
+    }
 
     if (mesJumpActiveButton) {
         mesJumpActiveButton.disabled = !activeBatch;
     }
 }
 
-function renderBatches(payload) {
-    const batches = Array.isArray(payload?.batches) ? payload.batches : [];
-    if (!batches.length) {
-        mesBatchesBody.innerHTML = `<tr><td colspan="9">Brak partii dla wybranego filtra.</td></tr>`;
-        selectedBatchId = null;
-        mesSelectedBatch.textContent = "Wybierz partie";
-        return null;
+function renderBatches(groups, selection) {
+    if (!mesBatchesBody) {
+        return;
     }
 
-    if (!selectedBatchId || !batches.some((batch) => Number(batch.id) === Number(selectedBatchId))) {
-        selectedBatchId = batches[0].id;
+    if (!groups.length) {
+        mesBatchesBody.innerHTML = `<tr><td colspan="11">Brak KKW dla wybranego filtra.</td></tr>`;
+        return;
     }
 
-    const selected = batches.find((batch) => Number(batch.id) === Number(selectedBatchId)) || batches[0];
-    selectedBatchId = selected.id;
-    mesSelectedBatch.textContent = `Partia #${selected.id}`;
-
-    mesBatchesBody.innerHTML = batches.map((batch) => {
-        const isSelected = Number(batch.id) === Number(selectedBatchId);
-        const planned = batch.plannedQuantity ? formatNumber(batch.plannedQuantity, " szt.") : "-";
-        const status = batch.status === "active" ? "Aktywna" : "Zamknieta";
+    mesBatchesBody.innerHTML = groups.map((group) => {
+        const isSelectedGroup = group.key === selection.selectedGroup?.key;
+        const representative = group.representative;
+        const plannedLabel = representative?.plannedQuantity ? formatNumber(representative.plannedQuantity, " szt.") : "-";
+        const statusLabel = group.status === "active" ? "Aktywne" : "Zamkniete";
         const productMeta = [
-            batch.productCode ? `Kod: ${batch.productCode}` : "",
-            `PCB/panel: ${batch.pcsPerPanel ? formatNumber(batch.pcsPerPanel) : "brak"}`,
+            group.productCode ? `Kod: ${group.productCode}` : "",
+            `PCB/panel: ${representative?.pcsPerPanel ? formatNumber(representative.pcsPerPanel) : "brak"}`,
         ].filter(Boolean).join(" | ");
+        const activeEntryLabel = group.activeEntryOrdinal ? `#${group.activeEntryOrdinal}` : "-";
 
         return `
-            <tr class="mes-batch-row ${isSelected ? "selected" : ""}" data-batch-id="${batch.id}">
-                <td><strong>${escapeHtml(batch.kkwNumber)}</strong><small>#${batch.id}</small></td>
-                <td>${escapeHtml(getBatchTitle(batch))}${productMeta ? `<small>${escapeHtml(productMeta)}</small>` : ""}</td>
-                <td>${formatDateTime(batch.startedAt)}</td>
-                <td>${formatDateTime(batch.endedAt)}</td>
-                <td>${formatPanelCount(batch.batchPanelCount ?? batch.batchPulseCount)}</td>
-                <td>${formatPcbCount(batch.batchPcbCount)}</td>
-                <td>${formatPcbCount(batch.pcbCount)} / ${escapeHtml(planned)}</td>
-                <td><span class="phase-badge ${batch.status === "active" ? "good" : "neutral"}">${status}</span></td>
+            <tr class="mes-kkw-row ${isSelectedGroup ? "selected" : ""}" data-group-key="${escapeHtml(group.key)}">
                 <td>
-                    <button class="ghost mes-inline-danger" type="button" data-delete-batch-id="${batch.id}" data-delete-batch-kkw="${escapeHtml(batch.kkwNumber || "")}">
-                        Usun
-                    </button>
+                    <strong>${escapeHtml(group.kkwNumber)}</strong>
+                    <small>${formatNumber(group.entryCount)} wejscia</small>
+                </td>
+                <td>${escapeHtml(getBoardSideLabel(group.boardSide))}</td>
+                <td>
+                    ${escapeHtml(getBatchTitle(representative))}
+                    ${productMeta ? `<small>${escapeHtml(productMeta)}</small>` : ""}
+                </td>
+                <td>${escapeHtml(plannedLabel)}</td>
+                <td>${formatPcbCount(group.pcbCount)}</td>
+                <td>${representative?.remainingQuantity === null || representative?.remainingQuantity === undefined ? "-" : formatNumber(representative.remainingQuantity, " szt.")}</td>
+                <td>${formatNumber(group.entryCount)}</td>
+                <td>${escapeHtml(activeEntryLabel)}</td>
+                <td>${formatDateTime(group.latestActivityAt)}</td>
+                <td><span class="phase-badge ${group.status === "active" ? "good" : "neutral"}">${statusLabel}</span></td>
+                <td>
+                    <div class="mes-row-actions">
+                        <button class="ghost mes-icon-button" type="button" data-open-editor-batch-id="${representative?.id || ""}">...</button>
+                    </div>
                 </td>
             </tr>
         `;
     }).join("");
 
-    mesBatchesBody.querySelectorAll("[data-batch-id]").forEach((row) => {
+    mesBatchesBody.querySelectorAll("[data-group-key]").forEach((row) => {
         row.addEventListener("click", () => {
-            selectedBatchId = Number(row.dataset.batchId);
-            void loadMesData({ keepSelectedBatch: true }).catch((error) => {
+            const groupKey = String(row.dataset.groupKey || "");
+            void selectGroup(groupKey).catch((error) => {
                 mesStatus.textContent = error.message || "Blad pobierania MES.";
             });
-            scrollToAdminPanel();
         });
     });
 
-    mesBatchesBody.querySelectorAll("[data-delete-batch-id]").forEach((button) => {
+    mesBatchesBody.querySelectorAll("[data-open-editor-batch-id]").forEach((button) => {
         button.addEventListener("click", (event) => {
             event.stopPropagation();
-            const batchId = Number(button.dataset.deleteBatchId);
-            const kkwNumber = String(button.dataset.deleteBatchKkw || "").trim();
-            void deleteBatchById(batchId, kkwNumber).catch((error) => {
-                setAdminStatus(error.message || "Nie udalo sie usunac partii MES.", "error");
+            const batchId = Number(button.dataset.openEditorBatchId);
+            void selectBatch(batchId, { openDrawer: true }).catch((error) => {
+                setAdminStatus(error.message || "Nie udalo sie otworzyc edycji KKW.", "error");
+            });
+        });
+    });
+}
+
+function renderEntries(group, selectedBatch) {
+    if (!mesEntriesBody || !mesEntriesTitle || !mesEntriesMeta) {
+        return;
+    }
+
+    if (!group) {
+        mesEntriesTitle.textContent = "2. Wejscia na piec";
+        mesEntriesMeta.textContent = "Krok 2: wybierz KKW z tabeli powyzej.";
+        if (mesSelectedKkw) {
+            mesSelectedKkw.innerHTML = "";
+            mesSelectedKkw.classList.add("hidden");
+        }
+        mesEntriesBody.innerHTML = `<tr><td colspan="13">Wybierz KKW z tabeli powyzej.</td></tr>`;
+        return;
+    }
+
+    const representative = group.representative;
+    const entries = [...group.entries].sort((left, right) => {
+        const diff = getSortTimestamp(right?.startedAt) - getSortTimestamp(left?.startedAt);
+        if (diff !== 0) {
+            return diff;
+        }
+        return (Number(right?.id) || 0) - (Number(left?.id) || 0);
+    });
+
+    mesEntriesTitle.textContent = `2. Wejscia dla KKW ${group.kkwNumber}`;
+    mesEntriesMeta.textContent = `${getBoardSideLabel(group.boardSide)} | ${getBatchTitle(representative)} | ${formatNumber(group.entryCount)} wejscia | Krok 3: kliknij wejscie, aby po prawej zobaczyc impulsy`;
+
+    if (mesSelectedKkw) {
+        const items = [
+            ["Plan", representative?.plannedQuantity ? formatNumber(representative.plannedQuantity, " szt.") : "-"],
+            ["Wykonano", formatPcbCount(group.pcbCount)],
+            ["Pozostalo", representative?.remainingQuantity === null || representative?.remainingQuantity === undefined ? "-" : formatNumber(representative.remainingQuantity, " szt.")],
+            ["W piecu", formatPanelCount(representative?.inOvenCount)],
+            ["Wybrane", selectedBatch ? getEntryLabel(group, selectedBatch) : "-"],
+        ];
+
+        mesSelectedKkw.innerHTML = items.map(([label, value]) => `
+            <span class="mes-selection-pill">
+                <small>${escapeHtml(label)}</small>
+                <strong>${escapeHtml(value)}</strong>
+            </span>
+        `).join("");
+        mesSelectedKkw.classList.remove("hidden");
+    }
+
+    mesEntriesBody.innerHTML = entries.map((entry) => {
+        const isSelectedEntry = Number(entry.id) === Number(selectedBatch?.id);
+        const entryStatusLabel = entry.status === "active" ? "Aktywne" : "Zamkniete";
+
+        return `
+            <tr class="mes-entry-row ${isSelectedEntry ? "selected" : ""}" data-entry-batch-id="${entry.id}">
+                <td>
+                    <strong>#${entry.entryOrdinal}</strong>
+                    <small>Batch #${entry.id}</small>
+                </td>
+                <td>${formatDateTime(entry.startedAt)}</td>
+                <td>${formatDateTime(entry.endedAt)}</td>
+                <td>${formatDurationSeconds(entry.durationSeconds)}</td>
+                <td>${entry.pcsPerPanel ? formatNumber(entry.pcsPerPanel) : "-"}</td>
+                <td>${formatPanelCount(entry.batchInputCount)}</td>
+                <td>${formatPanelCount(entry.batchOutputCount ?? entry.batchPanelCount ?? entry.batchPulseCount)}</td>
+                <td>${formatPanelCount(entry.batchInOvenCount)}</td>
+                <td>${formatPcbCount(entry.batchPcbCount)}</td>
+                <td>${formatDurationSeconds(entry.batchAverageOvenTimeSeconds ?? entry.averageOvenTimeSeconds)}</td>
+                <td>${formatSpeedMetersPerMinute(entry.batchAverageOvenSpeedMetersPerMinute ?? entry.averageOvenSpeedMetersPerMinute)}</td>
+                <td><span class="phase-badge ${entry.status === "active" ? "good" : "neutral"}">${entryStatusLabel}</span></td>
+                <td>
+                    <div class="mes-row-actions">
+                        <button class="ghost mes-icon-button" type="button" data-entry-focus="${entry.id}">...</button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join("");
+
+    mesEntriesBody.querySelectorAll("[data-entry-batch-id]").forEach((row) => {
+        row.addEventListener("click", () => {
+            const batchId = Number(row.dataset.entryBatchId);
+            void selectBatch(batchId).catch((error) => {
+                mesStatus.textContent = error.message || "Blad pobierania MES.";
             });
         });
     });
 
-    return selected;
+    mesEntriesBody.querySelectorAll("[data-entry-focus]").forEach((button) => {
+        button.addEventListener("click", (event) => {
+            event.stopPropagation();
+            const batchId = Number(button.dataset.entryFocus);
+            void selectBatch(batchId, { scrollToEvents: true }).catch((error) => {
+                mesStatus.textContent = error.message || "Blad pobierania MES.";
+            });
+        });
+    });
 }
 
 function renderEvents(payload) {
     const events = Array.isArray(payload?.events) ? payload.events : [];
+    const selection = resolveSelection(latestGroups);
+    if (mesEventsCount) {
+        mesEventsCount.textContent = String(events.length);
+    }
+    if (mesEventsRange) {
+        mesEventsRange.textContent = events.length ? `1-${events.length} z ${events.length}` : "0-0 z 0";
+    }
+    if (mesEventsTitle) {
+        mesEventsTitle.textContent = shouldShowUnassignedEvents()
+            ? "3. Impulsy nieprzypisane"
+            : selection.selectedBatch && selection.selectedGroup
+                ? `3. Impulsy dla ${getEntryLabel(selection.selectedGroup, selection.selectedBatch)}`
+                : "3. Impulsy dla wybranego wejscia";
+    }
     if (!events.length) {
-        mesEventsBody.innerHTML = `<tr><td colspan="7">${shouldShowUnassignedEvents() ? "Brak nieprzypisanych impulsow dla wybranego device." : "Brak impulsow dla wybranej partii."}</td></tr>`;
+        mesEventsBody.innerHTML = `<tr><td colspan="6">${shouldShowUnassignedEvents() ? "Brak nieprzypisanych impulsow dla wybranego device." : "Wybierz wejscie z tabeli po lewej, aby zobaczyc impulsy."}</td></tr>`;
         selectedPulseIds = new Set();
         updateSelectedPulsesBadge();
         return;
@@ -483,11 +850,10 @@ function renderEvents(payload) {
                     ${selectedPulseIds.has(Number(event.id)) ? "checked" : ""}
                 >
             </td>
-            <td>${event.id}</td>
-            <td>${escapeHtml(event.deviceId || "-")}</td>
-            <td>${escapeHtml(event.sensorId || "-")}</td>
-            <td>${event.batchId || "-"}</td>
             <td>${formatDateTime(event.ts)}</td>
+            <td>${escapeHtml(event.sensorId || "-")}</td>
+            <td>${escapeHtml(event.deviceId || "-")}</td>
+            <td>${event.batchId || "-"}</td>
             <td><code>${escapeHtml(event.payloadJson || "-")}</code></td>
         </tr>
     `).join("");
@@ -517,6 +883,85 @@ function isAdminFormActive() {
     return Boolean(activeElement && mesAdminForm?.contains(activeElement));
 }
 
+function renderFromState() {
+    latestGroups = buildKkwGroups(latestBatchRows);
+    const selection = resolveSelection(latestGroups);
+    renderBatches(latestGroups, selection);
+    renderEntries(selection.selectedGroup, selection.selectedBatch);
+    renderAdminPreview(selection.selectedGroup, selection.selectedBatch);
+    updateContextBadges(selection);
+
+    if (!selection.selectedBatch && drawerOpen) {
+        closeAdminDrawer({ dismissed: false });
+    }
+
+    return selection;
+}
+
+function updateStatusText(selection) {
+    const deviceId = getDeviceId();
+    if (shouldShowUnassignedEvents()) {
+        mesStatus.textContent = `Pokazuje nieprzypisane impulsy dla device ${deviceId}.`;
+        return;
+    }
+
+    if (!selection.selectedBatch || !selection.selectedGroup) {
+        mesStatus.textContent = "Brak KKW dla wybranego filtra.";
+        return;
+    }
+
+    mesStatus.textContent = selection.selectedBatch.pcsPerPanelMissing
+        ? `Pokazuje ${selection.selectedGroup.kkwNumber} (${getBoardSideLabel(selection.selectedGroup.boardSide)}) oraz ${getEntryLabel(selection.selectedGroup, selection.selectedBatch)}. Brakuje ustawienia PCB na panel.`
+        : `Pokazuje ${selection.selectedGroup.kkwNumber} (${getBoardSideLabel(selection.selectedGroup.boardSide)}) oraz ${getEntryLabel(selection.selectedGroup, selection.selectedBatch)}.`;
+}
+
+async function refreshEvents(selection = null) {
+    const resolvedSelection = selection || renderFromState();
+    const deviceId = encodeURIComponent(getDeviceId());
+
+    const events = shouldShowUnassignedEvents()
+        ? await fetchJson(`/api/mes/oven/events?device_id=${deviceId}&unassigned=1&limit=100`)
+        : resolvedSelection.selectedBatch
+            ? await fetchJson(`/api/mes/oven/events?batch_id=${encodeURIComponent(resolvedSelection.selectedBatch.id)}&limit=100`)
+            : { events: [] };
+
+    renderEvents(events);
+    updateContextBadges(resolvedSelection);
+    updateStatusText(resolvedSelection);
+}
+
+async function selectGroup(groupKey) {
+    selectedGroupKey = groupKey;
+    const group = latestGroups.find((item) => item.key === groupKey) || null;
+    const fallbackEntry = group ? getDefaultEntryForGroup(group) : null;
+    selectedBatchId = fallbackEntry?.id || null;
+
+    const selection = renderFromState();
+    await refreshEvents(selection);
+}
+
+async function toggleGroup(groupKey) {
+    await selectGroup(groupKey);
+}
+
+async function selectBatch(batchId, { openDrawer: shouldOpenDrawer = false, scrollToEvents: shouldScrollToEvents = false } = {}) {
+    selectedBatchId = Number(batchId);
+    const group = latestGroups.find((item) => item.entries.some((entry) => Number(entry.id) === Number(batchId))) || null;
+    if (group?.key) {
+        selectedGroupKey = group.key;
+    }
+    const selection = renderFromState();
+    if (shouldOpenDrawer) {
+        openAdminDrawer();
+    }
+
+    await refreshEvents(selection);
+
+    if (shouldScrollToEvents) {
+        scrollToEventLog();
+    }
+}
+
 async function loadMesData({ keepSelectedBatch = false } = {}) {
     const deviceId = encodeURIComponent(getDeviceId());
     const kkwNumber = getKkwNumber();
@@ -525,51 +970,42 @@ async function loadMesData({ keepSelectedBatch = false } = {}) {
 
     if (!keepSelectedBatch) {
         selectedBatchId = null;
+        selectedGroupKey = "";
     }
 
-    const [summary, batches] = await Promise.all([
+    const [summaryPayload, batchesPayload] = await Promise.all([
         fetchJson(`/api/mes/oven/summary?device_id=${deviceId}`),
-        fetchJson(`/api/mes/oven/batch/history?device_id=${deviceId}${kkwQuery}&limit=50`),
+        fetchJson(`/api/mes/oven/batch/history?device_id=${deviceId}${kkwQuery}&limit=100`),
     ]);
 
-    renderSummary(summary);
-    const selected = renderBatches(batches);
-    renderAdminPreview(selected, summary.summary || summary);
-    const events = shouldShowUnassignedEvents()
-        ? await fetchJson(`/api/mes/oven/events?device_id=${deviceId}&unassigned=1&limit=100`)
-        : selected
-            ? await fetchJson(`/api/mes/oven/events?batch_id=${encodeURIComponent(selected.id)}&limit=100`)
-            : { events: [] };
-    renderEvents(events);
+    latestSummaryPayload = summaryPayload;
+    latestBatchRows = Array.isArray(batchesPayload?.batches) ? batchesPayload.batches : [];
+
+    renderSummary(summaryPayload);
+    const selection = renderFromState();
+    await refreshEvents(selection);
 
     const now = new Date();
     mesUpdatedAt.textContent = `Aktualizacja: ${formatDateTime(now.toISOString())}`;
-    if (shouldShowUnassignedEvents()) {
-        mesStatus.textContent = `Pokazuje nieprzypisane impulsy dla device ${decodeURIComponent(deviceId)}.`;
-    } else {
-        mesStatus.textContent = selected
-            ? selected.pcsPerPanelMissing
-                ? `Pokazuje partie KKW ${selected.kkwNumber}. Brakuje ustawienia PCB na panel.`
-                : `Pokazuje partie KKW ${selected.kkwNumber}.`
-            : "Brak partii dla wybranego filtra.";
-    }
 }
 
 async function saveBatchChanges() {
     if (!mesAdminForm?.batchId?.value) {
-        throw new Error("Najpierw wybierz partie do edycji.");
+        throw new Error("Najpierw wybierz KKW do edycji.");
     }
 
     const body = {
         batch_id: Number(mesAdminForm.batchId.value),
         kkw_number: mesAdminForm.kkwNumber.value.trim(),
         planned_quantity: mesAdminForm.plannedQuantity.value.trim(),
+        board_side: mesAdminForm.boardSide.value.trim(),
         order_number: mesAdminForm.orderNumber.value.trim(),
         product_code: mesAdminForm.productCode.value.trim(),
         product_name: mesAdminForm.productName.value.trim(),
         pcs_per_panel: mesAdminForm.pcsPerPanel.value.trim(),
         save_for_product: mesAdminForm.saveForProduct.checked,
         source: "admin_panel",
+        apply_to_related: true,
     };
 
     const response = await fetchJson("/api/mes/oven/batch/update", {
@@ -583,33 +1019,34 @@ async function saveBatchChanges() {
     selectedBatchId = Number(response?.batch?.id || body.batch_id);
     setAdminStatus(
         response.warning
-            ? `Zapisano zmiany partii. ${response.warning}`
-            : "Zapisano zmiany partii MES.",
+            ? `Zapisano zmiany KKW. ${response.warning}`
+            : "Zapisano zmiany KKW.",
         response.warning ? "warning" : "success"
     );
     await loadMesData({ keepSelectedBatch: true });
+    openAdminDrawer();
 }
 
 async function deleteSelectedBatch() {
     if (!mesAdminForm?.batchId?.value) {
-        throw new Error("Najpierw wybierz partie do usuniecia.");
+        throw new Error("Najpierw wybierz KKW do usuniecia.");
     }
 
     const batchId = Number(mesAdminForm.batchId.value);
-    const kkwNumber = mesAdminForm.kkwNumber.value.trim() || `#${batchId}`;
-    await deleteBatchById(batchId, kkwNumber, { deletePulses: false });
+    const label = `${mesAdminForm.kkwNumber.value.trim() || `#${batchId}`} (${getBoardSideLabel(mesAdminForm.boardSide.value)})`;
+    await deleteBatchById(batchId, label, { deletePulses: false });
 }
 
 async function deleteBatchById(batchId, kkwNumber = "", { deletePulses = false } = {}) {
     if (!Number.isInteger(batchId) || batchId <= 0) {
-        throw new Error("Brakuje ID partii do usuniecia.");
+        throw new Error("Brakuje ID KKW do usuniecia.");
     }
 
     const label = kkwNumber || `#${batchId}`;
     const confirmed = window.confirm(
         deletePulses
-            ? `Usunac cale KKW ${label} razem z impulsami wszystkich jego partii? Operacja jest nieodwracalna.`
-            : `Usunac cale KKW ${label}? Impulsy zostana odlaczone od wszystkich partii tego KKW, ale nie beda skasowane.`
+            ? `Usunac cale KKW ${label} razem z impulsami wszystkich jego wejsc? Operacja jest nieodwracalna.`
+            : `Usunac cale KKW ${label}? Impulsy zostana odlaczone od wszystkich wejsc tego KKW, ale nie beda skasowane.`
     );
     if (!confirmed) {
         return;
@@ -627,11 +1064,13 @@ async function deleteBatchById(batchId, kkwNumber = "", { deletePulses = false }
     });
 
     selectedBatchId = null;
-
+    selectedGroupKey = "";
     selectedPulseIds = new Set();
     updateSelectedPulsesBadge();
+    closeAdminDrawer();
+
     const deletedBatchCount = Number(response.deletedBatchCount || 0);
-    const deletedBatchLabel = deletedBatchCount === 1 ? "1 rekord" : `${formatNumber(deletedBatchCount)} rekordow`;
+    const deletedBatchLabel = deletedBatchCount === 1 ? "1 wejscie" : `${formatNumber(deletedBatchCount)} wejsc`;
     setAdminStatus(
         deletePulses
             ? `Usunieto KKW ${label}: ${deletedBatchLabel} oraz ${formatNumber(response.deletedPulses || 0)} impulsow.`
@@ -643,12 +1082,12 @@ async function deleteBatchById(batchId, kkwNumber = "", { deletePulses = false }
 
 async function deleteSelectedBatchAndPulses() {
     if (!mesAdminForm?.batchId?.value) {
-        throw new Error("Najpierw wybierz partie do usuniecia.");
+        throw new Error("Najpierw wybierz KKW do usuniecia.");
     }
 
     const batchId = Number(mesAdminForm.batchId.value);
-    const kkwNumber = mesAdminForm.kkwNumber.value.trim() || `#${batchId}`;
-    await deleteBatchById(batchId, kkwNumber, { deletePulses: true });
+    const label = `${mesAdminForm.kkwNumber.value.trim() || `#${batchId}`} (${getBoardSideLabel(mesAdminForm.boardSide.value)})`;
+    await deleteBatchById(batchId, label, { deletePulses: true });
 }
 
 async function deleteSelectedPulses() {
@@ -675,7 +1114,7 @@ async function deleteSelectedPulses() {
     selectedPulseIds = new Set();
     updateSelectedPulsesBadge();
     setAdminStatus(`Usunieto ${formatNumber(response.deleted || 0)} impulsow MES.`, "warning");
-    await loadMesData({ keepSelectedBatch: true });
+    await refreshEvents();
 }
 
 async function assignSelectedPulsesToBatch() {
@@ -690,7 +1129,7 @@ async function assignSelectedPulsesToBatch() {
 
     const batchId = Number(mesAdminForm?.batchId?.value || selectedBatchId);
     if (!Number.isInteger(batchId) || batchId <= 0) {
-        throw new Error("Najpierw wybierz partie, do ktorej przypisac impulsy.");
+        throw new Error("Najpierw wybierz wejscie, do ktorego przypisac impulsy.");
     }
 
     const batchLabel = mesAdminForm?.kkwNumber?.value?.trim() || `#${batchId}`;
@@ -757,7 +1196,7 @@ if (mesAdminForm) {
     mesAdminForm.addEventListener("submit", (event) => {
         event.preventDefault();
         void saveBatchChanges().catch((error) => {
-            setAdminStatus(error.message || "Nie udalo sie zapisac zmian partii.", "error");
+            setAdminStatus(error.message || "Nie udalo sie zapisac zmian KKW.", "error");
         });
     });
 }
@@ -765,7 +1204,7 @@ if (mesAdminForm) {
 if (mesDeleteBatchButton) {
     mesDeleteBatchButton.addEventListener("click", () => {
         void deleteSelectedBatch().catch((error) => {
-            setAdminStatus(error.message || "Nie udalo sie usunac partii MES.", "error");
+            setAdminStatus(error.message || "Nie udalo sie usunac KKW MES.", "error");
         });
     });
 }
@@ -773,7 +1212,7 @@ if (mesDeleteBatchButton) {
 if (mesDeleteBatchWithPulsesButton) {
     mesDeleteBatchWithPulsesButton.addEventListener("click", () => {
         void deleteSelectedBatchAndPulses().catch((error) => {
-            setAdminStatus(error.message || "Nie udalo sie usunac partii i impulsow MES.", "error");
+            setAdminStatus(error.message || "Nie udalo sie usunac KKW i impulsow MES.", "error");
         });
     });
 }
@@ -798,7 +1237,7 @@ if (mesShowUnassignedInput) {
     mesShowUnassignedInput.addEventListener("change", () => {
         selectedPulseIds = new Set();
         updateSelectedPulsesBadge();
-        void loadMesData({ keepSelectedBatch: true }).catch((error) => {
+        void refreshEvents().catch((error) => {
             mesStatus.textContent = error.message || "Blad pobierania MES.";
         });
     });
@@ -806,13 +1245,12 @@ if (mesShowUnassignedInput) {
 
 if (mesJumpActiveButton) {
     mesJumpActiveButton.addEventListener("click", () => {
-        const activeBatchId = Number(latestSummary?.activeBatch?.id);
+        const activeBatchId = Number(latestSummaryPayload?.summary?.activeBatch?.id);
         if (!Number.isInteger(activeBatchId) || activeBatchId <= 0) {
             return;
         }
 
-        selectedBatchId = activeBatchId;
-        void loadMesData({ keepSelectedBatch: true }).catch((error) => {
+        void selectBatch(activeBatchId).catch((error) => {
             mesStatus.textContent = error.message || "Blad pobierania MES.";
         });
     });
@@ -822,9 +1260,66 @@ if (mesAutoRefreshInput) {
     mesAutoRefreshInput.addEventListener("change", restartMesRefreshTimer);
 }
 
+if (mesRefreshButton) {
+    mesRefreshButton.addEventListener("click", () => {
+        void loadMesData({ keepSelectedBatch: true }).catch((error) => {
+            mesStatus.textContent = error.message || "Blad pobierania MES.";
+        });
+    });
+}
+
+if (mesEventsRefreshButton) {
+    mesEventsRefreshButton.addEventListener("click", () => {
+        void refreshEvents().catch((error) => {
+            mesStatus.textContent = error.message || "Blad pobierania MES.";
+        });
+    });
+}
+
+if (mesToggleFiltersButton && mesAdvancedFilters) {
+    mesToggleFiltersButton.addEventListener("click", () => {
+        mesAdvancedFilters.classList.toggle("hidden");
+    });
+}
+
+if (mesDeviceIdMirror && mesForm?.elements?.deviceId) {
+    mesDeviceIdMirror.addEventListener("input", () => {
+        mesForm.elements.deviceId.value = mesDeviceIdMirror.value.trim() || "reflow_1";
+    });
+}
+
+if (mesAdminOverlay) {
+    mesAdminOverlay.addEventListener("click", () => closeAdminDrawer());
+}
+
+if (mesAdminCloseButton) {
+    mesAdminCloseButton.addEventListener("click", () => closeAdminDrawer());
+}
+
+document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && drawerOpen) {
+        closeAdminDrawer();
+    }
+});
+
+window.addEventListener("resize", () => {
+    if (drawerOpen) {
+        applyAdminDrawerLayout(true);
+        return;
+    }
+
+    applyAdminDrawerLayout(false);
+});
+
 setAdminFormDisabled(true);
+if (mesAdminDrawer) {
+    mesAdminDrawer.hidden = true;
+    applyAdminDrawerLayout(false);
+}
 updateSelectedPulsesBadge();
 void loadMesData().catch((error) => {
     mesStatus.textContent = error.message || "Blad pobierania MES.";
 });
 restartMesRefreshTimer();
+
+
