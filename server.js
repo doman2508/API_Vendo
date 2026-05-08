@@ -2069,6 +2069,7 @@ function getVendoStatusScope(statusRecords, statusDictionary = []) {
     const hasSmd = normalizedNames.some((name) => name.includes("elementy smd") || name === "smd");
     const hasTht = normalizedNames.some((name) => name.includes("elementy tht") || name === "tht");
     const hasApp = normalizedNames.some((name) => name.includes("apka"));
+    const hasDraft = normalizedNames.some((name) => name === "draft" || name.includes(" draft"));
     const includeSmd = !hasSmd;
     const includeTht = !hasTht;
 
@@ -2078,6 +2079,7 @@ function getVendoStatusScope(statusRecords, statusDictionary = []) {
         hasSmd,
         hasTht,
         hasApp,
+        hasDraft,
         excludeSmd: hasSmd,
         excludeTht: hasTht,
         includeSmd,
@@ -2362,6 +2364,7 @@ function buildVendoOperationalHeaderContext({
                 includeSmd: statusScope.includeSmd,
                 includeTht: statusScope.includeTht,
                 app: statusScope.hasApp,
+                draft: statusScope.hasDraft,
             },
             summaryPending: statusScope.hasDemandScope,
             hasKkw: Boolean(kkwRecords?.length),
@@ -3710,6 +3713,7 @@ async function computeVendoOperationalHeaderSummaries({
                 excludeTht: Boolean(effectiveScope?.excludeTht),
                 includeSmd: Boolean(effectiveScope?.includeSmd),
                 includeTht: Boolean(effectiveScope?.includeTht),
+                draft: Boolean(context?.header?.statusFlags?.draft),
             },
             smdDone: Boolean(effectiveScope?.excludeSmd),
             thtDone: Boolean(effectiveScope?.excludeTht),
@@ -6205,6 +6209,7 @@ async function handleApiZapotrzebowanieVendoHeaderDetails(req, res) {
                     includeSmd: statusScope.includeSmd,
                     includeTht: statusScope.includeTht,
                     app: statusScope.hasApp,
+                    draft: statusScope.hasDraft,
                 },
                 orderQty,
                 quantityOnKkw: getPositiveNumber(position?.IloscNaKKW),

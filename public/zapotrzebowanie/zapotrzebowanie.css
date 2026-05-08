@@ -1116,6 +1116,20 @@ body.modal-open {
     box-shadow: inset 3px 0 0 #2563eb;
 }
 
+.operations-header-row.is-draft {
+    background: rgba(245, 243, 255, 0.58);
+    box-shadow: inset 3px 0 0 #7c3aed;
+}
+
+.operations-header-row.is-draft:hover {
+    background: rgba(237, 233, 254, 0.8);
+}
+
+.operations-header-row.is-draft.is-selected {
+    background: rgba(224, 231, 255, 0.9);
+    box-shadow: inset 3px 0 0 #2563eb, inset 7px 0 0 #7c3aed;
+}
+
 .operations-header-row .header-note-button {
     cursor: pointer;
 }
@@ -1255,6 +1269,31 @@ body.modal-open {
 .header-stage.excluded-all {
     background: rgba(254, 243, 199, 0.9);
     color: #92400e;
+}
+
+.header-stage-stack {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.header-flag {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px 7px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+
+.header-flag.draft {
+    background: rgba(109, 40, 217, 0.12);
+    color: #6d28d9;
+    border: 1px solid rgba(109, 40, 217, 0.2);
 }
 
 .detail-shortage,
