@@ -19,6 +19,7 @@ const headerSearchInput = document.getElementById("header-search");
 const headerStatusFilter = document.getElementById("header-status-filter");
 const headerPhaseFilter = document.getElementById("header-phase-filter");
 const headerMaterialFilter = document.getElementById("header-material-filter");
+const headerDraftFilter = document.getElementById("header-draft-filter");
 const refreshHeadersButton = document.getElementById("refresh-headers");
 const resetHeaderFiltersButton = document.getElementById("reset-header-filters");
 const headersRefreshStatus = document.getElementById("headers-refresh-status");
@@ -728,12 +729,16 @@ function getFilteredHeaders(headers) {
     const searchTerm = normalizeText(headerSearchInput?.value);
     const statusFilter = headerStatusFilter?.value || "OPEN";
     const phaseFilter = headerPhaseFilter?.value || "ALL";
+    const draftFilter = headerDraftFilter?.value || "ALL";
 
     return headers.filter((header) => {
+        const isDraft = Boolean(header?.statusFlags?.draft);
         if (statusFilter === "OPEN" && (header.isClosed || !header.includeInDemand)) return false;
         if (statusFilter === "CLOSED" && !header.isClosed) return false;
         if (statusFilter === "SHORTAGE" && (Number(header.shortageBomCount) || 0) <= 0) return false;
         if (phaseFilter !== "ALL" && header.stageKey !== phaseFilter) return false;
+        if (draftFilter === "ONLY" && !isDraft) return false;
+        if (draftFilter === "HIDE" && isDraft) return false;
         if (!searchTerm) return true;
 
         const searchable = normalizeText([
@@ -2135,6 +2140,17 @@ function renderHeaderNoteCell(header) {
         >
             ${escapeHtml(truncateText(noteText, 24))}
         </button>
+      `;
+}
+
+function renderHeaderStageCell(header) {
+    const isDraft = Boolean(header?.statusFlags?.draft);
+    const draftBadge = isDraft ? `<span class="header-flag draft">DRAFT</span>` : "";
+    return `
+        <div class="header-stage-stack">
+            <span class="header-stage ${getStageTone(header?.stageKey)}">${escapeHtml(header?.stageLabel || "-")}</span>
+            ${draftBadge}
+        </div>
     `;
 }
 
@@ -2150,10 +2166,10 @@ function renderHeadersTable(rows, totalRows) {
             headersTableWrap.scrollTop = 0;
         }
         return;
-    }
+      }
 
-    headersBody.innerHTML = rows.map((header) => `
-        <tr class="operations-header-row${selectedHeaderId === header.id ? " is-selected" : ""}" data-header-row-id="${escapeHtml(header.id)}">
+      headersBody.innerHTML = rows.map((header) => `
+        <tr class="operations-header-row${selectedHeaderId === header.id ? " is-selected" : ""}${header?.statusFlags?.draft ? " is-draft" : ""}" data-header-row-id="${escapeHtml(header.id)}">
             <td class="selection-column-cell">
                 <input
                     type="checkbox"
@@ -2172,7 +2188,7 @@ function renderHeadersTable(rows, totalRows) {
             <td>${escapeHtml(header.productName || "-")}</td>
             <td>${escapeHtml(header.clientName || "-")}</td>
             <td>${escapeHtml(formatNumber(header.orderQty))}</td>
-            <td><span class="header-stage ${getStageTone(header.stageKey)}">${escapeHtml(header.stageLabel || "-")}</span></td>
+            <td>${renderHeaderStageCell(header)}</td>
             <td>${header.summaryPending ? "..." : escapeHtml(formatNumber(header.bomCount))}</td>
             <td>${header.summaryPending ? "..." : escapeHtml(formatNumber(header.openBomCount))}</td>
             <td><span class="${Number(header.shortageBomCount) > 0 ? "access-to-order-shortage" : "access-to-order-covered"}">${header.summaryPending ? "..." : escapeHtml(`${formatNumber(header.shortageBomCount)} / ${formatNumber(header.openBomCount)}`)}</span></td>
@@ -3104,6 +3120,7 @@ async function resetHeaderFilters() {
     if (headerStatusFilter) headerStatusFilter.value = "OPEN";
     if (headerPhaseFilter) headerPhaseFilter.value = "ALL";
     if (headerMaterialFilter) headerMaterialFilter.value = "MSX_OR_EMPTY";
+    if (headerDraftFilter) headerDraftFilter.value = "ALL";
     if (shouldReload) {
         await loadOperationalOverview({ preserveSelection: false });
         return;
@@ -3511,6 +3528,7 @@ if (refreshStorageButton) refreshStorageButton.addEventListener("click", refresh
 if (headerSearchInput) headerSearchInput.addEventListener("input", renderOperationalHeaders);
 if (headerStatusFilter) headerStatusFilter.addEventListener("change", renderOperationalHeaders);
 if (headerPhaseFilter) headerPhaseFilter.addEventListener("change", renderOperationalHeaders);
+if (headerDraftFilter) headerDraftFilter.addEventListener("change", renderOperationalHeaders);
 if (headerMaterialFilter) headerMaterialFilter.addEventListener("change", () => loadOperationalOverview({ preserveSelection: true }));
 if (headerSortButtons.length) {
     headerSortButtons.forEach((button) => {
