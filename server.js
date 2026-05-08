@@ -1784,7 +1784,7 @@ function buildObjectStatusesModel({ objectId, dataType }) {
     };
 }
 
-function buildObjectStatusesHistoryModel({ objectIds, dataType, pageSize }) {
+function buildObjectStatusesHistoryModel({ objectIds, dataType, pageSize, onlyCurrent = false }) {
     return {
         Cursor: true,
         CursorCzyZamknac: false,
@@ -1797,7 +1797,7 @@ function buildObjectStatusesHistoryModel({ objectIds, dataType, pageSize }) {
         ObiektyID: (objectIds || [])
             .map((value) => Number(value))
             .filter((value) => Number.isInteger(value) && value > 0),
-        TylkoAktualne: false,
+        TylkoAktualne: Boolean(onlyCurrent),
     };
 }
 
@@ -1806,6 +1806,7 @@ async function resolveVendoStatuses(connection, accessToken, {
     objectIds,
     pageSize,
     maxPages = 10,
+    onlyCurrent = false,
     warnings = null,
     warningLabel = "obiektow",
 } = {}) {
@@ -1855,6 +1856,7 @@ async function resolveVendoStatuses(connection, accessToken, {
                     objectIds: chunkIds,
                     dataType,
                     pageSize: chunkPageSize,
+                    onlyCurrent,
                 }),
                 {
                     pageSize: chunkPageSize,
@@ -2302,6 +2304,7 @@ function buildVendoOperationalHeaderContext({
     positionDetails,
     planningOrder,
     objectStatuses,
+    currentObjectStatuses,
     statusDictionary,
     kkwRecords,
     generatedAt,
@@ -2310,6 +2313,10 @@ function buildVendoOperationalHeaderContext({
     const positionWithFields = positionDetails ? { ...position, ...positionDetails } : position;
     const planningOrderId = Number(position?.ZlecenieID) || null;
     const statusScope = getVendoStatusScope(objectStatuses, statusDictionary);
+    const currentStatusScope = getVendoStatusScope(
+        Array.isArray(currentObjectStatuses) ? currentObjectStatuses : [],
+        statusDictionary
+    );
     const isClosed = isVendoPlanPositionHardClosed(position, planningOrder);
     const stage = getVendoStageFromScope(statusScope, isClosed);
     const kkwNumbers = (kkwRecords || []).map((item) => String(item?.Numer || "").trim()).filter(Boolean);
@@ -2354,19 +2361,20 @@ function buildVendoOperationalHeaderContext({
             shortageBomCount: null,
             shortageQty: null,
             stageKey: stage.key,
-            stageLabel: stage.label,
-            statusNames: statusScope.names,
-            statusFlags: {
-                smd: statusScope.excludeSmd,
-                tht: statusScope.excludeTht,
+              stageLabel: stage.label,
+              statusNames: statusScope.names,
+              statusFlags: {
+                  smd: statusScope.excludeSmd,
+                  tht: statusScope.excludeTht,
                 excludeSmd: statusScope.excludeSmd,
-                excludeTht: statusScope.excludeTht,
-                includeSmd: statusScope.includeSmd,
-                includeTht: statusScope.includeTht,
-                app: statusScope.hasApp,
-                draft: statusScope.hasDraft,
-            },
-            summaryPending: statusScope.hasDemandScope,
+                  excludeTht: statusScope.excludeTht,
+                  includeSmd: statusScope.includeSmd,
+                  includeTht: statusScope.includeTht,
+                  app: statusScope.hasApp,
+                draft: currentStatusScope.hasDraft,
+              },
+              isDraft: currentStatusScope.hasDraft,
+              summaryPending: statusScope.hasDemandScope,
             hasKkw: Boolean(kkwRecords?.length),
             realizationState: String(positionWithFields?.StanRealizacji || "").trim() || null,
             orderRealizationState: String(planningOrder?.StanRealizacji || "").trim() || null,
@@ -2456,6 +2464,15 @@ async function getVendoOperationalHeadersContext({
         warnings,
         warningLabel: "pozycji ZLP",
     });
+    const currentPositionStatusesBundle = await resolveVendoStatuses(connection, accessToken, {
+        dataType: "PlanZlecenia",
+        objectIds: positionIds,
+        pageSize: Math.max(positionIds.length * 4, 50),
+        maxPages: 10,
+        onlyCurrent: true,
+        warnings,
+        warningLabel: "aktywnych statusow pozycji ZLP",
+    });
     let statusDictionary = [...(positionStatusesBundle.dictionary || [])];
 
     let planningPositionById = new Map();
@@ -2478,6 +2495,7 @@ async function getVendoOperationalHeadersContext({
     }
 
     const statusesByPositionId = positionStatusesBundle.byObjectId || new Map();
+    const currentStatusesByPositionId = currentPositionStatusesBundle.byObjectId || new Map();
 
     const kkwByPositionId = new Map();
     if (positionIds.length) {
@@ -2519,7 +2537,17 @@ async function getVendoOperationalHeadersContext({
         warnings,
         warningLabel: "KKW",
     });
+    const currentKkwStatusesBundle = await resolveVendoStatuses(connection, accessToken, {
+        dataType: "KKW",
+        objectIds: kkwIds,
+        pageSize: Math.max(kkwIds.length * 4, 50),
+        maxPages: 10,
+        onlyCurrent: true,
+        warnings,
+        warningLabel: "aktywnych statusow KKW",
+    });
     const statusesByKkwId = kkwStatusesBundle.byObjectId || new Map();
+    const currentStatusesByKkwId = currentKkwStatusesBundle.byObjectId || new Map();
     if (Array.isArray(kkwStatusesBundle.dictionary) && kkwStatusesBundle.dictionary.length) {
         statusDictionary = [...statusDictionary, ...kkwStatusesBundle.dictionary];
     }
@@ -2532,12 +2560,17 @@ async function getVendoOperationalHeadersContext({
                 ...(statusesByPositionId.get(positionId) || []),
                 ...kkwRecords.flatMap((record) => statusesByKkwId.get(Number(record?.ID) || 0) || []),
             ];
+            const mergedCurrentStatuses = [
+                ...(currentStatusesByPositionId.get(positionId) || []),
+                ...kkwRecords.flatMap((record) => currentStatusesByKkwId.get(Number(record?.ID) || 0) || []),
+            ];
 
             return buildVendoOperationalHeaderContext({
                 position,
                 positionDetails: planningPositionById.get(positionId) || null,
                 planningOrder: planningOrderById.get(Number(position?.ZlecenieID) || 0) || null,
                 objectStatuses: mergedStatuses,
+                currentObjectStatuses: mergedCurrentStatuses,
                 statusDictionary,
                 kkwRecords,
                 generatedAt,
@@ -3715,6 +3748,7 @@ async function computeVendoOperationalHeaderSummaries({
                 includeTht: Boolean(effectiveScope?.includeTht),
                 draft: Boolean(context?.header?.statusFlags?.draft),
             },
+            isDraft: Boolean(context?.header?.isDraft),
             smdDone: Boolean(effectiveScope?.excludeSmd),
             thtDone: Boolean(effectiveScope?.excludeTht),
             includeInDemand: !Boolean(context?.header?.isClosed) && Boolean(effectiveScope?.hasDemandScope),
@@ -6014,8 +6048,18 @@ async function handleApiZapotrzebowanieVendoHeaderDetails(req, res) {
             warnings,
             warningLabel: `pozycji ZLP ${planPositionId}`,
         });
+        const currentPlanPositionStatusesBundle = await resolveVendoStatuses(connection, accessToken, {
+            dataType: "PlanZlecenia",
+            objectIds: [planPositionId],
+            pageSize: 20,
+            maxPages: 10,
+            onlyCurrent: true,
+            warnings,
+            warningLabel: `aktywnych statusow pozycji ZLP ${planPositionId}`,
+        });
         let statusDictionary = [...(planPositionStatusesBundle.dictionary || [])];
         let objectStatuses = [...(planPositionStatusesBundle.records || [])];
+        let currentObjectStatuses = [...(currentPlanPositionStatusesBundle.records || [])];
 
         const kkwRecords = await fetchAllCursorRecords(
             connection,
@@ -6037,11 +6081,23 @@ async function handleApiZapotrzebowanieVendoHeaderDetails(req, res) {
                 warnings,
                 warningLabel: `KKW pozycji ZLP ${planPositionId}`,
             });
+            const currentKkwStatusesBundle = await resolveVendoStatuses(connection, accessToken, {
+                dataType: "KKW",
+                objectIds: kkwIds,
+                pageSize: Math.max(kkwIds.length * 4, 20),
+                maxPages: 10,
+                onlyCurrent: true,
+                warnings,
+                warningLabel: `aktywnych statusow KKW pozycji ZLP ${planPositionId}`,
+            });
             if (Array.isArray(kkwStatusesBundle.dictionary) && kkwStatusesBundle.dictionary.length) {
                 statusDictionary = [...statusDictionary, ...kkwStatusesBundle.dictionary];
             }
             if (Array.isArray(kkwStatusesBundle.records) && kkwStatusesBundle.records.length) {
                 objectStatuses = [...objectStatuses, ...kkwStatusesBundle.records];
+            }
+            if (Array.isArray(currentKkwStatusesBundle.records) && currentKkwStatusesBundle.records.length) {
+                currentObjectStatuses = [...currentObjectStatuses, ...currentKkwStatusesBundle.records];
             }
         }
 
@@ -6110,6 +6166,7 @@ async function handleApiZapotrzebowanieVendoHeaderDetails(req, res) {
 
         const orderQty = getPositiveNumber(position?.Ilosc);
         const statusScope = getVendoStatusScope(objectStatuses, statusDictionary);
+        const currentStatusScope = getVendoStatusScope(currentObjectStatuses, statusDictionary);
         const stage = getVendoStageFromScope(
             statusScope,
             isVendoPlanPositionHardClosed(position, planningOrder)
@@ -6209,8 +6266,9 @@ async function handleApiZapotrzebowanieVendoHeaderDetails(req, res) {
                     includeSmd: statusScope.includeSmd,
                     includeTht: statusScope.includeTht,
                     app: statusScope.hasApp,
-                    draft: statusScope.hasDraft,
+                    draft: currentStatusScope.hasDraft,
                 },
+                isDraft: currentStatusScope.hasDraft,
                 orderQty,
                 quantityOnKkw: getPositiveNumber(position?.IloscNaKKW),
                 quantityDone: getPositiveNumber(position?.IloscWykonana),
