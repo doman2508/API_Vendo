@@ -5330,6 +5330,7 @@ async function handleApiMesOvenEvents(req, res) {
         const requestUrl = new URL(req.url, `http://${req.headers.host || "localhost"}`);
         const deviceId = requestUrl.searchParams.get("device_id") || requestUrl.searchParams.get("deviceId") || "";
         const batchId = requestUrl.searchParams.get("batch_id") || requestUrl.searchParams.get("batchId") || "";
+        const scope = requestUrl.searchParams.get("scope") || requestUrl.searchParams.get("view") || "raw";
         const rawUnassigned = requestUrl.searchParams.get("unassigned") || requestUrl.searchParams.get("unassigned_only") || "";
         const unassigned = ["1", "true", "yes", "on"].includes(String(rawUnassigned).trim().toLowerCase());
         const limit = requestUrl.searchParams.get("limit") || 50;
@@ -5337,7 +5338,7 @@ async function handleApiMesOvenEvents(req, res) {
 
         sendJson(res, 200, {
             storage: getMesStorageMeta(storageConfig.dbPath),
-            events: listOvenPulses(storageConfig.dbPath, { deviceId, batchId, unassigned, limit }),
+            events: listOvenPulses(storageConfig.dbPath, { deviceId, batchId, unassigned, limit, scope }),
         });
     } catch (error) {
         sendJson(res, 500, {

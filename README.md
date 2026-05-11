@@ -29,10 +29,22 @@ Dostepne widoki:
 - `/production-dashboard` - osobny modul dla produkcji oparty o ten sam backend.
 - `/zapotrzebowanie` - modul zakupowy oparty o Access, WMS i Vendo, rozwijany docelowo jako niezalezna aplikacja.
 
+## MCP Dla Produkcji
+
+Projekt zawiera osobny, read-only serwer MCP dla ChatGPT/klientow MCP:
+
+```powershell
+node .\mcp-production-server.js --no-auth
+```
+
+Domyslnie slucha na `http://127.0.0.1:3020` i wystawia tylko produkcje: KKW, zlecenia produkcyjne, koszty/wydajnosc, aktywna produkcje oraz MES pieca. Szczegoly: [docs/mcp-production.md](docs/mcp-production.md).
+Do ChatGPT web trzeba podac publiczny endpoint HTTPS `/mcp`, np. przez tunel lub reverse proxy.
+
 ## Dokumentacja
 
 - `docs/kosztykkw.md`
 - `docs/zapotrzebowanie-plan.md`
+- `docs/mcp-production.md`
 
 ## Konfiguracja
 
