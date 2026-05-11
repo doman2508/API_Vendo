@@ -4313,6 +4313,26 @@ body.mes-admin-page .mes-mini-pill {
     padding: 0 10px;
 }
 
+body.mes-admin-page .mes-scope-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+body.mes-admin-page .mes-scope-toggle-button {
+    min-height: 28px;
+    padding: 0 10px;
+    border-radius: 10px;
+    font-size: 12px;
+    line-height: 1;
+}
+
+body.mes-admin-page .mes-scope-toggle-button.is-active {
+    background: #0f766e;
+    border-color: #0f766e;
+    color: #fff;
+}
+
 body.mes-admin-page .mes-ops-main-grid {
     display: grid;
     grid-template-columns: minmax(0, 1fr);

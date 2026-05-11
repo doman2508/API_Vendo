@@ -8,6 +8,8 @@ const mesSelectedKkw = document.getElementById("mes-selected-kkw");
 const mesEventsBody = document.getElementById("mes-events-body");
 const mesEventsTitle = document.getElementById("mes-events-title");
 const mesEventsCount = document.getElementById("mes-events-count");
+const mesEventsScopeRawButton = document.getElementById("mes-events-scope-raw");
+const mesEventsScopeAttributedButton = document.getElementById("mes-events-scope-attributed");
 const mesStatus = document.getElementById("mes-status");
 const mesUpdatedAt = document.getElementById("mes-updated-at");
 const mesSelectedBatch = document.getElementById("mes-selected-batch");
@@ -44,6 +46,7 @@ let latestSummaryPayload = null;
 let latestBatchRows = [];
 let latestGroups = [];
 let selectedPulseIds = new Set();
+let selectedEventsScope = "raw";
 let drawerOpen = false;
 let drawerDismissed = false;
 
@@ -179,6 +182,27 @@ function getKkwNumber() {
 
 function shouldShowUnassignedEvents() {
     return Boolean(mesShowUnassignedInput?.checked);
+}
+
+function getSelectedEventsScope() {
+    return selectedEventsScope === "attributed" ? "attributed" : "raw";
+}
+
+function updateEventsScopeControls() {
+    const unassigned = shouldShowUnassignedEvents();
+    const scope = getSelectedEventsScope();
+
+    if (mesEventsScopeRawButton) {
+        mesEventsScopeRawButton.classList.toggle("is-active", unassigned || scope === "raw");
+        mesEventsScopeRawButton.disabled = unassigned;
+        mesEventsScopeRawButton.setAttribute("aria-pressed", unassigned || scope === "raw" ? "true" : "false");
+    }
+
+    if (mesEventsScopeAttributedButton) {
+        mesEventsScopeAttributedButton.classList.toggle("is-active", !unassigned && scope === "attributed");
+        mesEventsScopeAttributedButton.disabled = unassigned;
+        mesEventsScopeAttributedButton.setAttribute("aria-pressed", !unassigned && scope === "attributed" ? "true" : "false");
+    }
 }
 
 function getBatchTitle(batch) {
@@ -827,7 +851,9 @@ function renderEvents(payload) {
         mesEventsTitle.textContent = shouldShowUnassignedEvents()
             ? "3. Impulsy nieprzypisane"
             : selection.selectedBatch && selection.selectedGroup
-                ? `3. Impulsy przypisane do ${getEntryLabel(selection.selectedGroup, selection.selectedBatch)}`
+                ? getSelectedEventsScope() === "attributed"
+                    ? `3. Impulsy powiazane z ${getEntryLabel(selection.selectedGroup, selection.selectedBatch)}`
+                    : `3. Surowe impulsy dla ${getEntryLabel(selection.selectedGroup, selection.selectedBatch)}`
                 : "3. Impulsy dla wybranego wejscia";
     }
     if (!events.length) {
@@ -918,13 +944,15 @@ function updateStatusText(selection) {
 async function refreshEvents(selection = null) {
     const resolvedSelection = selection || renderFromState();
     const deviceId = encodeURIComponent(getDeviceId());
+    const scope = encodeURIComponent(getSelectedEventsScope());
 
     const events = shouldShowUnassignedEvents()
         ? await fetchJson(`/api/mes/oven/events?device_id=${deviceId}&unassigned=1&limit=100`)
         : resolvedSelection.selectedBatch
-            ? await fetchJson(`/api/mes/oven/events?batch_id=${encodeURIComponent(resolvedSelection.selectedBatch.id)}&scope=attributed&limit=100`)
+            ? await fetchJson(`/api/mes/oven/events?batch_id=${encodeURIComponent(resolvedSelection.selectedBatch.id)}&scope=${scope}&limit=100`)
             : { events: [] };
 
+    updateEventsScopeControls();
     renderEvents(events);
     updateContextBadges(resolvedSelection);
     updateStatusText(resolvedSelection);
@@ -1237,6 +1265,35 @@ if (mesShowUnassignedInput) {
     mesShowUnassignedInput.addEventListener("change", () => {
         selectedPulseIds = new Set();
         updateSelectedPulsesBadge();
+        updateEventsScopeControls();
+        void refreshEvents().catch((error) => {
+            mesStatus.textContent = error.message || "Blad pobierania MES.";
+        });
+    });
+}
+
+if (mesEventsScopeRawButton) {
+    mesEventsScopeRawButton.addEventListener("click", () => {
+        if (shouldShowUnassignedEvents()) {
+            return;
+        }
+
+        selectedEventsScope = "raw";
+        updateEventsScopeControls();
+        void refreshEvents().catch((error) => {
+            mesStatus.textContent = error.message || "Blad pobierania MES.";
+        });
+    });
+}
+
+if (mesEventsScopeAttributedButton) {
+    mesEventsScopeAttributedButton.addEventListener("click", () => {
+        if (shouldShowUnassignedEvents()) {
+            return;
+        }
+
+        selectedEventsScope = "attributed";
+        updateEventsScopeControls();
         void refreshEvents().catch((error) => {
             mesStatus.textContent = error.message || "Blad pobierania MES.";
         });
@@ -1317,6 +1374,7 @@ if (mesAdminDrawer) {
     applyAdminDrawerLayout(false);
 }
 updateSelectedPulsesBadge();
+updateEventsScopeControls();
 void loadMesData().catch((error) => {
     mesStatus.textContent = error.message || "Blad pobierania MES.";
 });
