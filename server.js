@@ -5521,7 +5521,10 @@ async function handleApiMesOvenBatchActive(req, res) {
         const storageConfig = getMesStorageConfig();
 
         sendJson(res, 200, {
-            batch: getActiveOvenBatch(storageConfig.dbPath, { deviceId }),
+            batch: getActiveOvenBatch(storageConfig.dbPath, {
+                deviceId,
+                currentSessionOnly: true,
+            }),
         });
     } catch (error) {
         sendJson(res, 500, {
