@@ -30,6 +30,7 @@ const {
     insertOvenPulse,
     listOvenBatches,
     listOvenPulses,
+    resetOpenOvenTransits,
     startOvenBatch,
     updateOvenBatchDetails,
     resolveProductPcsPerPanel,
@@ -5622,6 +5623,7 @@ async function handleApiMesOvenBatchDelete(req, res) {
         const result = deleteOvenBatch(storageConfig.dbPath, {
             batchId: body.batch_id || body.batchId || null,
             deletePulses,
+            scope: body.scope === "entry" ? "entry" : "kkw",
         });
 
         sendJson(res, 200, {
@@ -5659,14 +5661,19 @@ async function handleApiMesOvenEventsAssign(req, res) {
         const body = await readJsonBody(req);
         const storageConfig = getMesStorageConfig();
         const rawSuggested = body.suggested_unassigned ?? body.suggestedUnassigned ?? body.useSuggestedWindow;
+        const rawForceReassign = body.force_reassign ?? body.forceReassign ?? body.reassign;
         const suggestedUnassigned = rawSuggested === undefined
             ? false
             : ["1", "true", "yes", "on"].includes(String(rawSuggested).trim().toLowerCase());
+        const forceReassign = rawForceReassign === undefined
+            ? false
+            : ["1", "true", "yes", "on"].includes(String(rawForceReassign).trim().toLowerCase());
         const result = assignOvenPulsesToBatch(storageConfig.dbPath, {
             batchId: body.batch_id || body.batchId || null,
             pulseIds: body.pulse_ids || body.pulseIds || body.ids || [],
             suggestedUnassigned,
             maxLookbackMinutes: body.max_lookback_minutes || body.maxLookbackMinutes || 30,
+            forceReassign,
         });
         const suggestion = getBatchUnassignedSuggestion(storageConfig.dbPath, {
             batchId: body.batch_id || body.batchId || null,
@@ -5682,6 +5689,27 @@ async function handleApiMesOvenEventsAssign(req, res) {
     } catch (error) {
         sendJson(res, 500, {
             error: error.message || "Nie udalo sie przypisac impulsow MES.",
+        });
+    }
+}
+
+async function handleApiMesOvenTransitsReset(req, res) {
+    try {
+        const body = await readJsonBody(req);
+        const storageConfig = getMesStorageConfig();
+        const result = resetOpenOvenTransits(storageConfig.dbPath, {
+            deviceId: body.device_id || body.deviceId || "reflow_1",
+            operator: body.operator || body.operatorName || "",
+            reason: body.reason || body.resetReason || "manual_reset",
+        });
+
+        sendJson(res, 200, {
+            status: "ok",
+            ...result,
+        });
+    } catch (error) {
+        sendJson(res, 500, {
+            error: error.message || "Nie udalo sie zresetowac otwartych przejsc pieca.",
         });
     }
 }
@@ -9069,6 +9097,11 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && req.url === "/api/mes/oven/events/assign") {
         await handleApiMesOvenEventsAssign(req, res);
+        return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/mes/oven/transits/reset") {
+        await handleApiMesOvenTransitsReset(req, res);
         return;
     }
 
