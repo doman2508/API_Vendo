@@ -827,7 +827,7 @@ function renderEvents(payload) {
         mesEventsTitle.textContent = shouldShowUnassignedEvents()
             ? "3. Impulsy nieprzypisane"
             : selection.selectedBatch && selection.selectedGroup
-                ? `3. Impulsy dla ${getEntryLabel(selection.selectedGroup, selection.selectedBatch)}`
+                ? `3. Impulsy przypisane do ${getEntryLabel(selection.selectedGroup, selection.selectedBatch)}`
                 : "3. Impulsy dla wybranego wejscia";
     }
     if (!events.length) {
@@ -922,7 +922,7 @@ async function refreshEvents(selection = null) {
     const events = shouldShowUnassignedEvents()
         ? await fetchJson(`/api/mes/oven/events?device_id=${deviceId}&unassigned=1&limit=100`)
         : resolvedSelection.selectedBatch
-            ? await fetchJson(`/api/mes/oven/events?batch_id=${encodeURIComponent(resolvedSelection.selectedBatch.id)}&limit=100`)
+            ? await fetchJson(`/api/mes/oven/events?batch_id=${encodeURIComponent(resolvedSelection.selectedBatch.id)}&scope=attributed&limit=100`)
             : { events: [] };
 
     renderEvents(events);
