@@ -6,6 +6,7 @@ const scanSubmitButton = scanForm?.querySelector('button[type="submit"]') || nul
 const boardSideInputs = Array.from(document.querySelectorAll('input[name="boardSide"]'));
 const messageBox = document.getElementById("operator-message");
 const activeBatchPanel = document.getElementById("operator-active-batch");
+const resetTransitsButton = document.getElementById("operator-reset-transits");
 const endBatchButton = document.getElementById("operator-end-batch");
 const refreshState = document.getElementById("operator-refresh-state");
 
@@ -181,6 +182,23 @@ function setMessage(text, type = "info") {
     messageBox.className = `note mes-message-${type}`;
 }
 
+function getOpenTransitCount(summary = currentSummary) {
+    const count = Number(summary?.inOvenCount);
+    return Number.isFinite(count) && count > 0 ? count : 0;
+}
+
+function updateResetTransitsButton(summary = currentSummary) {
+    if (!resetTransitsButton) {
+        return;
+    }
+
+    const openTransitCount = getOpenTransitCount(summary);
+    resetTransitsButton.disabled = openTransitCount <= 0;
+    resetTransitsButton.textContent = openTransitCount > 0
+        ? `Reset pieca (${formatNumber(openTransitCount)})`
+        : "Reset pieca";
+}
+
 function focusPcsPerPanelInput() {
     const input = document.getElementById("operator-pcs-per-panel");
     if (!input) {
@@ -279,6 +297,7 @@ function renderActiveBatch(summary) {
     const pendingAssignment = summary?.pendingAssignment || null;
     const status = summary?.status || "-";
     syncOperatorLayout(summary);
+    updateResetTransitsButton(summary);
 
     if (batch?.boardSide) {
         setSelectedBoardSide(batch.boardSide);
@@ -448,11 +467,66 @@ async function loadOperatorState() {
     }
 }
 
+async function resetOpenTransits({ requireConfirm = true, silentMessage = false, reason = "operator_manual_reset" } = {}) {
+    const openTransitCount = getOpenTransitCount();
+    if (openTransitCount <= 0) {
+        if (!silentMessage) {
+            setMessage("Brak otwartych przejsc do resetu.", "info");
+        }
+        return null;
+    }
+
+    if (requireConfirm) {
+        const confirmed = window.confirm(
+            `MES widzi ${formatNumber(openTransitCount)} otwartych przejsc w piecu. `
+            + "Wykonaj reset tylko wtedy, gdy piec jest fizycznie pusty. Czy kontynuowac?"
+        );
+        if (!confirmed) {
+            return null;
+        }
+    }
+
+    const response = await fetchJson("/api/mes/oven/transits/reset", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            device_id: operatorDeviceId,
+            reason,
+        }),
+    });
+
+    await loadOperatorState();
+
+    if (!silentMessage) {
+        setMessage(`Zresetowano ${formatNumber(response.resetCount || 0)} otwartych przejsc pieca.`, "warning");
+    }
+
+    return response;
+}
+
 async function startBatch(scanValue) {
     const scan = String(scanValue || "").trim();
     if (!scan) {
         setMessage("Zeskanuj albo wpisz numer KKW.", "warning");
         return;
+    }
+
+    const openTransitCount = getOpenTransitCount();
+    if (openTransitCount > 0) {
+        const shouldReset = window.confirm(
+            `MES widzi jeszcze ${formatNumber(openTransitCount)} otwartych przejsc z poprzednich KKW. `
+            + `Jesli piec jest fizycznie pusty, chcesz zrobic reset pieca logicznego przed startem ${scan}?`
+        );
+
+        if (shouldReset) {
+            await resetOpenTransits({
+                requireConfirm: false,
+                silentMessage: true,
+                reason: "operator_start_reset",
+            });
+        }
     }
 
     const data = await fetchJson("/api/mes/oven/batch/start", {
@@ -606,6 +680,14 @@ if (endBatchButton) {
     endBatchButton.addEventListener("click", () => {
         void endBatch().catch((error) => {
             setMessage(error.message || "Nie udalo sie zakonczyc partii.", "error");
+        });
+    });
+}
+
+if (resetTransitsButton) {
+    resetTransitsButton.addEventListener("click", () => {
+        void resetOpenTransits().catch((error) => {
+            setMessage(error.message || "Nie udalo sie zresetowac pieca logicznego.", "error");
         });
     });
 }
