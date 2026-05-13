@@ -10,6 +10,7 @@ const mesEventsTitle = document.getElementById("mes-events-title");
 const mesEventsCount = document.getElementById("mes-events-count");
 const mesEventsScopeRawButton = document.getElementById("mes-events-scope-raw");
 const mesEventsScopeAttributedButton = document.getElementById("mes-events-scope-attributed");
+const mesEventsToggleDiagnosticsButton = document.getElementById("mes-events-toggle-diagnostics");
 const mesStatus = document.getElementById("mes-status");
 const mesUpdatedAt = document.getElementById("mes-updated-at");
 const mesSelectedBatch = document.getElementById("mes-selected-batch");
@@ -39,6 +40,18 @@ const mesSelectedPulses = document.getElementById("mes-selected-pulses");
 const mesEventsSelectionFooter = document.getElementById("mes-events-selection-footer");
 const mesEventsRange = document.getElementById("mes-events-range");
 const mesShowUnassignedInput = document.getElementById("mes-show-unassigned");
+const mesOpenInvestigationButton = document.getElementById("mes-open-investigation");
+const mesInvestigationDrawer = document.getElementById("mes-investigation-drawer");
+const mesInvestigationOverlay = document.getElementById("mes-investigation-overlay");
+const mesInvestigationPanel = mesInvestigationDrawer?.querySelector(".mes-investigation-panel") || null;
+const mesInvestigationTitle = document.getElementById("mes-investigation-title");
+const mesInvestigationSubtitle = document.getElementById("mes-investigation-subtitle");
+const mesInvestigationSummary = document.getElementById("mes-investigation-summary");
+const mesInvestigationRefreshButton = document.getElementById("mes-investigation-refresh");
+const mesInvestigationCloseButton = document.getElementById("mes-investigation-close");
+const mesTransitsTitle = document.getElementById("mes-transits-title");
+const mesTransitsMeta = document.getElementById("mes-transits-meta");
+const mesTransitsBody = document.getElementById("mes-transits-body");
 
 let mesRefreshTimer = null;
 let selectedBatchId = null;
@@ -47,10 +60,12 @@ let latestSummaryPayload = null;
 let latestBatchRows = [];
 let latestGroups = [];
 let selectedPulseIds = new Set();
-let selectedEventsScope = "raw";
+let selectedEventsScope = "attributed";
+let diagnosticsMode = false;
 let adminEditScope = "kkw";
 let drawerOpen = false;
 let drawerDismissed = false;
+let investigationOpen = false;
 
 const numberFormatter = new Intl.NumberFormat("pl-PL", {
     minimumFractionDigits: 0,
@@ -187,23 +202,36 @@ function shouldShowUnassignedEvents() {
 }
 
 function getSelectedEventsScope() {
-    return selectedEventsScope === "attributed" ? "attributed" : "raw";
+    return selectedEventsScope === "raw" ? "raw" : "attributed";
 }
 
 function updateEventsScopeControls() {
     const unassigned = shouldShowUnassignedEvents();
     const scope = getSelectedEventsScope();
+    const diagnosticsVisible = diagnosticsMode && !unassigned;
+
+    if (!diagnosticsVisible && scope === "raw") {
+        selectedEventsScope = "attributed";
+    }
 
     if (mesEventsScopeRawButton) {
-        mesEventsScopeRawButton.classList.toggle("is-active", unassigned || scope === "raw");
-        mesEventsScopeRawButton.disabled = unassigned;
-        mesEventsScopeRawButton.setAttribute("aria-pressed", unassigned || scope === "raw" ? "true" : "false");
+        mesEventsScopeRawButton.classList.toggle("hidden", !diagnosticsVisible);
+        mesEventsScopeRawButton.classList.toggle("is-active", diagnosticsVisible && scope === "raw");
+        mesEventsScopeRawButton.disabled = !diagnosticsVisible;
+        mesEventsScopeRawButton.setAttribute("aria-pressed", diagnosticsVisible && scope === "raw" ? "true" : "false");
     }
 
     if (mesEventsScopeAttributedButton) {
-        mesEventsScopeAttributedButton.classList.toggle("is-active", !unassigned && scope === "attributed");
+        mesEventsScopeAttributedButton.classList.toggle("is-active", !unassigned && getSelectedEventsScope() === "attributed");
         mesEventsScopeAttributedButton.disabled = unassigned;
-        mesEventsScopeAttributedButton.setAttribute("aria-pressed", !unassigned && scope === "attributed" ? "true" : "false");
+        mesEventsScopeAttributedButton.setAttribute("aria-pressed", !unassigned && getSelectedEventsScope() === "attributed" ? "true" : "false");
+    }
+
+    if (mesEventsToggleDiagnosticsButton) {
+        mesEventsToggleDiagnosticsButton.classList.toggle("is-active", diagnosticsVisible);
+        mesEventsToggleDiagnosticsButton.disabled = unassigned;
+        mesEventsToggleDiagnosticsButton.textContent = diagnosticsVisible ? "Ukryj diagnostyke" : "Diagnostyka";
+        mesEventsToggleDiagnosticsButton.setAttribute("aria-pressed", diagnosticsVisible ? "true" : "false");
     }
 }
 
@@ -374,8 +402,30 @@ function closeAdminDrawer({ dismissed = true } = {}) {
     applyAdminDrawerLayout(false);
 }
 
-function scrollToEventLog() {
-    const target = mesEventsBody?.closest(".mes-events-card");
+function openInvestigationDrawer() {
+    if (!mesInvestigationDrawer || !selectedBatchId) {
+        return;
+    }
+
+    investigationOpen = true;
+    mesInvestigationDrawer.hidden = false;
+    mesInvestigationDrawer.classList.add("open");
+    mesInvestigationDrawer.setAttribute("aria-hidden", "false");
+}
+
+function closeInvestigationDrawer() {
+    if (!mesInvestigationDrawer) {
+        return;
+    }
+
+    investigationOpen = false;
+    mesInvestigationDrawer.classList.remove("open");
+    mesInvestigationDrawer.setAttribute("aria-hidden", "true");
+    mesInvestigationDrawer.hidden = true;
+}
+
+function scrollToEntries() {
+    const target = mesEntriesBody?.closest(".mes-detail-card");
     if (!target) {
         return;
     }
@@ -530,6 +580,191 @@ function getEntryLabel(group, batch) {
     return selectedEntry ? `Wejscie #${selectedEntry.entryOrdinal}` : "-";
 }
 
+function getInvestigationSelection(selection = null) {
+    const resolvedSelection = selection || resolveSelection(latestGroups);
+    return {
+        group: resolvedSelection.selectedGroup || null,
+        batch: resolvedSelection.selectedBatch || null,
+        entryLabel: resolvedSelection.selectedGroup && resolvedSelection.selectedBatch
+            ? getEntryLabel(resolvedSelection.selectedGroup, resolvedSelection.selectedBatch)
+            : "Wejscie",
+    };
+}
+
+function classifyTransitForBatch(transit, batchId) {
+    if (!transit) {
+        return {
+            label: "Brak danych",
+            tone: "neutral",
+            note: "-",
+        };
+    }
+
+    if (transit.status === "reset") {
+        return {
+            label: "Reset",
+            tone: "neutral",
+            note: "Przejscie zostalo odciete resetem pieca.",
+        };
+    }
+
+    if (transit.status === "manual_missing_out") {
+        return {
+            label: "Recznie domkniete",
+            tone: "warning",
+            note: "Brak sygnalu OUT; wyjscie zaliczono recznie po decyzji admina.",
+        };
+    }
+
+    if (transit.pulseInId && transit.pulseOutId) {
+        const reassignedOutNote = Number(transit.batchIdOut) > 0 && Number(transit.batchIdOut) !== Number(batchId)
+            ? `OUT zapisany przy batch #${transit.batchIdOut}.`
+            : "IN i OUT zostaly poprawnie sparowane.";
+        return {
+            label: "Sparowane",
+            tone: "good",
+            note: reassignedOutNote,
+        };
+    }
+
+    if (transit.pulseInId && !transit.pulseOutId) {
+        return {
+            label: "Brak OUT",
+            tone: "warning",
+            note: "Wejscie czeka jeszcze na odpowiadajace wyjscie.",
+        };
+    }
+
+    if (!transit.pulseInId && transit.pulseOutId) {
+        return {
+            label: "Orphan OUT",
+            tone: "warning",
+            note: "Wyjscie nie ma sparowanego wejscia dla tego wejscia.",
+        };
+    }
+
+    return {
+        label: "Nieznane",
+        tone: "neutral",
+        note: "Transit nie ma kompletnej pary in/out.",
+    };
+}
+
+function renderInvestigationSummary(payload, selection = null) {
+    if (!mesInvestigationSummary) {
+        return;
+    }
+
+    const resolvedSelection = getInvestigationSelection(selection);
+    const stats = payload?.stats || {};
+    const batch = payload?.batch || resolvedSelection.batch || null;
+
+    if (mesInvestigationTitle) {
+        mesInvestigationTitle.textContent = batch
+            ? `Sledztwo ${resolvedSelection.entryLabel}`
+            : "Sledztwo wejscia";
+    }
+
+    if (mesInvestigationSubtitle) {
+        mesInvestigationSubtitle.textContent = batch && resolvedSelection.group
+            ? `${resolvedSelection.group.kkwNumber} / ${getBoardSideLabel(resolvedSelection.group.boardSide)} | ${getBatchTitle(batch)}`
+            : "Wybierz wejscie, aby przeanalizowac pary in/out i impulsy.";
+    }
+
+    if (!batch) {
+        mesInvestigationSummary.innerHTML = "";
+        mesInvestigationSummary.classList.add("hidden");
+        return;
+    }
+
+    const items = [
+        ["Wejscie", resolvedSelection.entryLabel],
+        ["Wejscia", formatPanelCount(stats.inputCount ?? batch.batchInputCount ?? 0)],
+        ["Wyjscia", formatPanelCount(stats.outputCount ?? batch.batchOutputCount ?? 0)],
+        ["Sparowane", formatNumber(stats.pairedCount ?? 0)],
+        ["Brak OUT", formatNumber(stats.missingOutCount ?? 0)],
+        ["Reczne", formatNumber(stats.manualCloseCount ?? 0)],
+        ["Orphan OUT", formatNumber(stats.orphanOutCount ?? 0)],
+        ["Reset", formatNumber(stats.resetCount ?? 0)],
+    ];
+
+    mesInvestigationSummary.innerHTML = items.map(([label, value]) => `
+        <span class="mes-selection-pill">
+            <small>${escapeHtml(label)}</small>
+            <strong>${escapeHtml(value)}</strong>
+        </span>
+    `).join("");
+    mesInvestigationSummary.classList.remove("hidden");
+}
+
+function renderTransits(payload, selection = null) {
+    const resolvedSelection = getInvestigationSelection(selection);
+    const batch = payload?.batch || resolvedSelection.batch || null;
+    const transits = Array.isArray(payload?.transits) ? payload.transits : [];
+
+    if (mesTransitsTitle) {
+        mesTransitsTitle.textContent = batch
+            ? `Pary in/out dla ${resolvedSelection.entryLabel}`
+            : "Pary in/out dla wejscia";
+    }
+
+    if (mesTransitsMeta) {
+        mesTransitsMeta.textContent = batch && resolvedSelection.group
+            ? `${resolvedSelection.group.kkwNumber} / ${getBoardSideLabel(resolvedSelection.group.boardSide)} | ${getBatchTitle(batch)}`
+            : "Wybierz wejscie, aby przeanalizowac pary in/out.";
+    }
+
+    if (!mesTransitsBody) {
+        return;
+    }
+
+    if (!batch) {
+        mesTransitsBody.innerHTML = `<tr><td colspan="7">Wybierz wejscie, aby zobaczyc pary in/out.</td></tr>`;
+        return;
+    }
+
+    if (!payload) {
+        mesTransitsBody.innerHTML = `<tr><td colspan="7">Ladowanie par in/out dla ${escapeHtml(resolvedSelection.entryLabel)}...</td></tr>`;
+        return;
+    }
+
+    if (!transits.length) {
+        mesTransitsBody.innerHTML = `<tr><td colspan="7">Brak transitow dla ${escapeHtml(resolvedSelection.entryLabel)}.</td></tr>`;
+        return;
+    }
+
+    mesTransitsBody.innerHTML = transits.map((transit, index) => {
+        const status = classifyTransitForBatch(transit, batch.id);
+        const canManualClose = transit.pulseInId
+            && !transit.pulseOutId
+            && ["open", "reset"].includes(String(transit.status || "").trim().toLowerCase());
+        return `
+            <tr>
+                <td><strong>${transits.length - index}</strong></td>
+                <td>${formatDateTime(transit.enteredAt)}</td>
+                <td>${formatDateTime(transit.exitedAt)}</td>
+                <td>${formatDurationSeconds(transit.durationSeconds)}</td>
+                <td><span class="phase-badge ${status.tone}">${escapeHtml(status.label)}</span></td>
+                <td>${escapeHtml(status.note)}</td>
+                <td>
+                    ${canManualClose
+                        ? `<button class="ghost mes-icon-button" type="button" data-manual-close-transit-id="${transit.id}">${transit.status === "reset" ? "Odzyskaj recznie" : "Zamknij recznie"}</button>`
+                        : `<span class="mes-card-meta">-</span>`}
+                </td>
+            </tr>
+        `;
+    }).join("");
+
+    mesTransitsBody.querySelectorAll("[data-manual-close-transit-id]").forEach((button) => {
+        button.addEventListener("click", () => {
+            const transitId = Number(button.dataset.manualCloseTransitId);
+            void manuallyCloseSelectedTransit(transitId).catch((error) => {
+                setAdminStatus(error.message || "Nie udalo sie recznie domknac brakujacego OUT.", "error");
+            });
+        });
+    });
+}
+
 function updateSelectedPulsesBadge() {
     if (!mesSelectedPulses) {
         return;
@@ -540,7 +775,7 @@ function updateSelectedPulsesBadge() {
     if (mesEventsSelectionFooter) {
         mesEventsSelectionFooter.textContent = `Zaznaczonych: ${count}`;
     }
-    const hasSelectedBatch = Boolean(mesAdminForm?.batchId?.value || selectedBatchId);
+    const hasSelectedBatch = Boolean(selectedBatchId);
     const canAssign = count > 0 && hasSelectedBatch;
 
     if (mesDeletePulsesButton) {
@@ -549,7 +784,7 @@ function updateSelectedPulsesBadge() {
 
     if (mesAssignPulsesButton) {
         mesAssignPulsesButton.disabled = !canAssign;
-        mesAssignPulsesButton.textContent = shouldShowUnassignedEvents() ? "Przypisz" : "Przepnij";
+        mesAssignPulsesButton.textContent = shouldShowUnassignedEvents() ? "Przypisz do wejscia" : "Przepnij do wejscia";
     }
 }
 
@@ -712,7 +947,7 @@ function updateContextBadges(selection) {
 
     if (mesSelectedEntry) {
         mesSelectedEntry.textContent = shouldShowUnassignedEvents()
-            ? "Nieprzypisane impulsy"
+            ? "Impulsy do wyjasnienia"
             : selection.selectedBatch && selection.selectedGroup
                 ? getEntryLabel(selection.selectedGroup, selection.selectedBatch)
                 : "Wybierz wejscie";
@@ -833,6 +1068,9 @@ function renderEntries(group, selectedBatch) {
             mesSelectedKkw.innerHTML = "";
             mesSelectedKkw.classList.add("hidden");
         }
+        if (mesOpenInvestigationButton) {
+            mesOpenInvestigationButton.disabled = true;
+        }
         mesEntriesBody.innerHTML = `<tr><td colspan="13">Wybierz KKW z tabeli powyzej.</td></tr>`;
         return;
     }
@@ -847,7 +1085,11 @@ function renderEntries(group, selectedBatch) {
     });
 
     mesEntriesTitle.textContent = `2. Wejscia dla KKW ${group.kkwNumber}`;
-    mesEntriesMeta.textContent = `${getBoardSideLabel(group.boardSide)} | ${getBatchTitle(representative)} | ${formatNumber(group.entryCount)} wejscia | Krok 3: kliknij wejscie, aby po prawej zobaczyc impulsy`;
+    mesEntriesMeta.textContent = `${getBoardSideLabel(group.boardSide)} | ${getBatchTitle(representative)} | ${formatNumber(group.entryCount)} wejscia | Krok 3: kliknij wejscie, a sledztwo otworz osobno`;
+
+    if (mesOpenInvestigationButton) {
+        mesOpenInvestigationButton.disabled = !selectedBatch;
+    }
 
     if (mesSelectedKkw) {
         const items = [
@@ -919,7 +1161,7 @@ function renderEntries(group, selectedBatch) {
 
 function renderEvents(payload) {
     const events = Array.isArray(payload?.events) ? payload.events : [];
-    const selection = resolveSelection(latestGroups);
+    const selection = getInvestigationSelection();
     if (mesEventsCount) {
         mesEventsCount.textContent = String(events.length);
     }
@@ -928,15 +1170,15 @@ function renderEvents(payload) {
     }
     if (mesEventsTitle) {
         mesEventsTitle.textContent = shouldShowUnassignedEvents()
-            ? "3. Impulsy nieprzypisane"
-            : selection.selectedBatch && selection.selectedGroup
+            ? "Diagnostyka: impulsy do wyjasnienia"
+            : selection.batch && selection.group
                 ? getSelectedEventsScope() === "attributed"
-                    ? `3. Impulsy powiazane z ${getEntryLabel(selection.selectedGroup, selection.selectedBatch)}`
-                    : `3. Surowe impulsy dla ${getEntryLabel(selection.selectedGroup, selection.selectedBatch)}`
-                : "3. Impulsy dla wybranego wejscia";
+                    ? `Impulsy zliczone do ${selection.entryLabel}`
+                    : `Surowe impulsy dla ${selection.entryLabel}`
+                : "Impulsy dla wybranego wejscia";
     }
     if (!events.length) {
-        mesEventsBody.innerHTML = `<tr><td colspan="6">${shouldShowUnassignedEvents() ? "Brak nieprzypisanych impulsow dla wybranego device." : "Wybierz wejscie z tabeli po lewej, aby zobaczyc impulsy."}</td></tr>`;
+        mesEventsBody.innerHTML = `<tr><td colspan="6">${shouldShowUnassignedEvents() ? "Brak impulsow do wyjasnienia dla wybranego device." : "Brak impulsow dla wybranego wejscia w tym zakresie diagnostycznym."}</td></tr>`;
         selectedPulseIds = new Set();
         updateSelectedPulsesBadge();
         return;
@@ -996,20 +1238,22 @@ function renderFromState() {
     renderAdminPreview(selection.selectedGroup, selection.selectedBatch);
     updateContextBadges(selection);
 
+    if (mesOpenInvestigationButton) {
+        mesOpenInvestigationButton.disabled = !selection.selectedBatch;
+    }
+
     if (!selection.selectedBatch && drawerOpen) {
         closeAdminDrawer({ dismissed: false });
+    }
+
+    if (!selection.selectedBatch && investigationOpen) {
+        closeInvestigationDrawer();
     }
 
     return selection;
 }
 
 function updateStatusText(selection) {
-    const deviceId = getDeviceId();
-    if (shouldShowUnassignedEvents()) {
-        mesStatus.textContent = `Pokazuje nieprzypisane impulsy dla device ${deviceId}.`;
-        return;
-    }
-
     if (!selection.selectedBatch || !selection.selectedGroup) {
         mesStatus.textContent = "Brak KKW dla wybranego filtra.";
         return;
@@ -1037,6 +1281,41 @@ async function refreshEvents(selection = null) {
     updateStatusText(resolvedSelection);
 }
 
+async function refreshInvestigation(selection = null) {
+    const resolvedSelection = selection || renderFromState();
+    const hasSelectedBatch = Boolean(resolvedSelection.selectedBatch?.id);
+
+    updateEventsScopeControls();
+    renderInvestigationSummary(null, resolvedSelection);
+    renderTransits(null, resolvedSelection);
+
+    if (!hasSelectedBatch) {
+        renderEvents({ events: [] });
+        updateContextBadges(resolvedSelection);
+        updateStatusText(resolvedSelection);
+        return;
+    }
+
+    const [transitsPayload, eventsPayload] = await Promise.all([
+        fetchJson(`/api/mes/oven/transits?batch_id=${encodeURIComponent(resolvedSelection.selectedBatch.id)}&limit=200`),
+        (async () => {
+            const deviceId = encodeURIComponent(getDeviceId());
+            const scope = encodeURIComponent(getSelectedEventsScope());
+            if (shouldShowUnassignedEvents()) {
+                return fetchJson(`/api/mes/oven/events?device_id=${deviceId}&unassigned=1&limit=100`);
+            }
+
+            return fetchJson(`/api/mes/oven/events?batch_id=${encodeURIComponent(resolvedSelection.selectedBatch.id)}&scope=${scope}&limit=100`);
+        })(),
+    ]);
+
+    renderInvestigationSummary(transitsPayload, resolvedSelection);
+    renderTransits(transitsPayload, resolvedSelection);
+    renderEvents(eventsPayload);
+    updateContextBadges(resolvedSelection);
+    updateStatusText(resolvedSelection);
+}
+
 async function selectGroup(groupKey) {
     selectedGroupKey = groupKey;
     const group = latestGroups.find((item) => item.key === groupKey) || null;
@@ -1044,7 +1323,12 @@ async function selectGroup(groupKey) {
     selectedBatchId = fallbackEntry?.id || null;
 
     const selection = renderFromState();
-    await refreshEvents(selection);
+    if (investigationOpen) {
+        await refreshInvestigation(selection);
+        return;
+    }
+
+    updateStatusText(selection);
 }
 
 async function toggleGroup(groupKey) {
@@ -1072,10 +1356,14 @@ async function selectBatch(
         openAdminDrawer();
     }
 
-    await refreshEvents(selection);
+    if (investigationOpen) {
+        await refreshInvestigation(selection);
+    } else {
+        updateStatusText(selection);
+    }
 
     if (shouldScrollToEvents) {
-        scrollToEventLog();
+        scrollToEntries();
     }
 }
 
@@ -1100,7 +1388,11 @@ async function loadMesData({ keepSelectedBatch = false } = {}) {
 
     renderSummary(summaryPayload);
     const selection = renderFromState();
-    await refreshEvents(selection);
+    if (investigationOpen) {
+        await refreshInvestigation(selection);
+    } else {
+        updateStatusText(selection);
+    }
 
     const now = new Date();
     mesUpdatedAt.textContent = `Aktualizacja: ${formatDateTime(now.toISOString())}`;
@@ -1300,7 +1592,39 @@ async function deleteSelectedPulses() {
     selectedPulseIds = new Set();
     updateSelectedPulsesBadge();
     setAdminStatus(`Usunieto ${formatNumber(response.deleted || 0)} impulsow MES.`, "warning");
-    await refreshEvents();
+    await loadMesData({ keepSelectedBatch: true });
+}
+
+async function manuallyCloseSelectedTransit(transitId) {
+    if (!Number.isInteger(Number(transitId)) || Number(transitId) <= 0) {
+        throw new Error("Brakuje ID przejscia do recznego domkniecia.");
+    }
+
+    const selection = getInvestigationSelection();
+    const entryLabel = selection.group && selection.batch
+        ? `${selection.entryLabel} / ${selection.group.kkwNumber}`
+        : `przejscie #${transitId}`;
+    const confirmed = window.confirm(
+        `Domknac recznie brakujacy OUT dla ${entryLabel}? `
+        + "Ta operacja zaliczy panel jako wyjscie, ale pozostawi slad o utracie sygnalu."
+    );
+    if (!confirmed) {
+        return;
+    }
+
+    await fetchJson("/api/mes/oven/transits/manual-close", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            transit_id: transitId,
+            reason: "missing_out_manual",
+        }),
+    });
+
+    setAdminStatus(`Recznie domknieto brakujacy OUT dla ${entryLabel}.`, "warning");
+    await loadMesData({ keepSelectedBatch: true });
 }
 
 async function assignSelectedPulsesToBatch() {
@@ -1427,25 +1751,33 @@ if (mesAssignPulsesButton) {
 if (mesShowUnassignedInput) {
     mesShowUnassignedInput.addEventListener("change", () => {
         selectedPulseIds = new Set();
+        if (shouldShowUnassignedEvents()) {
+            diagnosticsMode = false;
+            selectedEventsScope = "attributed";
+        }
         updateSelectedPulsesBadge();
         updateEventsScopeControls();
-        void refreshEvents().catch((error) => {
-            mesStatus.textContent = error.message || "Blad pobierania MES.";
-        });
+        if (investigationOpen) {
+            void refreshInvestigation().catch((error) => {
+                mesStatus.textContent = error.message || "Blad pobierania sledztwa MES.";
+            });
+        }
     });
 }
 
 if (mesEventsScopeRawButton) {
     mesEventsScopeRawButton.addEventListener("click", () => {
-        if (shouldShowUnassignedEvents()) {
+        if (shouldShowUnassignedEvents() || !diagnosticsMode) {
             return;
         }
 
         selectedEventsScope = "raw";
         updateEventsScopeControls();
-        void refreshEvents().catch((error) => {
-            mesStatus.textContent = error.message || "Blad pobierania MES.";
-        });
+        if (investigationOpen) {
+            void refreshInvestigation().catch((error) => {
+                mesStatus.textContent = error.message || "Blad pobierania sledztwa MES.";
+            });
+        }
     });
 }
 
@@ -1457,9 +1789,28 @@ if (mesEventsScopeAttributedButton) {
 
         selectedEventsScope = "attributed";
         updateEventsScopeControls();
-        void refreshEvents().catch((error) => {
-            mesStatus.textContent = error.message || "Blad pobierania MES.";
-        });
+        if (investigationOpen) {
+            void refreshInvestigation().catch((error) => {
+                mesStatus.textContent = error.message || "Blad pobierania sledztwa MES.";
+            });
+        }
+    });
+}
+
+if (mesEventsToggleDiagnosticsButton) {
+    mesEventsToggleDiagnosticsButton.addEventListener("click", () => {
+        if (shouldShowUnassignedEvents()) {
+            return;
+        }
+
+        diagnosticsMode = !diagnosticsMode;
+        selectedEventsScope = diagnosticsMode ? "raw" : "attributed";
+        updateEventsScopeControls();
+        if (investigationOpen) {
+            void refreshInvestigation().catch((error) => {
+                mesStatus.textContent = error.message || "Blad pobierania sledztwa MES.";
+            });
+        }
     });
 }
 
@@ -1498,8 +1849,37 @@ if (mesResetTransitsButton) {
 
 if (mesEventsRefreshButton) {
     mesEventsRefreshButton.addEventListener("click", () => {
-        void refreshEvents().catch((error) => {
-            mesStatus.textContent = error.message || "Blad pobierania MES.";
+        void refreshInvestigation().catch((error) => {
+            mesStatus.textContent = error.message || "Blad pobierania sledztwa MES.";
+        });
+    });
+}
+
+if (mesOpenInvestigationButton) {
+    mesOpenInvestigationButton.addEventListener("click", () => {
+        if (!selectedBatchId) {
+            return;
+        }
+
+        openInvestigationDrawer();
+        void refreshInvestigation().catch((error) => {
+            mesStatus.textContent = error.message || "Blad pobierania sledztwa MES.";
+        });
+    });
+}
+
+if (mesInvestigationOverlay) {
+    mesInvestigationOverlay.addEventListener("click", () => closeInvestigationDrawer());
+}
+
+if (mesInvestigationCloseButton) {
+    mesInvestigationCloseButton.addEventListener("click", () => closeInvestigationDrawer());
+}
+
+if (mesInvestigationRefreshButton) {
+    mesInvestigationRefreshButton.addEventListener("click", () => {
+        void refreshInvestigation().catch((error) => {
+            mesStatus.textContent = error.message || "Blad pobierania sledztwa MES.";
         });
     });
 }
@@ -1525,6 +1905,11 @@ if (mesAdminCloseButton) {
 }
 
 document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && investigationOpen) {
+        closeInvestigationDrawer();
+        return;
+    }
+
     if (event.key === "Escape" && drawerOpen) {
         closeAdminDrawer();
     }
@@ -1543,6 +1928,10 @@ setAdminFormDisabled(true);
 if (mesAdminDrawer) {
     mesAdminDrawer.hidden = true;
     applyAdminDrawerLayout(false);
+}
+if (mesInvestigationDrawer) {
+    mesInvestigationDrawer.hidden = true;
+    mesInvestigationDrawer.setAttribute("aria-hidden", "true");
 }
 updateSelectedPulsesBadge();
 updateEventsScopeControls();

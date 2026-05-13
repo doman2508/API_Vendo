@@ -4342,7 +4342,7 @@ body.mes-admin-page .mes-ops-main-grid {
 
 body.mes-admin-page .mes-detail-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1.02fr) minmax(420px, 0.98fr);
+    grid-template-columns: minmax(0, 1fr);
     align-items: start;
     gap: 10px;
 }
@@ -4366,8 +4366,8 @@ body.mes-admin-page .mes-detail-card .mes-compact-wrap {
 
 body.mes-admin-page .mes-detail-card {
     display: grid;
-    min-height: 330px;
-    max-height: 385px;
+    min-height: 360px;
+    max-height: 430px;
 }
 
 body.mes-admin-page .mes-detail-card:not(.mes-events-card) {
@@ -4376,6 +4376,7 @@ body.mes-admin-page .mes-detail-card:not(.mes-events-card) {
 
 body.mes-admin-page .mes-events-card {
     grid-template-rows: auto minmax(0, 1fr) auto;
+    min-width: 0;
 }
 
 body.mes-admin-page .mes-card-header {
@@ -4401,6 +4402,20 @@ body.mes-admin-page .mes-card-meta {
     line-height: 1.35;
 }
 
+body.mes-admin-page .mes-header-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+body.mes-admin-page .mes-header-actions button {
+    min-height: 28px;
+    padding: 0 10px;
+    border-radius: 10px;
+    font-size: 12px;
+}
+
 body.mes-admin-page .mes-card-header-events,
 body.mes-admin-page .mes-events-heading-actions {
     align-items: center;
@@ -4411,6 +4426,110 @@ body.mes-admin-page .mes-events-heading-actions {
     justify-content: flex-end;
     gap: 6px;
     flex-wrap: wrap;
+}
+
+body.mes-admin-page .mes-investigation-drawer {
+    position: fixed;
+    inset: 0;
+    z-index: 11000;
+    display: none;
+}
+
+body.mes-admin-page .mes-investigation-drawer.open {
+    display: block;
+}
+
+body.mes-admin-page .mes-investigation-overlay {
+    position: fixed;
+    inset: 0;
+    width: auto;
+    min-height: 0;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    margin: 0;
+    box-shadow: none;
+    appearance: none;
+    transform: none !important;
+    background: rgba(15, 23, 42, 0.32);
+}
+
+body.mes-admin-page .mes-investigation-overlay:hover {
+    transform: none !important;
+}
+
+body.mes-admin-page .mes-investigation-panel {
+    position: fixed;
+    top: 18px;
+    bottom: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(1480px, calc(100vw - 36px));
+    max-height: none;
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr) minmax(0, 0.92fr);
+    gap: 10px;
+    padding: 12px;
+    overflow: hidden;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 22px;
+    background: rgba(255, 252, 248, 0.98);
+    box-shadow: 0 22px 64px rgba(15, 23, 42, 0.18);
+}
+
+body.mes-admin-page .mes-investigation-header {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+body.mes-admin-page .mes-investigation-header h2 {
+    margin: 0;
+    font-size: 16px;
+    line-height: 1.2;
+}
+
+body.mes-admin-page .mes-investigation-card {
+    display: grid;
+    min-height: 0;
+    overflow: hidden;
+}
+
+body.mes-admin-page .mes-transits-card {
+    grid-template-rows: auto minmax(0, 1fr);
+}
+
+body.mes-admin-page .mes-events-card {
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    min-width: 0;
+}
+
+body.mes-admin-page .mes-events-heading-copy {
+    min-width: 0;
+}
+
+body.mes-admin-page .mes-events-heading-main {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+body.mes-admin-page .mes-compact-toggle {
+    min-height: 28px;
+    padding: 0 10px;
+    border-radius: 10px;
+    font-size: 12px;
+    line-height: 1;
+}
+
+body.mes-admin-page .mes-compact-toggle.is-active {
+    background: rgba(15, 118, 110, 0.08);
+    border-color: rgba(15, 118, 110, 0.24);
+    color: #0f766e;
 }
 
 body.mes-admin-page .mes-selection-strip {
@@ -4521,6 +4640,11 @@ body.mes-admin-page .phase-badge.good {
     color: #166534;
 }
 
+body.mes-admin-page .phase-badge.warning {
+    background: rgba(254, 243, 199, 0.98);
+    color: #b45309;
+}
+
 body.mes-admin-page .phase-badge.neutral {
     background: rgba(241, 245, 249, 0.96);
     color: #475569;
@@ -4534,6 +4658,76 @@ body.mes-admin-page .mes-events-table code {
     white-space: nowrap;
     color: #334155;
     font-size: 10px;
+}
+
+body.mes-admin-page .mes-events-card .mes-events-table {
+    table-layout: fixed;
+}
+
+body.mes-admin-page .mes-events-card .mes-events-table th,
+body.mes-admin-page .mes-events-card .mes-events-table td {
+    padding: 5px 6px;
+    font-size: 11px;
+}
+
+body.mes-admin-page .mes-events-card .mes-events-table th:nth-child(1),
+body.mes-admin-page .mes-events-card .mes-events-table td:nth-child(1) {
+    width: 30px;
+}
+
+body.mes-admin-page .mes-events-card .mes-events-table th:nth-child(2),
+body.mes-admin-page .mes-events-card .mes-events-table td:nth-child(2) {
+    width: 128px;
+}
+
+body.mes-admin-page .mes-events-card .mes-events-table th:nth-child(3),
+body.mes-admin-page .mes-events-card .mes-events-table td:nth-child(3) {
+    width: 54px;
+}
+
+body.mes-admin-page .mes-events-card .mes-events-table th:nth-child(4),
+body.mes-admin-page .mes-events-card .mes-events-table td:nth-child(4) {
+    width: 82px;
+}
+
+body.mes-admin-page .mes-events-card .mes-events-table th:nth-child(5),
+body.mes-admin-page .mes-events-card .mes-events-table td:nth-child(5) {
+    width: 54px;
+}
+
+body.mes-admin-page .mes-events-card .mes-events-table code {
+    max-width: 150px;
+}
+
+body.mes-admin-page .mes-transits-table {
+    table-layout: fixed;
+}
+
+body.mes-admin-page .mes-transits-table th:nth-child(1),
+body.mes-admin-page .mes-transits-table td:nth-child(1) {
+    width: 44px;
+}
+
+body.mes-admin-page .mes-transits-table th:nth-child(2),
+body.mes-admin-page .mes-transits-table td:nth-child(2),
+body.mes-admin-page .mes-transits-table th:nth-child(3),
+body.mes-admin-page .mes-transits-table td:nth-child(3) {
+    width: 156px;
+}
+
+body.mes-admin-page .mes-transits-table th:nth-child(4),
+body.mes-admin-page .mes-transits-table td:nth-child(4) {
+    width: 96px;
+}
+
+body.mes-admin-page .mes-transits-table th:nth-child(5),
+body.mes-admin-page .mes-transits-table td:nth-child(5) {
+    width: 120px;
+}
+
+body.mes-admin-page .mes-transits-table th:nth-child(7),
+body.mes-admin-page .mes-transits-table td:nth-child(7) {
+    width: 142px;
 }
 
 body.mes-admin-page .mes-events-footer {
@@ -4848,7 +5042,7 @@ body.mes-admin-page .mes-ops-screen.mes-ops-overlay-editor .mes-ops-main-grid {
 }
 
 body.mes-admin-page .mes-ops-screen.mes-ops-overlay-editor .mes-detail-grid {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
 }
 
 body.mes-admin-page .mes-ops-screen.mes-ops-overlay-editor .mes-admin-drawer {
@@ -4914,7 +5108,7 @@ body.mes-admin-page .mes-ops-screen.mes-ops-overlay-editor .mes-kkw-card {
 }
 
 body.mes-admin-page .mes-ops-screen.mes-ops-overlay-editor .mes-detail-card {
-    max-height: 360px;
+    max-height: 430px;
 }
 
 body.mes-admin-page .mes-ops-screen.mes-ops-overlay-editor .mes-events-table th,
