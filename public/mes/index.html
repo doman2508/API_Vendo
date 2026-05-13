@@ -13,7 +13,7 @@
             <div class="mes-ops-header">
                 <div class="mes-ops-title">
                     <h1>MES pieca</h1>
-                    <p>Widok operacyjny KKW, wejsc na piec i impulsow MES.</p>
+                    <p>Widok operacyjny KKW i wejsc na piec. Diagnostyka impulsow jest dostepna osobno.</p>
                 </div>
                 <div class="mes-ops-header-actions">
                     <button id="mes-reset-transits" class="ghost mes-inline-danger" type="button">Reset pieca</button>
@@ -94,6 +94,9 @@
                             <h2 id="mes-entries-title">2. Wejscia na piec</h2>
                             <p id="mes-entries-meta" class="mes-card-meta">Wybierz KKW z tabeli powyzej.</p>
                         </div>
+                        <div class="mes-header-actions">
+                            <button id="mes-open-investigation" class="ghost" type="button">Sledztwo wejscia</button>
+                        </div>
                     </div>
                     <div id="mes-selected-kkw" class="mes-selection-strip hidden"></div>
                     <div class="table-wrap mes-compact-wrap">
@@ -123,23 +126,73 @@
                         </table>
                     </div>
                 </section>
+            </div>
+        </section>
 
-                <section id="mes-events-panel" class="mes-ops-card mes-detail-card mes-events-card">
-                    <div class="mes-card-header mes-card-header-events">
+        <aside id="mes-investigation-drawer" class="mes-investigation-drawer" aria-hidden="true" hidden>
+            <button id="mes-investigation-overlay" class="mes-investigation-overlay" type="button" aria-label="Zamknij sledztwo"></button>
+            <div class="mes-investigation-panel" role="dialog" aria-modal="true" aria-labelledby="mes-investigation-title">
+                <div class="mes-investigation-header">
+                    <div>
+                        <h2 id="mes-investigation-title">Sledztwo wejscia</h2>
+                        <p id="mes-investigation-subtitle" class="mes-card-meta">Wybierz wejscie, aby przeanalizowac pary in/out i impulsy.</p>
+                    </div>
+                    <div class="mes-header-actions">
+                        <button id="mes-investigation-refresh" class="ghost" type="button">Odswiez</button>
+                        <button id="mes-investigation-close" class="ghost" type="button">Zamknij</button>
+                    </div>
+                </div>
+
+                <div id="mes-investigation-summary" class="mes-selection-strip hidden"></div>
+
+                <section class="mes-ops-card mes-investigation-card mes-transits-card">
+                    <div class="mes-card-header">
                         <div>
-                            <h2 id="mes-events-title">3. Impulsy dla wybranego wejscia</h2>
+                            <h2 id="mes-transits-title">Pary in/out dla wejscia</h2>
+                            <p id="mes-transits-meta" class="mes-card-meta">Tutaj zobaczysz, co sie sparowalo, a czego brakuje.</p>
+                        </div>
+                    </div>
+                    <div class="table-wrap mes-compact-wrap">
+                        <table class="mes-events-table mes-transits-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>IN</th>
+                                    <th>OUT</th>
+                                    <th>Czas pieca</th>
+                                    <th>Status</th>
+                                    <th>Uwagi</th>
+                                    <th>Akcja</th>
+                                </tr>
+                            </thead>
+                            <tbody id="mes-transits-body">
+                                <tr>
+                                    <td colspan="7">Wybierz wejscie, aby zobaczyc pary in/out.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section id="mes-events-panel" class="mes-ops-card mes-investigation-card mes-events-card">
+                    <div class="mes-card-header mes-card-header-events">
+                        <div class="mes-events-heading-copy">
+                            <div class="mes-events-heading-main">
+                                <h2 id="mes-events-title">Impulsy dla wybranego wejscia</h2>
+                                <span id="mes-events-count" class="mes-mini-pill">0</span>
+                            </div>
                             <p id="mes-updated-at" class="mes-card-meta">-</p>
                         </div>
                         <div class="mes-events-heading-actions">
                             <span id="mes-selected-entry" class="mes-mini-pill">Wybierz wejscie</span>
+                            <button id="mes-events-scope-attributed" class="ghost mes-scope-toggle-button" type="button">Zliczone</button>
+                            <button id="mes-events-toggle-diagnostics" class="ghost mes-compact-toggle" type="button">Diagnostyka</button>
                             <div class="mes-scope-toggle" role="group" aria-label="Zakres impulsow">
                                 <button id="mes-events-scope-raw" class="ghost mes-scope-toggle-button" type="button">Surowe</button>
-                                <button id="mes-events-scope-attributed" class="ghost mes-scope-toggle-button" type="button">Powiazane</button>
                             </div>
-                            <span id="mes-events-count" class="mes-mini-pill">0</span>
                             <label class="checkbox-field mes-history-checkbox">
                                 <input id="mes-show-unassigned" type="checkbox">
-                                <span>Nieprzypisane</span>
+                                <span>Do wyjasnienia</span>
                             </label>
                             <span id="mes-selected-pulses" class="mes-mini-pill">0 zaznaczonych</span>
                             <button id="mes-events-refresh" class="ghost" type="button">Odswiez</button>
@@ -172,7 +225,7 @@
                     </div>
                 </section>
             </div>
-        </section>
+        </aside>
 
         <aside id="mes-admin-drawer" class="mes-admin-drawer mes-admin-side" aria-hidden="true">
             <button id="mes-admin-overlay" class="mes-admin-overlay" type="button" aria-label="Zamknij panel edycji"></button>

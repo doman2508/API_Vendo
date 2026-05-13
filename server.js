@@ -30,6 +30,8 @@ const {
     insertOvenPulse,
     listOvenBatches,
     listOvenPulses,
+    listOvenTransitsForBatch,
+    manuallyCloseOvenTransit,
     resetOpenOvenTransits,
     startOvenBatch,
     updateOvenBatchDetails,
@@ -5696,6 +5698,24 @@ async function handleApiMesOvenEventsAssign(req, res) {
     }
 }
 
+async function handleApiMesOvenTransits(req, res) {
+    try {
+        const requestUrl = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+        const batchId = requestUrl.searchParams.get("batch_id") || requestUrl.searchParams.get("batchId") || "";
+        const limit = requestUrl.searchParams.get("limit") || 200;
+        const storageConfig = getMesStorageConfig();
+
+        sendJson(res, 200, {
+            storage: getMesStorageMeta(storageConfig.dbPath),
+            ...listOvenTransitsForBatch(storageConfig.dbPath, { batchId, limit }),
+        });
+    } catch (error) {
+        sendJson(res, 500, {
+            error: error.message || "Nie udalo sie odczytac transitow MES.",
+        });
+    }
+}
+
 async function handleApiMesOvenTransitsReset(req, res) {
     try {
         const body = await readJsonBody(req);
@@ -5713,6 +5733,27 @@ async function handleApiMesOvenTransitsReset(req, res) {
     } catch (error) {
         sendJson(res, 500, {
             error: error.message || "Nie udalo sie zresetowac otwartych przejsc pieca.",
+        });
+    }
+}
+
+async function handleApiMesOvenTransitsManualClose(req, res) {
+    try {
+        const body = await readJsonBody(req);
+        const storageConfig = getMesStorageConfig();
+        const result = manuallyCloseOvenTransit(storageConfig.dbPath, {
+            transitId: body.transit_id || body.transitId || null,
+            operator: body.operator || body.operatorName || "",
+            reason: body.reason || "missing_out_manual",
+        });
+
+        sendJson(res, 200, {
+            status: "ok",
+            ...result,
+        });
+    } catch (error) {
+        sendJson(res, 500, {
+            error: error.message || "Nie udalo sie recznie domknac brakujacego OUT.",
         });
     }
 }
@@ -9063,6 +9104,11 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
+    if (req.method === "GET" && req.url.startsWith("/api/mes/oven/transits")) {
+        await handleApiMesOvenTransits(req, res);
+        return;
+    }
+
     if (req.method === "POST" && req.url === "/api/mes/oven/batch/start") {
         await handleApiMesOvenBatchStart(req, res);
         return;
@@ -9105,6 +9151,11 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && req.url === "/api/mes/oven/transits/reset") {
         await handleApiMesOvenTransitsReset(req, res);
+        return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/mes/oven/transits/manual-close") {
+        await handleApiMesOvenTransitsManualClose(req, res);
         return;
     }
 
