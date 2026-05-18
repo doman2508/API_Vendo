@@ -1296,6 +1296,12 @@ body.modal-open {
     border: 1px solid rgba(109, 40, 217, 0.32);
 }
 
+.header-flag.fresh-kkw {
+    background: rgba(245, 158, 11, 0.18);
+    color: #b45309;
+    border: 1px solid rgba(245, 158, 11, 0.34);
+}
+
 .detail-shortage,
 .to-order-shortage,
 .access-to-order-shortage {

@@ -2154,6 +2154,20 @@ function renderHeaderStageCell(header) {
     `;
 }
 
+function renderHeaderKkwCell(header) {
+    const kkwNumber = String(header?.kkwNumber || "").trim() || "-";
+    const freshKkwBadge = header?.isFreshKkw
+        ? `<span class="header-flag fresh-kkw" title="KKW utworzone w ostatnich 24 godzinach">Nowe KKW</span>`
+        : "";
+
+    return `
+        <div class="header-stage-stack">
+            <span>${escapeHtml(kkwNumber)}</span>
+            ${freshKkwBadge}
+        </div>
+    `;
+}
+
 function renderHeadersTable(rows, totalRows) {
     updateHeadersCount(rows.length, totalRows);
     if (!rows.length) {
@@ -2181,7 +2195,7 @@ function renderHeadersTable(rows, totalRows) {
                 >
             </td>
             <td>${escapeHtml(formatDate(header.termDate))}</td>
-            <td>${escapeHtml(header.kkwNumber || "-")}</td>
+            <td>${renderHeaderKkwCell(header)}</td>
             <td>
                 <span class="index-link${selectedHeaderId === header.id ? " active" : ""}">${escapeHtml(header.productIndex || "-")}</span>
             </td>
