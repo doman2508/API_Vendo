@@ -2843,7 +2843,7 @@ async function getVendoOperationalDemandTotals({
     accessToken,
     materialOwnershipFilter = "MSX_OR_EMPTY",
     pageSize = 100,
-    maxPages = 2,
+    maxPages = 10,
     warnings = [],
 } = {}) {
     const cacheKey = buildVendoDemandTotalsCacheKey(connection, {
@@ -3002,7 +3002,7 @@ async function getVendoOperationalComponentDetails({
     componentCode,
     materialOwnershipFilter = "MSX_OR_EMPTY",
     pageSize = 100,
-    maxPages = 2,
+    maxPages = 10,
     includeVendo = true,
     warnings = [],
     forceRefresh = false,
@@ -6283,7 +6283,7 @@ async function handleApiZapotrzebowanieVendoHeaderDetails(req, res) {
                 accessToken,
                 materialOwnershipFilter: body?.materialOwnershipFilter || "MSX_OR_EMPTY",
                 pageSize: 100,
-                maxPages: 2,
+                maxPages: 10,
                 warnings,
             });
             bomItems = bomItems.map((item) => {
@@ -6425,7 +6425,7 @@ async function handleApiZapotrzebowanieVendoComponentDetails(req, res) {
             componentCode,
             materialOwnershipFilter,
             pageSize: 100,
-            maxPages: 2,
+            maxPages: 10,
             includeVendo: body?.includeVendo !== false,
             warnings,
             forceRefresh: body?.forceRefresh === true,
