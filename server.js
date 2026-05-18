@@ -1674,6 +1674,7 @@ function buildKkwByPlanPositionModel({ planPositionId, pageSize }) {
         ZwracanePola: [
             "ID",
             "Numer",
+            "DataUtworzenia",
             "IloscOczekiwana",
             "IloscPrzyjeta",
             "IloscWykonana",
@@ -1802,6 +1803,28 @@ function buildObjectStatusesHistoryModel({ objectIds, dataType, pageSize, onlyCu
             .filter((value) => Number.isInteger(value) && value > 0),
         TylkoAktualne: Boolean(onlyCurrent),
     };
+}
+
+function getLatestKkwCreatedAt(kkwRecords) {
+    const timestamps = (kkwRecords || [])
+        .map((record) => Date.parse(String(record?.DataUtworzenia || "").trim()))
+        .filter((value) => Number.isFinite(value) && value > 0);
+
+    if (!timestamps.length) {
+        return null;
+    }
+
+    return new Date(Math.max(...timestamps)).toISOString();
+}
+
+function isFreshKkwTimestamp(value, referenceTimestamp = Date.now()) {
+    const createdAt = Date.parse(String(value || "").trim());
+    const reference = Number.isFinite(referenceTimestamp) ? referenceTimestamp : Date.now();
+    if (!Number.isFinite(createdAt) || createdAt <= 0 || !Number.isFinite(reference) || reference <= 0) {
+        return false;
+    }
+
+    return (reference - createdAt) <= 24 * 60 * 60 * 1000;
 }
 
 async function resolveVendoStatuses(connection, accessToken, {
@@ -2329,6 +2352,8 @@ function buildVendoOperationalHeaderContext({
     const vendoNote = getPlanningPositionNote(positionWithFields);
     const operationalNote = statusScope.hasDemandScope ? "" : "SMD/THT wykluczone z zapotrzebowania";
     const headerNotes = [vendoNote, operationalNote].filter(Boolean).join(" | ") || null;
+    const latestKkwCreatedAt = getLatestKkwCreatedAt(kkwRecords);
+    const generatedAtTimestamp = Date.parse(String(generatedAt || "").trim()) || Date.now();
 
     return {
         header: {
@@ -2358,6 +2383,8 @@ function buildVendoOperationalHeaderContext({
             notes: headerNotes,
             createdBy: null,
             sourceCreatedAt: planningOrder?.DataUtworzenia || null,
+            latestKkwCreatedAt,
+            isFreshKkw: Boolean(latestKkwCreatedAt) && isFreshKkwTimestamp(latestKkwCreatedAt, generatedAtTimestamp),
             importedAt: generatedAt,
             bomCount: null,
             openBomCount: null,
@@ -2808,14 +2835,48 @@ function getMaterialUnitQty(row) {
     return getPositiveNumber(row?.IloscNetto);
 }
 
+function getKkwReferenceQty(kkwRecord, fallbackQty = 0) {
+    return (
+        getPositiveNumber(kkwRecord?.IloscOczekiwana)
+        || getPositiveNumber(kkwRecord?.IloscPrzyjeta)
+        || getPositiveNumber(kkwRecord?.IloscWykonana)
+        || getPositiveNumber(fallbackQty)
+        || 0
+    );
+}
+
+function attachKkwReferenceQty(materialRows, kkwRecords, fallbackQty = 0) {
+    const referenceQtyByKkwId = new Map(
+        (kkwRecords || [])
+            .filter((record) => Number.isInteger(Number(record?.ID)) && Number(record?.ID) > 0)
+            .map((record) => [
+                Number(record.ID),
+                getKkwReferenceQty(record, fallbackQty),
+            ])
+    );
+
+    return (materialRows || []).map((row) => {
+        const kkwId = Number(row?.KKWID);
+        const referenceQty = referenceQtyByKkwId.get(kkwId) || getPositiveNumber(fallbackQty);
+        return {
+            ...row,
+            KKWID: Number.isInteger(kkwId) && kkwId > 0 ? kkwId : null,
+            KkwReferenceQty: referenceQty || null,
+        };
+    });
+}
+
 function normalizeVendoBomItems(materialRows, { sourceType, orderQty }) {
     return (materialRows || [])
         .filter((row) => normalizeText(row?.Typ) === "rozchod")
         .map((row) => {
             const rawQty = getMaterialUnitQty(row);
             const orderQuantity = Math.max(getPositiveNumber(orderQty), 1);
+            const sourceReferenceQty = sourceType === "kkw"
+                ? Math.max(getPositiveNumber(row?.KkwReferenceQty), orderQuantity, 1)
+                : orderQuantity;
             const requiredQty = sourceType === "kkw" ? rawQty : rawQty * orderQuantity;
-            const componentQty = sourceType === "kkw" ? rawQty / orderQuantity : rawQty;
+            const componentQty = sourceType === "kkw" ? rawQty / sourceReferenceQty : rawQty;
 
             return {
                 sourceType,
@@ -2955,13 +3016,18 @@ async function getVendoOperationalDemandTotals({
     for (const context of activeHeaderContexts) {
         const position = context?.positionWithFields || context?.position || {};
         const orderQty = getPositiveNumber(position?.Ilosc);
-        const kkwIds = (context?.kkwRecords || [])
+        const kkwRecords = context?.kkwRecords || [];
+        const kkwIds = kkwRecords
             .map((record) => Number(record?.ID))
             .filter((value) => Number.isInteger(value) && value > 0);
-        const kkwRows = kkwIds.flatMap((kkwId) => (kkwMaterialRowsById.get(kkwId) || []).map((row) => ({
-            ...row,
-            KKWID: Number(row?.KKWID) || kkwId,
-        })));
+        const kkwRows = attachKkwReferenceQty(
+            kkwIds.flatMap((kkwId) => (kkwMaterialRowsById.get(kkwId) || []).map((row) => ({
+                ...row,
+                KKWID: Number(row?.KKWID) || kkwId,
+            }))),
+            kkwRecords,
+            orderQty
+        );
         const hasKkwConsumptionRows = kkwRows.some((row) => normalizeText(row?.Typ) === "rozchod");
 
         let sourceType = "technology";
@@ -3137,13 +3203,18 @@ async function getVendoOperationalComponentDetails({
     for (const context of activeHeaderContexts) {
         const position = context?.positionWithFields || context?.position || {};
         const orderQty = getPositiveNumber(position?.Ilosc);
-        const kkwIds = (context?.kkwRecords || [])
+        const kkwRecords = context?.kkwRecords || [];
+        const kkwIds = kkwRecords
             .map((record) => Number(record?.ID))
             .filter((value) => Number.isInteger(value) && value > 0);
-        const kkwRows = kkwIds.flatMap((kkwId) => (kkwMaterialRowsById.get(kkwId) || []).map((row) => ({
-            ...row,
-            KKWID: Number(row?.KKWID) || kkwId,
-        })));
+        const kkwRows = attachKkwReferenceQty(
+            kkwIds.flatMap((kkwId) => (kkwMaterialRowsById.get(kkwId) || []).map((row) => ({
+                ...row,
+                KKWID: Number(row?.KKWID) || kkwId,
+            }))),
+            kkwRecords,
+            orderQty
+        );
         const hasKkwConsumptionRows = kkwRows.some((row) => normalizeText(row?.Typ) === "rozchod");
 
         let sourceType = "technology";
@@ -3653,13 +3724,18 @@ async function computeVendoOperationalHeaderSummaries({
 
         const position = context?.positionWithFields || context?.position || {};
         const orderQty = getPositiveNumber(position?.Ilosc);
-        const kkwIds = (context?.kkwRecords || [])
+        const kkwRecords = context?.kkwRecords || [];
+        const kkwIds = kkwRecords
             .map((record) => Number(record?.ID))
             .filter((value) => Number.isInteger(value) && value > 0);
-        const kkwRows = kkwIds.flatMap((kkwId) => (kkwMaterialRowsById.get(kkwId) || []).map((row) => ({
-            ...row,
-            KKWID: Number(row?.KKWID) || kkwId,
-        })));
+        const kkwRows = attachKkwReferenceQty(
+            kkwIds.flatMap((kkwId) => (kkwMaterialRowsById.get(kkwId) || []).map((row) => ({
+                ...row,
+                KKWID: Number(row?.KKWID) || kkwId,
+            }))),
+            kkwRecords,
+            orderQty
+        );
         const hasKkwConsumptionRows = kkwRows.some((row) => normalizeText(row?.Typ) === "rozchod");
 
         let sourceType = "technology";
@@ -6174,6 +6250,7 @@ async function handleApiZapotrzebowanieVendoHeaderDetails(req, res) {
             }
         }
 
+        const orderQty = getPositiveNumber(position?.Ilosc);
         let bomSource = null;
         let materialRows = [];
         if (kkwRecords.length) {
@@ -6187,11 +6264,15 @@ async function handleApiZapotrzebowanieVendoHeaderDetails(req, res) {
                 pageSize: 500,
                 maxPages: 20,
             });
-            materialRows = kkwMaterialRows.map((row) => ({
-                ...row,
-                KKWID: Number(row?.KKWID) || null,
-                KKWNumer: row?.KKWNumer || kkwNumberById.get(Number(row?.KKWID)) || null,
-            }));
+            materialRows = attachKkwReferenceQty(
+                kkwMaterialRows.map((row) => ({
+                    ...row,
+                    KKWID: Number(row?.KKWID) || null,
+                    KKWNumer: row?.KKWNumer || kkwNumberById.get(Number(row?.KKWID)) || null,
+                })),
+                kkwRecords,
+                orderQty
+            );
 
             const hasKkwConsumptionRows = materialRows.some((row) => normalizeText(row?.Typ) === "rozchod");
             if (hasKkwConsumptionRows) {
@@ -6237,7 +6318,6 @@ async function handleApiZapotrzebowanieVendoHeaderDetails(req, res) {
             };
         }
 
-        const orderQty = getPositiveNumber(position?.Ilosc);
         const statusScope = getVendoStatusScope(objectStatuses, statusDictionary);
         const currentStatusScope = getVendoStatusScope(currentObjectStatuses, statusDictionary);
         const stage = getVendoStageFromScope(
@@ -9269,5 +9349,14 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-    console.log(`Frontend Vendo startuje na http://${HOST}:${PORT}`);
+    const listenHost = String(HOST || "").trim();
+    const localUrl = `http://localhost:${PORT}`;
+    const hostUrl = `http://${listenHost}:${PORT}`;
+
+    if (!listenHost || listenHost === "0.0.0.0" || listenHost === "::") {
+        console.log(`Frontend Vendo startuje lokalnie na ${localUrl} (nasluch: ${hostUrl})`);
+        return;
+    }
+
+    console.log(`Frontend Vendo startuje na ${hostUrl}`);
 });
